@@ -121,7 +121,8 @@ async function doCrime(ns, owner) {
     }
     
     const duration = ns.singularity.commitCrime(crime, config.crime.focus);
-    ns.print(`[Activity] Crime: ${crime} (${Math.round(duration / 1000)}s)`);\n    await ns.sleep(duration + 200);
+    ns.print(`[Activity] Crime: ${crime} (${Math.round(duration / 1000)}s)`);
+    await ns.sleep(duration + 200);
 }
 
 async function doTraining(ns, owner) {
@@ -160,6 +161,86 @@ async function doTraining(ns, owner) {
     
     if (target.type === "hacking") {
         ns.singularity.universityCourse(config.training.university, config.training.course, config.training.focus);
-        ns.print(`[Activity] Training: Hacking`);\n    } else {
+        ns.print(`[Activity] Training: Hacking`);
+    } else {
         ns.singularity.gymWorkout(config.training.gym, target.stat, config.training.focus);
-        ns.print(`[Activity] Training: ${target.stat}`);\n    }\n    await ns.sleep(180000);\n}\n\nasync function doFactionWork(ns, owner) {\n    const player = ns.getPlayer();\n    const factions = player.factions.filter(f => f !== \"Bladeburners\");\n    \n    if (factions.length === 0) {\n        await ns.sleep(30000);\n        return;\n    }\n    \n    const faction = factions[0];\n    const work = ns.singularity.getCurrentWork();\n    \n    if (!work || work.type !== \"FACTION\" || work.factionName !== faction) {\n        ns.singularity.workForFaction(faction, config.factions.workType || \"Hacking Contracts\");\n        ns.print(`[Activity] Faction: Working for ${faction}`);\n    }\n    \n    await ns.sleep(180000);\n}\n\nfunction chooseCrime(ns) {\n    let bestCrime = null;\n    let bestScore = 0;\n\n    for (const crime of config.crime.crimes) {\n        const stats = ns.singularity.getCrimeStats(crime);\n        const chance = ns.singularity.getCrimeChance(crime);\n        if (chance < config.crime.minSuccessChance) continue;\n        const score = (stats.money * chance) / Math.max(1, stats.time);\n        if (score > bestScore) {\n            bestScore = score;\n            bestCrime = crime;\n        }\n    }\n\n    return bestCrime || config.crime.crimes[0];\n}\n\nfunction hasSingularityAccess(ns) {\n    try {\n        ns.singularity.getCurrentWork();\n        return true;\n    } catch (e) {\n        return false;\n    }\n}\n\nfunction getLock(ns) {\n    const raw = ns.peek(PORTS.ACTIVITY);\n    if (raw === \"NULL PORT DATA\") return null;\n    const parts = String(raw).split(\"|\");\n    if (parts.length < 2) return null;\n    const expires = Number(parts[1]);\n    if (Number.isNaN(expires)) return null;\n    return { owner: parts[0], expires };\n}\n\nfunction claimLock(ns, owner, ttlMs) {\n    const now = Date.now();\n    const lock = getLock(ns);\n    if (!lock || lock.expires <= now || lock.owner === owner) {\n        ns.clearPort(PORTS.ACTIVITY);\n        ns.writePort(PORTS.ACTIVITY, `${owner}|${now + ttlMs}`);\n        return true;\n    }\n    return false;\n}\n\nfunction releaseLock(ns, owner) {\n    const lock = getLock(ns);\n    if (lock && lock.owner === owner) {\n        ns.clearPort(PORTS.ACTIVITY);\n    }\n}\n
+        ns.print(`[Activity] Training: ${target.stat}`);
+    }
+    await ns.sleep(180000);
+}
+
+async function doFactionWork(ns, owner) {
+    const player = ns.getPlayer();
+    const factions = player.factions.filter(f => f !== \"Bladeburners\");
+    
+    if (factions.length === 0) {
+        await ns.sleep(30000);
+        return;
+    }
+    
+    const faction = factions[0];
+    const work = ns.singularity.getCurrentWork();
+    
+    if (!work || work.type !== \"FACTION\" || work.factionName !== faction) {
+        ns.singularity.workForFaction(faction, config.factions.workType || \"Hacking Contracts\");
+        ns.print(`[Activity] Faction: Working for ${faction}`);
+    }
+    
+    await ns.sleep(180000);
+}
+
+function chooseCrime(ns) {
+    let bestCrime = null;
+    let bestScore = 0;
+
+    for (const crime of config.crime.crimes) {
+        const stats = ns.singularity.getCrimeStats(crime);
+        const chance = ns.singularity.getCrimeChance(crime);
+        if (chance < config.crime.minSuccessChance) continue;
+        const score = (stats.money * chance) / Math.max(1, stats.time);
+        if (score > bestScore) {
+            bestScore = score;
+            bestCrime = crime;
+        }
+    }
+
+    return bestCrime || config.crime.crimes[0];
+}
+
+function hasSingularityAccess(ns) {
+    try {
+        ns.singularity.getCurrentWork();
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function getLock(ns) {
+    const raw = ns.peek(PORTS.ACTIVITY);
+    if (raw === \"NULL PORT DATA\") return null;
+    const parts = String(raw).split(\"|\");
+    if (parts.length < 2) return null;
+    const expires = Number(parts[1]);
+    if (Number.isNaN(expires)) return null;
+    return { owner: parts[0], expires };
+}
+
+function claimLock(ns, owner, ttlMs) {
+    const now = Date.now();
+    const lock = getLock(ns);
+    if (!lock || lock.expires <= now || lock.owner === owner) {
+        ns.clearPort(PORTS.ACTIVITY);
+        ns.writePort(PORTS.ACTIVITY, `${owner}|${now + ttlMs}`);
+        return true;
+    }
+    return false;
+}
+
+function releaseLock(ns, owner) {
+    const lock = getLock(ns);
+    if (lock && lock.owner === owner) {
+        ns.clearPort(PORTS.ACTIVITY);
+    }
+}
+

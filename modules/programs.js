@@ -4,7 +4,13 @@ import { formatMoney, log } from "/angel/utils.js";
 /** @param {NS} ns */
 export async function main(ns) {
     ns.disableLog("ALL");
-    ns.ui.openTail();
+    
+    try {
+        ns.ui.openTail();
+    } catch (e) {
+        // Tail might fail in some circumstances
+        ns.print("Warning: Could not open tail window");
+    }
     
     log(ns, "Programs & Backdoor module started", "INFO");
     
@@ -312,7 +318,8 @@ function getAllRootedServers(ns) {
     }
     
     scan("home");
-    return servers;\n}
+    return servers;
+}
 
 /**
  * Attempt to backdoor a server
@@ -350,9 +357,8 @@ async function attemptBackdoor(ns, server, faction) {
  */
 async function connectToServer(ns, target) {
     try {
-        // Import scanner to find path
-        const { findPath } = await import("/angel/scanner.js");
-        const path = findPath(ns, target);
+        // Find path to target by BFS
+        const path = findPathToServer(ns, target);
         
         if (path.length === 0) {
             return false;
@@ -367,6 +373,37 @@ async function connectToServer(ns, target) {
     } catch (e) {
         return false;
     }
+}
+
+/**
+ * Find path to a server using BFS
+ * @param {NS} ns
+ * @param {string} target
+ * @returns {string[]}
+ */
+function findPathToServer(ns, target) {
+    const queue = [{ server: "home", path: [] }];
+    const visited = new Set();
+    
+    while (queue.length > 0) {
+        const { server, path } = queue.shift();
+        
+        if (visited.has(server)) continue;
+        visited.add(server);
+        
+        if (server === target) {
+            return [...path, target];
+        }
+        
+        const connected = ns.scan(server);
+        for (const next of connected) {
+            if (!visited.has(next)) {
+                queue.push({ server: next, path: [...path, server] });
+            }
+        }
+    }
+    
+    return [];
 }
 
 /**

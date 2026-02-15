@@ -40,25 +40,26 @@ function assignTasks(ns) {
     const info = ns.gang.getGangInformation();
     const members = ns.gang.getMemberNames();
     const tasks = ns.gang.getTaskNames();
+    const availableTasks = tasks.filter((task) => task !== "Unassigned");
     if (members.length === 0) {
         ns.print("[Gang] No members to assign");
         return { info, members, tasks, assigned: {} };
     }
 
-    if (tasks.length === 0) {
+    if (availableTasks.length === 0) {
         ns.print("[Gang] No tasks available yet");
         return { info, members, tasks, assigned: {} };
     }
 
-    const moneyTask = pickTask(tasks, info.isHacking
+    const moneyTask = pickTask(availableTasks, info.isHacking
         ? [config.gang.moneyTask, "Money Laundering", "Cyberterrorism", "Fraud & Counterfeiting", "Identity Theft", "Phishing"]
         : [config.gang.moneyTask, "Human Trafficking", "Armed Robbery", "Strongarm Civilians", "Mug People"]
     );
-    const wantedTask = pickTask(tasks, info.isHacking
+    const wantedTask = pickTask(availableTasks, info.isHacking
         ? [config.gang.wantedTask, "Ethical Hacking", "Vigilante Justice"]
         : [config.gang.wantedTask, "Vigilante Justice", "Terrorism"]
     );
-    const trainTask = pickTask(tasks, info.isHacking
+    const trainTask = pickTask(availableTasks, info.isHacking
         ? ["Train Hacking", "Train Combat"]
         : ["Train Combat", "Train Hacking"]
     );
@@ -84,8 +85,12 @@ function assignTasks(ns) {
         }
 
         let ok = ns.gang.setMemberTask(name, task);
-        if (!ok && tasks.length > 0) {
-            ok = ns.gang.setMemberTask(name, tasks[0]);
+        if (!ok) {
+            for (const fallback of availableTasks) {
+                if (fallback === task) continue;
+                ok = ns.gang.setMemberTask(name, fallback);
+                if (ok) break;
+            }
         }
 
         const updated = ns.gang.getMemberInformation(name);
@@ -96,7 +101,7 @@ function assignTasks(ns) {
         assigned[actualTask] = (assigned[actualTask] || 0) + 1;
     }
 
-    return { info, members, tasks, assigned };
+    return { info, members, tasks: availableTasks, assigned };
 }
 
 function printStatus(ns, summary) {
@@ -108,6 +113,10 @@ function printStatus(ns, summary) {
     ns.print(`[Gang] Members: ${count} | Type: ${info.isHacking ? "Hacking" : "Combat"}`);
     ns.print(`[Gang] Wanted Penalty: ${info.wantedPenalty.toFixed(3)} | Respect: ${Math.floor(info.respect)}`);
     ns.print(`[Gang] Money Gain: $${Math.floor(info.moneyGainRate * 5)}/s (approx)`);
+
+    if (summary.tasks && summary.tasks.length > 0) {
+        ns.print(`[Gang] Available Tasks: ${summary.tasks.join(", ")}`);
+    }
 
     const tasks = Object.keys(assigned);
     if (tasks.length > 0) {

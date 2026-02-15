@@ -17,7 +17,7 @@ export async function main(ns) {
         } catch (e) {
             log(ns, `Server management error: ${e}`, "ERROR");
         }
-        await ns.sleep(10000); // Check every 10 seconds
+        await ns.sleep(15000); // Check every 15 seconds
     }
 }
 
@@ -27,172 +27,187 @@ export async function main(ns) {
  */
 async function serverLoop(ns) {
     const phase = readGamePhase(ns);
+    const phaseConfig = getPhaseConfig(phase);
     const ownedServers = ns.getPurchasedServers();
-    let totalRam = 0;
-    let minRam = Infinity;
-    let maxRam = 0;
+    const stats = getServerStats(ns);
     
-    for (const server of ownedServers) {
-        const ram = ns.getServerMaxRam(server);
-        totalRam += ram;
-        minRam = Math.min(minRam, ram);
-        maxRam = Math.max(maxRam, ram);
-    }
-    
+    // Display server status
     if (ownedServers.length > 0) {
-        log(ns, `🖥 Servers: ${ownedServers.length}/${config.servers.maxServers} | RAM: ${formatRam(totalRam)} | Range: ${formatRam(minRam)}/${formatRam(maxRam)}`, "INFO");
+        log(ns, `🖥 [Phase ${phase}] Servers: ${stats.count}/${config.servers.maxServers} | RAM: ${formatRam(stats.totalRam)} | Range: ${formatRam(stats.minRam)}-${formatRam(stats.maxRam)}`, "INFO");
     } else {
-        log(ns, `🖥 No purchased servers yet (Phase ${phase})`, "INFO");
+        log(ns, `🖥 [Phase ${phase}] No servers yet. Target: ${formatRam(getTargetRamForPhase(phase))} per server`, "INFO");
     }
     
     // Try to root new servers
     const newlyRooted = rootAll(ns);
     if (newlyRooted > 0) {
-        log(ns, `🖥 Rooted ${newlyRooted} new servers`, "INFO");
+        log(ns, `🖥 Rooted ${newlyRooted} new servers`, "SUCCESS");
     }
     
     // Buy/upgrade servers if enabled
     if (config.servers.autoBuyServers) {
-        await manageServerPurchases(ns, phase);
+        await manageServerPurchases(ns, phase, phaseConfig);
+    }
+}
+
+/**
+ * Get the phase configuration object from config
+ * @param {number} phase
+ */
+function getPhaseConfig(phase) {
+    const phaseKey = `phase${phase}`;
+    return config.gamePhases[phaseKey] || config.gamePhases.phase0;
+}
+
+/**
+ * Get target RAM for a given phase
+ * @param {number} phase
+ */
+function getTargetRamForPhase(phase) {
+    switch(phase) {
+        case 0: return 8;
+        case 1: return 16;
+        case 2: return 64;
+        case 3: return 512;
+        case 4: return 1048576; // 1 PB
+        default: return 8;
     }
 }
 
 /**
  * Get phase-appropriate purchasing strategy
+ * @param {number} phase
+ * @returns {object}
  */
 function getPurchaseStrategy(phase) {
-    switch(phase) {
-        case 0: // Bootstrap
-            return { minRam: 8, maxRam: 16, threshold: 0.2, aggressive: false };
-        case 1: // Early Scaling
-            return { minRam: 16, maxRam: 32, threshold: 0.15, aggressive: false };
-        case 2: // Mid Game
-            return { minRam: 64, maxRam: 256, threshold: 0.1, aggressive: true };
-        case 3: // Gang Phase
-            return { minRam: 512, maxRam: 2048, threshold: 0.05, aggressive: true };
-        case 4: // Late Game
-            return { minRam: 2048, maxRam: 1048576, threshold: 0.05, aggressive: true };
-        default:
-            return { minRam: 8, maxRam: 16, threshold: 0.2, aggressive: false };
-    }
+    const targetRam = getTargetRamForPhase(phase);
+    const nextRam = phase < 4 ? getTargetRamForPhase(phase + 1) : 1048576;
+    
+    // Use phase spending config when available
+    const phaseConfig = getPhaseConfig(phase);
+    const threshold = phaseConfig.spending?.serverBuyThreshold || config.servers.purchaseThreshold;
+    
+    return {
+        phase,
+        targetRam,
+        nextRam,
+        threshold,
+        maxRam: config.servers.maxServerRam,
+    };
 }
 
 /**
  * Manage purchasing and upgrading servers
  * @param {NS} ns
  * @param {number} phase
+ * @param {object} phaseConfig
  */
-async function manageServerPurchases(ns, phase) {
+async function manageServerPurchases(ns, phase, phaseConfig) {
     const money = ns.getServerMoneyAvailable("home");
     const ownedServers = ns.getPurchasedServers();
     const strategy = getPurchaseStrategy(phase);
     
-    // If we have max servers, consider upgrading to next tier
-    if (ownedServers.length >= config.servers.maxServers) {
-        await upgradeServersToNextTier(ns, money, strategy);
-        return;
+    // Decide: buy new server or upgrade existing?
+    if (ownedServers.length < config.servers.maxServers) {
+        // Buy new servers until we hit max
+        await buyNewServer(ns, money, strategy);
+    } else {
+        // All server slots filled - upgrade to next tier
+        await upgradeServerCascade(ns, money, strategy);
     }
-    
-    // Buy new servers (with phase-appropriate RAM)
-    await buyNewServerPhateAware(ns, money, strategy);
 }
 
 /**
- * Buy a new server with phase-appropriate RAM targeting
+ * Buy a new server with phase-appropriate RAM
  * @param {NS} ns
  * @param {number} availableMoney
  * @param {object} strategy
  */
-async function buyNewServerPhateAware(ns, availableMoney, strategy) {
+async function buyNewServer(ns, availableMoney, strategy) {
     const ownedServers = ns.getPurchasedServers();
     if (ownedServers.length >= config.servers.maxServers) {
         return;
     }
     
-    // Start with phase target and work backwards if can't afford
-    let targetRam = strategy.minRam;
-    let lastAffordable = strategy.minRam;
+    // Try to buy server at target RAM for current phase
+    // If can't afford, work down to what we can afford
+    let buyRam = strategy.targetRam;
+    const buyThreshold = availableMoney * strategy.threshold;
     
-    // Find highest affordable RAM within phase constraints
-    let ramLevel = strategy.minRam;
-    while (ramLevel <= strategy.maxRam) {
-        const cost = ns.getPurchasedServerCost(ramLevel);
-        if (cost > availableMoney * strategy.threshold) {
+    // Try progressively smaller RAM sizes until we find one we can afford
+    let ramToTry = strategy.targetRam;
+    let affordableRam = null;
+    
+    while (ramToTry >= 2) {
+        const cost = ns.getPurchasedServerCost(ramToTry);
+        if (cost <= buyThreshold) {
+            affordableRam = ramToTry;
             break;
         }
-        lastAffordable = ramLevel;
-        ramLevel *= 2;
+        ramToTry = Math.max(2, Math.floor(ramToTry / 2));
     }
     
-    targetRam = lastAffordable;
-    
-    if (targetRam < strategy.minRam) {
-        const minCost = ns.getPurchasedServerCost(strategy.minRam);
-        log(ns, `🖥 Phase ${strategy.name}: Need ${formatMoney(minCost - availableMoney)} more for ${formatRam(strategy.minRam)} server`, "INFO");
+    if (!affordableRam) {
+        // Can't afford even 2GB server
+        const minCost = ns.getPurchasedServerCost(2);
+        const needed = minCost - availableMoney;
+        log(ns, `🖥 Need ${formatMoney(needed)} more to buy 2GB server`, "INFO");
         return;
     }
     
-    const cost = ns.getPurchasedServerCost(targetRam);
+    const cost = ns.getPurchasedServerCost(affordableRam);
+    const serverName = `${config.servers.serverPrefix}${ownedServers.length}`;
+    const hostname = ns.purchaseServer(serverName, affordableRam);
     
-    // Check if we can afford it
-    if (cost <= availableMoney * strategy.threshold) {
-        const serverName = `${config.servers.serverPrefix}${ownedServers.length}`;
-        const hostname = ns.purchaseServer(serverName, targetRam);
-        
-        if (hostname) {
-            log(ns, `🖥 Purchased ${hostname}: ${formatRam(targetRam)} for ${formatMoney(cost)}`, "INFO");
-        }
+    if (hostname) {
+        const status = affordableRam === strategy.targetRam ? "Purchased" : "Purchased (partial)";
+        log(ns, `🖥 ${status} ${hostname}: ${formatRam(affordableRam)} for ${formatMoney(cost)}`, "SUCCESS");
     }
 }
 
 /**
- * Upgrade existing servers to next tier within phase constraints
+ * Cascade upgrade servers to next tier
+ * Find lowest RAM servers and upgrade them progressively
  * @param {NS} ns
  * @param {number} availableMoney
  * @param {object} strategy
  */
-async function upgradeServersToNextTier(ns, availableMoney, strategy) {
+async function upgradeServerCascade(ns, availableMoney, strategy) {
     const ownedServers = ns.getPurchasedServers();
     
-    // Find server with lowest RAM (that's below phase max)
-    let lowestServer = null;
-    let lowestRam = Infinity;
+    // Sort by RAM to find bottlenecks
+    const serversByRam = ownedServers
+        .map(name => ({ name, ram: ns.getServerMaxRam(name) }))
+        .sort((a, b) => a.ram - b.ram);
     
-    for (const server of ownedServers) {
-        const ram = ns.getServerMaxRam(server);
-        if (ram < lowestRam && ram < strategy.maxRam) {
-            lowestRam = ram;
-            lowestServer = server;
+    // Find the lowest RAM server that's below our target for next phase
+    const lowestServer = serversByRam.find(s => s.ram < strategy.nextRam);
+    
+    if (!lowestServer) {
+        // All servers already at or above next phase target
+        // Try to push toward max
+        const maxRamServer = serversByRam[serversByRam.length - 1];
+        if (maxRamServer.ram >= config.servers.maxServerRam) {
+            log(ns, `🖥 All servers at maximum RAM (${formatRam(config.servers.maxServerRam)})`, "INFO");
+            return;
         }
     }
     
-    if (!lowestServer) {
-        // All servers at phase max or beyond
-        return;
-    }
+    const targetServer = lowestServer || serversByRam[0];
+    const currentRam = targetServer.ram;
+    const nextRamLevel = Math.min(currentRam * 2, strategy.maxRam);
+    const upgradeCost = ns.getPurchasedServerCost(nextRamLevel);
+    const spendThreshold = availableMoney * strategy.threshold;
     
-    // Calculate next tier (double the RAM)
-    let targetRam = lowestRam * 2;
-    
-    // Cap at phase max or actual max config
-    if (targetRam > strategy.maxRam) {
-        targetRam = strategy.maxRam;
-    }
-    if (targetRam > config.servers.maxServerRam) {
-        targetRam = config.servers.maxServerRam;
-    }
-    
-    const cost = ns.getPurchasedServerCost(targetRam);
-    
-    // Upgrade if we can afford it
-    if (cost <= availableMoney * strategy.threshold) {
-        ns.killall(lowestServer);
-        ns.deleteServer(lowestServer);
+    if (upgradeCost <= spendThreshold) {
+        // Kill the server, delete it, and recreate with more RAM
+        ns.killall(targetServer.name);
+        ns.deleteServer(targetServer.name);
         
-        const hostname = ns.purchaseServer(lowestServer, targetRam);
+        const hostname = ns.purchaseServer(targetServer.name, nextRamLevel);
         
         if (hostname) {
-            log(ns, `🖥 Upgraded ${lowestServer} from ${formatRam(lowestRam)} to ${formatRam(targetRam)} for ${formatMoney(cost)}`, "INFO");
+            log(ns, `🖥 Upgraded ${targetServer.name} from ${formatRam(currentRam)} to ${formatRam(nextRamLevel)} for ${formatMoney(upgradeCost)}`, "SUCCESS");
         }
     }
 }

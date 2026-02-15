@@ -161,6 +161,7 @@ function getTaskPool(availableTasks, info, phase) {
 
 /**
  * Assign a role to a member based on their stats and gang needs
+ * Returns the taskPool key that maps to the appropriate task
  */
 function assignRole(member, allMembers, info, phase, taskPool) {
     const m = member.info;
@@ -173,7 +174,7 @@ function assignRole(member, allMembers, info, phase, taskPool) {
         : (m.str < trainUntil || m.def < trainUntil || m.dex < trainUntil || m.agi < trainUntil);
 
     if (needsTraining && taskPool.trainCombat) {
-        return "trainer";
+        return "trainCombat";
     }
 
     // Count members by role to prevent overlap
@@ -191,34 +192,34 @@ function assignRole(member, allMembers, info, phase, taskPool) {
         }).length;
         
         if (peacekeepers < peacekeeperCount) {
-            return "peacekeeper";
+            return "wantedReduction";
         }
     }
 
     // Phase-specific role assignment
     switch (phase) {
         case "training":
-            return "trainer";
+            return "trainCombat";
             
         case "transition":
             // Mix builders and earners
             if (taskPool.territoryWarfare && Math.random() < 0.6) {
-                return "respBuilder";
+                return "territoryWarfare";
             }
-            return "earner";
+            return "moneyTask";
             
         case "respect_building":
             // Maximize! Territory warfare first, then money earners
             if (taskPool.territoryWarfare && Math.random() < 0.75) {
-                return "respBuilder";
+                return "territoryWarfare";
             }
             if (wantedPenalty < 0.9 && taskPool.wantedReduction) {
-                return "peacekeeper";
+                return "wantedReduction";
             }
-            return "earner";
+            return "moneyTask";
     }
 
-    return "earner";
+    return "moneyTask";
 }
 
 /**
@@ -256,19 +257,20 @@ function printStatus(ns, summary) {
     ns.print(`[Gang] Wanted: ${info.wantedPenalty.toFixed(3)} | Respect: ${Math.floor(info.respect)} | Power: ${info.power.toFixed(2)}`);
     ns.print(`[Gang] Money Gain: $${Math.floor(info.moneyGainRate * 5)}/s | Territory: ${info.territory.toFixed(1)}%`);
     
-    // Role distribution
+    // Role distribution - map taskPool keys to display names
+    const roleNames = {
+        "trainCombat": "📚 Training",
+        "territoryWarfare": "⭐ Territory Warfare",
+        "moneyTask": "💰 Money Tasks",
+        "wantedReduction": "🛡️ Peacekeeping",
+        "secondaryRespect": "🔥 Secondary Respect"
+    };
+    
     if (Object.keys(roles).length > 0) {
         ns.print(`[Gang] ───── Role Distribution ─────`);
-        const roleEmoji = {
-            "trainer": "📚",
-            "respBuilder": "⭐",
-            "earner": "💰",
-            "peacekeeper": "🛡️"
-        };
-        
-        for (const [role, members] of Object.entries(roles)) {
-            const emoji = roleEmoji[role] || "•";
-            ns.print(`[Gang]   ${emoji} ${role}: ${members.length}`);
+        for (const [roleKey, members] of Object.entries(roles)) {
+            const displayName = roleNames[roleKey] || roleKey;
+            ns.print(`[Gang]   ${displayName}: ${members.length}`);
         }
     }
     
@@ -280,7 +282,7 @@ function printStatus(ns, summary) {
             ns.print(`[Gang]   • ${task}: ${assigned[task]}`);
         });
     } else {
-        ns.print("[Gang] Tasks: none assigned");
+        ns.print("[Gang] No tasks assigned (tasks may be unavailable)");
     }
     ns.print("[Gang]");
     

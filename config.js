@@ -195,9 +195,23 @@ export const config = {
 
     // Gang automation settings
     gang: {
-        trainUntil: 60,
-        minWantedPenalty: 0.9,
-        moneyTask: "Human Trafficking",
+        // Training phase thresholds
+        trainUntil: 60,                 // Train members to this level before warfare
+        trainingPhaseEnd: 0.3,          // Phase ends when 30% of members are trained
+        transitionPhaseEnd: 0.8,        // Phase ends when 80% of members are trained
+        
+        // Wanted level management
+        minWantedPenalty: 0.9,          // Start peacekeeping when wanted below this
+        criticalWantedPenalty: 0.8,     // Emergency peacekeeping below this
+        peacekeeperRatio: 0.3,          // Peacekeepers as % of gang when critical
+        
+        // Territory Warfare (respect building)
+        warfareRatio: 0.75,             // % of ready members on Territory Warfare in respect phase
+        warfareMinReadyRatio: 0.8,      // Need 80% ready before full warfare push
+        
+        // Money and respect balance
+        moneyTask: "Human Trafficking",  // Primary money task (overridden by strategy)
+        respectTasks: ["Territory Warfare", "Cyberterrorism", "DDoS Attacks"],
         wantedTask: "Vigilante Justice",
     },
 

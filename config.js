@@ -5,6 +5,137 @@ export async function main(ns) {
 
 // Core angel configuration
 export const config = {
+    // ============================================
+    // UNIFIED GAME PHASE SYSTEM
+    // ============================================
+    // Defines complete lifecycle toward daemon
+    gamePhases: {
+        // Detection thresholds (system auto-advances through phases)
+        thresholds: {
+            phase0to1: { hackLevel: 75, money: 10000000 },           // Bootstrap → Early Scaling
+            phase1to2: { hackLevel: 200, money: 100000000 },         // Early → Mid Game
+            phase2to3: { hackLevel: 500, money: 500000000 },         // Mid → Gang Phase
+            phase3to4: { hackLevel: 800, stats: 70 },                // Gang → Late Game
+        },
+
+        // Phase 0: Bootstrap
+        phase0: {
+            name: "Bootstrap",
+            hackingTarget: 75,
+            primaryActivity: "crime",                    // Focus: quick cash
+            secondaryActivities: ["training", "company"],
+            priorities: {
+                crime: 1,                               // Get money ASAP
+                training: 2,                            // Minimal stat training
+                company: 3,                             // Alternative income
+                hacking: 4,                             // Early xp
+                gang: 0,                                // Not yet
+                stocks: 0,                              // Not yet
+            },
+            spending: {
+                augmentsTargetCost: 5000000,            // Conservative
+                serverBuyThreshold: 0.15,               // Buy when have 15% of cost
+                focus: "TOR_and_programs",              // Auto-buy TOR + 5 programs
+            },
+        },
+
+        // Phase 1: Early Scaling
+        phase1: {
+            name: "Early Scaling",
+            hackingTarget: 200,
+            primaryActivity: "factionWork",             // Focus: faction rep
+            secondaryActivities: ["training", "hacking", "crime"],
+            priorities: {
+                factionWork: 1,                         // Grind faction rep
+                training: 2,                            // Get stats to 30+
+                hacking: 3,                             // Scale hacking xp
+                servers: 4,                             // Start buying cheap servers
+                crime: 5,                               // Filler when faction done
+                gang: 0,                                // Not yet
+                stocks: 0,                              // Not yet
+            },
+            spending: {
+                augmentsTargetCost: 50000000,           // More aggressive
+                serverBuyThreshold: 0.1,                // Buy more often
+                focus: "acquisition",                   // Buy everything affordable
+            },
+            augmentThreshold: 15,                       // Queue 15+ if possible
+        },
+
+        // Phase 2: Mid Game
+        phase2: {
+            name: "Mid Game",
+            hackingTarget: 500,
+            primaryActivity: "hacking",                 // Focus: scale servers + hacking
+            secondaryActivities: ["factionWork", "training"],
+            priorities: {
+                hacking: 1,                             // Scale
+                servers: 2,                             // Aggressive purchases
+                factionWork: 3,                         // Maintain rep
+                training: 4,                            // Get stats to 50+
+                augments: 5,                            // Continuous buying
+                crime: 0,                               // Filler only
+                gang: 0,                                // Wait
+                stocks: 0,                              // Not yet
+            },
+            spending: {
+                augmentsTargetCost: 200000000,          // Heavy spending
+                serverBuyThreshold: 0.05,               // buy very regularly
+                focus: "augments_and_servers",
+            },
+            augmentThreshold: 20,
+        },
+
+        // Phase 3: Gang Phase
+        phase3: {
+            name: "Gang Phase",
+            hackingTarget: 800,
+            primaryActivity: "gangRespect",             // Focus: gang rep for $$$
+            secondaryActivities: ["stocks", "hacking", "sleeves"],
+            priorities: {
+                gang: 1,                                // MAXIMUM gang priority
+                stocks: 2,                              // Start building positions
+                hacking: 3,                             // Continue scaling
+                sleeves: 4,                             // Delegate work
+                factionWork: 5,                         // Maintain where needed
+                training: 0,                            // Done
+                crime: 0,                               // Not needed
+            },
+            spending: {
+                augmentsTargetCost: 500000000,          // Max spending
+                serverBuyThreshold: 0.05,
+                gangMembers: 12,                        // Keep at max
+                stocksSpendRatio: 0.2,                  // Invest 20% of profits
+                focus: "gang_and_augments",
+            },
+            augmentThreshold: 25,
+        },
+
+        // Phase 4: Late Game (Daemon Prep)
+        phase4: {
+            name: "Late Game",
+            hackingTarget: 1000,
+            primaryActivity: "daemonPrep",              // Focus: finish daemon requirements
+            secondaryActivities: ["bladeburner", "augments"],
+            priorities: {
+                bladeburner: 1,                         // Final combat prep
+                augments: 2,                            // Final sprint
+                hacknet: 3,                             // Late-game money scaling
+                gang: 4,                                // Maintain
+                stocks: 5,                              // Let run
+                sleeves: 6,                             // Delegate
+                hacking: 0,                             // Done scaling
+            },
+            spending: {
+                augmentsTargetCost: 1000000000,         // Everything
+                focus: "daemon_requirements",           // Target: level X, programs Y, root Z
+            },
+        },
+    },
+
+    // ============================================
+    // LEGACY CONFIG (Keep existing, phase-aware)
+    // ============================================
     // Orchestrator settings
     orchestrator: {
         loopDelay: 1000,           // Main loop delay in ms
@@ -29,15 +160,15 @@ export const config = {
         targetMoneyThreshold: 0.75,  // Hack when money is above 75% of max
         targetSecurityThreshold: 5,   // Only hack when security is within 5 of min
         batchDelay: 200,              // Delay between batch operations (ms)
-        reservedHomeRam: 20,          // RAM to reserve on home server (GB) - reduced to prevent conflicts
+        reservedHomeRam: 20,          // RAM to reserve on home server (GB)
         shareExcessRam: true,         // Use excess RAM for share() scripts
     },
 
     // Server management settings
     servers: {
         autoBuyServers: true,
-        maxServerRam: 1048576,        // Max RAM per purchased server (2^20 = 1PB)
-        purchaseThreshold: 0.1,       // Buy servers when we have 10% of cost available
+        maxServerRam: 1048576,        // Max RAM per purchased server
+        purchaseThreshold: 0.1,       // Default; overridden by phase
         serverPrefix: "angel-",
         maxServers: 25,
     },

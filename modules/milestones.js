@@ -1,138 +1,230 @@
 /**
- * Milestone coordinator module
+ * Milestones/Game Orchestrator Module
+ * Central coordinator that:
+ * - Detects game phase based on player progress
+ * - Broadcasts current phase to all modules
+ * - Coordinates activity priorities
+ * - Tracks progress toward daemon
+ * - Triggers reset when augments reach threshold
+ * 
  * @param {NS} ns
  */
 import { config, PORTS } from "/angel/config.js";
 
+const PHASE_PORT = 7;
+
 export async function main(ns) {
     ns.disableLog("ALL");
     ns.ui.openTail();
-    ns.print("[Milestones] Module started");
+    ns.print("[Orchest] Game Orchestrator started - Coordinating toward w0r1d_d43m0n");
 
     let lastNotify = 0;
+    let currentPhase = 0;
 
     while (true) {
         try {
-            const activity = chooseActivity(ns);
-            setDesiredActivity(ns, activity);
-            printStatus(ns, activity);
+            // Calculate current game phase
+            const newPhase = calculateGamePhase(ns);
+            if (newPhase !== currentPhase) {
+                ns.print(`[Orchest] ⚡ PHASE TRANSITION: ${getPhaseInfo(currentPhase).name} → ${getPhaseInfo(newPhase).name}`);
+                currentPhase = newPhase;
+            }
 
+            // Broadcast phase to all modules
+            ns.clearPort(PHASE_PORT);
+            ns.writePort(PHASE_PORT, currentPhase);
+
+            // Calculate desired activity based on phase
+            const activity = calculateDesiredActivity(ns, currentPhase);
+            ns.clearPort(PORTS.ACTIVITY_MODE);
+            ns.writePort(PORTS.ACTIVITY_MODE, activity);
+
+            // Print comprehensive status
+            printStatus(ns, currentPhase, activity);
+
+            // Check for augment threshold (reset trigger)
+            if (config.augmentations.installOnThreshold && hasSingularityAccess(ns)) {
+                const queued = getQueuedAugments(ns);
+                const queuedCost = getQueuedCost(ns, queued);
+                if (queued.length >= config.augmentations.minQueuedAugs || queuedCost >= config.augmentations.minQueuedCost) {
+                    ns.print(`[Orchest] 🔄 RESET TRIGGER: ${queued.length} augs queued (cost: $${queuedCost.toFixed(0)})`);
+                    ns.print(`[Orchest] Installing augments and restarting...`);
+                    ns.singularity.installAugmentations("/angel/angel.js");
+                    return;
+                }
+            }
+
+            // Notify of daemon readiness (every 5 min)
             if (config.milestones.notifyDaemon) {
                 const now = Date.now();
                 if (now - lastNotify >= config.milestones.notifyInterval) {
                     const daemon = getDaemonStatus(ns);
                     if (daemon.ready) {
-                        ns.print("[Milestones] READY: w0r1d_d43m0n can be attempted (manual only)");
-                        lastNotify = now;
+                        ns.print(`[Orchest] ✅ DAEMON READY: w0r1d_d43m0n requirements met (manual kill only)`);
+                    } else {
+                        const missing = [];
+                        if (daemon.hackLevel < daemon.requiredLevel) missing.push(`Hacking +${daemon.requiredLevel - daemon.hackLevel}`);
+                        if (!daemon.rooted) missing.push("Root w0r1d_d43m0n");
+                        if (!daemon.programsOk) missing.push("Get all 5 programs");
+                        ns.print(`[Orchest] Status: ${missing.join(", ")}`);
                     }
-                }
-            }
-
-            if (config.augmentations.installOnThreshold && hasSingularityAccess(ns)) {
-                const queued = getQueuedAugments(ns);
-                const queuedCost = getQueuedCost(ns, queued);
-                if (queued.length >= config.augmentations.minQueuedAugs || queuedCost >= config.augmentations.minQueuedCost) {
-                    ns.print(`[Milestones] Installing augments (queued=${queued.length}, cost=$${queuedCost.toFixed(0)})`);
-                    ns.singularity.installAugmentations("/angel/angel.js");
-                    return;
+                    lastNotify = now;
                 }
             }
         } catch (e) {
-            ns.print(`[Milestones] Error: ${e}`);
+            ns.print(`[Orchest] Error: ${e}`);
         }
 
         await ns.sleep(config.milestones.loopDelay);
     }
 }
 
-function chooseActivity(ns) {
-    if (config.milestones.mode !== "balanced") {
+/**
+ * Calculate which game phase we're in based on player progress
+ */
+function calculateGamePhase(ns) {
+    const player = ns.getPlayer();
+    const hackLevel = player.skills.hacking;
+    const money = ns.getServerMoneyAvailable("home") + player.money;
+    const stats = Math.min(player.skills.strength, player.skills.defense, player.skills.dexterity, player.skills.agility);
+    const daemonReady = getDaemonStatus(ns).ready;
+
+    const thresholds = config.gamePhases.thresholds;
+
+    // If daemon ready, stay in phase 4
+    if (daemonReady) return 4;
+
+    // Phase 4: Late Game
+    if (hackLevel >= thresholds.phase3to4.hackLevel && stats >= thresholds.phase3to4.stats) return 4;
+
+    // Phase 3: Gang Phase
+    if (hackLevel >= thresholds.phase2to3.hackLevel && money >= thresholds.phase2to3.money) return 3;
+
+    // Phase 2: Mid Game
+    if (hackLevel >= thresholds.phase1to2.hackLevel && money >= thresholds.phase1to2.money) return 2;
+
+    // Phase 1: Early Scaling
+    if (hackLevel >= thresholds.phase0to1.hackLevel && money >= thresholds.phase0to1.money) return 1;
+
+    // Phase 0: Bootstrap
+    return 0;
+}
+
+/**
+ * Get phase information
+ */
+function getPhaseInfo(phase) {
+    if (phase === 0) return config.gamePhases.phase0;
+    if (phase === 1) return config.gamePhases.phase1;
+    if (phase === 2) return config.gamePhases.phase2;
+    if (phase === 3) return config.gamePhases.phase3;
+    if (phase === 4) return config.gamePhases.phase4;
+    return { name: "Unknown", primaryActivity: "none" };
+}
+
+/**
+ * Calculate desired activity based on current phase and priorities
+ */
+function calculateDesiredActivity(ns, phase) {
+    const phaseInfo = getPhaseInfo(phase);
+    const player = ns.getPlayer();
+
+    // Phase-specific logic
+    if (phase === 0) {
+        const money = ns.getServerMoneyAvailable("home");
+        if (money < 10000000) return "crime";
         return "none";
     }
 
-    if (needsTraining(ns)) return "training";
-    if (needsCompany(ns)) return "company";
-    if (needsCrime(ns)) return "crime";
+    if (phase === 1) {
+        if (needsTraining(ns)) return "training";
+        return "factionWork";
+    }
+
+    if (phase === 2) {
+        if (needsTraining(ns)) return "training";
+        return "factionWork";
+    }
+
+    if (phase === 3) {
+        if (needsTraining(ns)) return "training";
+        return "none";
+    }
+
+    if (phase === 4) {
+        return "none";
+    }
+
     return "none";
 }
 
-function printStatus(ns, activity) {
-    const player = ns.getPlayer();
-    const money = ns.getServerMoneyAvailable("home");
-    const trainingTargets = config.training.targetStats;
-    const daemon = getDaemonStatus(ns);
-
-    ns.print("[Milestones] ===== Status =====");
-    ns.print(`[Milestones] Mode: ${config.milestones.mode} | Desired: ${activity}`);
-    ns.print(`[Milestones] Money: $${money.toFixed(0)} | Crime<$${config.crime.onlyWhenMoneyBelow} | Company<$${config.company.onlyWhenMoneyBelow}`);
-    ns.print(`[Milestones] Hacking: ${player.skills.hacking}/${config.training.targetHacking}`);
-    ns.print(`[Milestones] Stats: STR ${player.skills.strength}/${trainingTargets.strength}, DEF ${player.skills.defense}/${trainingTargets.defense}, DEX ${player.skills.dexterity}/${trainingTargets.dexterity}, AGI ${player.skills.agility}/${trainingTargets.agility}`);
-    ns.print(`[Milestones] Daemon: level ${daemon.hackLevel}/${daemon.requiredLevel}, root ${daemon.rooted}, programs ${daemon.programsOk}`);
-}
-
+/**
+ * Check if player still needs training
+ */
 function needsTraining(ns) {
     const player = ns.getPlayer();
-    if (player.skills.hacking < config.training.targetHacking) return true;
+    const trainingTargets = config.training.targetStats;
+    const hackTarget = config.training.targetHacking;
 
-    const targets = config.training.targetStats;
-    return (
-        player.skills.strength < targets.strength ||
-        player.skills.defense < targets.defense ||
-        player.skills.dexterity < targets.dexterity ||
-        player.skills.agility < targets.agility
-    );
+    if (player.skills.hacking < hackTarget) return true;
+    if (player.skills.strength < trainingTargets.strength) return true;
+    if (player.skills.defense < trainingTargets.defense) return true;
+    if (player.skills.dexterity < trainingTargets.dexterity) return true;
+    if (player.skills.agility < trainingTargets.agility) return true;
+
+    return false;
 }
 
-function needsCompany(ns) {
-    const money = ns.getServerMoneyAvailable("home");
-    return money < config.company.onlyWhenMoneyBelow;
-}
-
-function needsCrime(ns) {
-    const money = ns.getServerMoneyAvailable("home");
-    return money < config.crime.onlyWhenMoneyBelow;
-}
-
-function setDesiredActivity(ns, activity) {
-    const current = getDesiredActivity(ns);
-    if (current === activity) return;
-    ns.clearPort(PORTS.ACTIVITY_MODE);
-    ns.writePort(PORTS.ACTIVITY_MODE, activity);
-}
-
-function getDesiredActivity(ns) {
-    const raw = ns.peek(PORTS.ACTIVITY_MODE);
-    if (raw === "NULL PORT DATA") return "none";
-    return String(raw);
-}
-
+/**
+ * Get daemon readiness status
+ */
 function getDaemonStatus(ns) {
-    try {
-        const server = ns.getServer("w0r1d_d43m0n");
-        const player = ns.getPlayer();
-        const required = ns.getServerRequiredHackingLevel("w0r1d_d43m0n");
-        const programsOk = config.programs.priorityPrograms.every((prog) => ns.fileExists(prog, "home"));
-        const rooted = ns.hasRootAccess("w0r1d_d43m0n");
-        const ready = player.skills.hacking >= required && rooted && programsOk && server.exists === true;
-
-        return {
-            ready,
-            hackLevel: player.skills.hacking,
-            requiredLevel: required,
-            rooted,
-            programsOk,
-        };
-    } catch (e) {
-        return {
-            ready: false,
-            hackLevel: 0,
-            requiredLevel: 0,
-            rooted: false,
-            programsOk: false,
-        };
-    }
+    const daemonServer = "w0r1d_d43m0n";
+    const player = ns.getPlayer();
+    const requiredLevel = 200;
+    
+    const hackLevel = player.skills.hacking;
+    const hasAllPrograms = ns.fileExists("BruteSSH.exe", "home") &&
+                          ns.fileExists("FTPCrack.exe", "home") &&
+                          ns.fileExists("relaySMTP.exe", "home") &&
+                          ns.fileExists("HTTPWorm.exe", "home") &&
+                          ns.fileExists("SQLInject.exe", "home");
+    const rooted = ns.hasRootAccess(daemonServer);
+    
+    return {
+        hackLevel,
+        requiredLevel,
+        rooted,
+        programsOk: hasAllPrograms,
+        ready: hackLevel >= requiredLevel && rooted && hasAllPrograms,
+    };
 }
 
+/**
+ * Get queued augmentations
+ */
+function getQueuedAugments(ns) {
+    if (!hasSingularityAccess(ns)) return [];
+    const owned = ns.singularity.getOwnedAugmentations(false);
+    const installed = ns.singularity.getOwnedAugmentations(true);
+    return owned.filter((aug) => !installed.includes(aug));
+}
+
+/**
+ * Get total cost of queued augmentations
+ */
+function getQueuedCost(ns, queued) {
+    if (!hasSingularityAccess(ns)) return 0;
+    let total = 0;
+    for (const aug of queued) {
+        total += ns.singularity.getAugmentationPrice(aug);
+    }
+    return total;
+}
+
+/**
+ * Check if singularity functions are available
+ */
 function hasSingularityAccess(ns) {
     try {
         ns.singularity.getCurrentWork();
@@ -142,16 +234,39 @@ function hasSingularityAccess(ns) {
     }
 }
 
-function getQueuedAugments(ns) {
-    const owned = ns.singularity.getOwnedAugmentations(false);
-    const installed = ns.singularity.getOwnedAugmentations(true);
-    return owned.filter((aug) => !installed.includes(aug));
+/**
+ * Print comprehensive status
+ */
+function printStatus(ns, phase, activity) {
+    const player = ns.getPlayer();
+    const money = ns.getServerMoneyAvailable("home");
+    const phaseInfo = getPhaseInfo(phase);
+    const daemon = getDaemonStatus(ns);
+    const queued = getQueuedAugments(ns);
+    
+    ns.print("[Orchest] ╔═══════════════════════════════════════╗");
+    ns.print("[Orchest] ║     GAME ORCHESTRATOR STATUS        ║");
+    ns.print("[Orchest] ╚═══════════════════════════════════════╝");
+    
+    const phaseEmoji = ["🌱", "📈", "🎯", "👾", "👑"][phase] || "❓";
+    ns.print(`[Orchest] Phase: ${phaseEmoji} ${phaseInfo.name.toUpperCase()}`);
+    ns.print(`[Orchest] Primary: ${phaseInfo.primaryActivity} | Current: ${activity || "idle"}`);
+    
+    ns.print(`[Orchest] Hacking: ${Math.floor(player.skills.hacking)} (target: ${phaseInfo.hackingTarget || "∞"})`);
+    ns.print(`[Orchest] Stats: STR ${Math.floor(player.skills.strength)}, DEF ${Math.floor(player.skills.defense)}, DEX ${Math.floor(player.skills.dexterity)}, AGI ${Math.floor(player.skills.agility)}`);
+    ns.print(`[Orchest] Money: $${formatMoney(money)} | Queued augs: ${queued.length}`);
+    
+    const daemonStatus = daemon.ready ? "✅ READY" : `⏳ ${daemon.hackLevel}/${daemon.requiredLevel}`;
+    ns.print(`[Orchest] Daemon: ${daemonStatus}`);
+    ns.print("[Orchest]");
 }
 
-function getQueuedCost(ns, queued) {
-    let total = 0;
-    for (const aug of queued) {
-        total += ns.singularity.getAugmentationPrice(aug);
-    }
-    return total;
+/**
+ * Format money for display
+ */
+function formatMoney(num) {
+    if (num >= 1e9) return `${(num / 1e9).toFixed(2)}B`;
+    if (num >= 1e6) return `${(num / 1e6).toFixed(2)}M`;
+    if (num >= 1e3) return `${(num / 1e3).toFixed(2)}K`;
+    return `${num.toFixed(0)}`;
 }

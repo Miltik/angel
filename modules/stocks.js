@@ -46,7 +46,7 @@ async function processStocks(ns) {
         const maxShares = ns.stock.getMaxShares(sym);
 
         if (shares > 0 && forecast <= config.stocks.sellForecast) {
-            ns.stock.sell(sym, shares);
+            ns.stock.sellStock(sym, shares);
             ns.print(`[Stocks] Sold ${shares} of ${sym}`);
             continue;
         }
@@ -59,7 +59,7 @@ async function processStocks(ns) {
             const qty = Math.min(toBuy, affordable);
 
             if (qty > 0) {
-                ns.stock.buy(sym, qty);
+                ns.stock.buyStock(sym, qty);
                 ns.print(`[Stocks] Bought ${qty} of ${sym}`);
             }
         }

@@ -83,20 +83,20 @@ export async function main(ns) {
     
     for (const file of files) {
         const url = `${baseUrl}${subdir}/${file}`;
-        const destination = `/angel/${file}`;
+        const destination = `angel/${file}`;
         
         try {
             ns.tprint(`Downloading: ${file}...`);
-            await ns.wget(url, destination);
+            const success = await ns.wget(url, destination, "home");
             
             // Verify the file was downloaded
-            if (ns.fileExists(destination, "home")) {
+            if (success && ns.fileExists(destination, "home")) {
                 successCount++;
                 ns.tprint(`  ✓ Success`);
             } else {
                 failCount++;
                 failed.push(file);
-                ns.tprint(`  ✗ Failed (file not found after download)`);
+                ns.tprint(`  ✗ Failed (wget returned: ${success})`);
             }
         } catch (error) {
             failCount++;

@@ -39,25 +39,45 @@ function assignTasks(ns) {
     const info = ns.gang.getGangInformation();
     const members = ns.gang.getMemberNames();
     const tasks = ns.gang.getTaskNames();
+    if (members.length === 0) {
+        ns.print("[Gang] No members to assign");
+        return;
+    }
+
+    if (tasks.length === 0) {
+        ns.print("[Gang] No tasks available yet");
+        return;
+    }
+
     const moneyTask = tasks.includes(config.gang.moneyTask) ? config.gang.moneyTask : tasks[0];
     const wantedTask = tasks.includes(config.gang.wantedTask) ? config.gang.wantedTask : tasks[0];
+    const trainTask = info.isHacking && tasks.includes("Train Hacking")
+        ? "Train Hacking"
+        : tasks.includes("Train Combat")
+            ? "Train Combat"
+            : tasks[0];
 
-    let needsVigilante = info.wantedPenalty < config.gang.minWantedPenalty;
+    const needsVigilante = info.wantedPenalty < config.gang.minWantedPenalty;
 
     for (let idx = 0; idx < members.length; idx++) {
         const name = members[idx];
         const m = ns.gang.getMemberInformation(name);
 
-        if (m.str < config.gang.trainUntil || m.def < config.gang.trainUntil || m.dex < config.gang.trainUntil || m.agi < config.gang.trainUntil) {
-            ns.gang.setMemberTask(name, "Train Combat");
-            continue;
+        const needsTraining = info.isHacking
+            ? m.hack < config.gang.trainUntil
+            : m.str < config.gang.trainUntil || m.def < config.gang.trainUntil || m.dex < config.gang.trainUntil || m.agi < config.gang.trainUntil;
+
+        let task = moneyTask;
+
+        if (needsTraining) {
+            task = trainTask;
+        } else if (needsVigilante && idx === 0) {
+            task = wantedTask;
         }
 
-        if (needsVigilante && idx === 0) {
-            ns.gang.setMemberTask(name, wantedTask);
-            continue;
+        const ok = ns.gang.setMemberTask(name, task);
+        if (!ok) {
+            ns.print(`[Gang] Failed to assign ${name} to ${task}`);
         }
-
-        ns.gang.setMemberTask(name, moneyTask);
     }
 }

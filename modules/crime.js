@@ -1,14 +1,13 @@
 /**
- * Crime automation module (phase-aware: active phases 0-2, skip 3+)
+ * Crime/Training/Faction automation module
+ * Phase-aware activity selector: automatically chooses crime, training, or faction work
+ * based on game phase and player needs
  * @param {NS} ns
  */
 import { config, PORTS } from "/angel/config.js";
 
-const PHASE_PORT = 7; // Read game phase from orchestrator
+const PHASE_PORT = 7;
 
-/**
- * Read current game phase from orchestrator
- */
 function readGamePhase(ns) {
     return parseInt(ns.peek(PHASE_PORT)) || 0;
 }
@@ -16,136 +15,151 @@ function readGamePhase(ns) {
 export async function main(ns) {
     ns.disableLog("ALL");
     ns.ui.openTail();
-    ns.print("[Crime] Module started");
+    ns.print("[Activity] Module started - Intelligent phase-aware activity selector");
 
     if (!hasSingularityAccess(ns)) {
-        ns.print("[Crime] Singularity functions not available (need SF4)");
+        ns.print("[Activity] Singularity functions not available (need SF4)");
         while (true) {
             await ns.sleep(60000);
         }
     }
 
-    const owner = "crime";
+    const owner = "activity";
 
     while (true) {
         try {
+            const gamePhase = readGamePhase(ns);
+            
+            // Only active in phases 0-2
+            if (gamePhase >= 3) {
+                await ns.sleep(30000);
+                continue;
+            }
+
+            // Skip if faction work in progress (let factions.js handle it)
             const work = ns.singularity.getCurrentWork();
             if (work && work.type === "FACTION") {
                 await ns.sleep(30000);
                 continue;
             }
 
-            const desired = getDesiredActivity(ns);
-            if (desired !== "none" && desired !== "crime") {
-                releaseLock(ns, owner);
-                await ns.sleep(30000);
-                continue;
-            }
-
-            if (!shouldRunCrime(ns)) {
-                releaseLock(ns, owner);
-                await ns.sleep(30000);
-                continue;
-            }
-
-            if (!claimLock(ns, owner, 60000)) {
-                await ns.sleep(5000);
-                continue;
-            }
-
-            if (work && work.type && work.type !== "CRIME") {
-                await ns.sleep(5000);
-                continue;
-            }
-
-            const crime = chooseCrime(ns);
-            if (!crime) {
+            // Choose best activity for this phase
+            const activity = chooseActivity(ns, gamePhase);
+            
+            // Try to claim activity lock
+            if (!claimLock(ns, owner, 180000)) {
                 await ns.sleep(10000);
                 continue;
             }
 
-            const duration = ns.singularity.commitCrime(crime, config.crime.focus);
-            ns.print(`[Crime] Committed ${crime} (${Math.round(duration / 1000)}s)`);
-            claimLock(ns, owner, duration + 5000);
-            await ns.sleep(duration + 200);
+            // Execute activity
+            switch (activity) {
+                case "crime":
+                    await doCrime(ns, owner);
+                    break;
+                case "training":
+                    await doTraining(ns, owner);
+                    break;
+                case "faction":
+                    await doFactionWork(ns, owner);
+                    break;
+                default:
+                    releaseLock(ns, owner);
+                    await ns.sleep(30000);
+            }
+            
+            releaseLock(ns, owner);
         } catch (e) {
-            ns.print(`[Crime] Error: ${e}`);
+            ns.print(`[Activity] Error: ${e}`);
             await ns.sleep(5000);
         }
     }
 }
 
-function hasSingularityAccess(ns) {
-    try {
-        ns.singularity.getCurrentWork();
-        return true;
-    } catch (e) {
-        return false;
-    }
-}
-
-function shouldRunCrime(ns) {
-    // Crime is only active in early phases (0-2)
-    // Phases 3-4 focus on hacking/servers/gang instead
-    const gamePhase = readGamePhase(ns);
-    if (gamePhase >= 3) return false;
-    
+function chooseActivity(ns, gamePhase) {
+    const player = ns.getPlayer();
     const money = ns.getServerMoneyAvailable("home");
-    return money < config.crime.onlyWhenMoneyBelow;
+    const trainingTargets = config.training?.targetStats || { strength: 60, defense: 60, dexterity: 60, agility: 60 };
+    
+    const needsTraining = player.skills.hacking < config.training.targetHacking ||
+                         player.skills.strength < trainingTargets.strength ||
+                         player.skills.defense < trainingTargets.defense ||
+                         player.skills.dexterity < trainingTargets.dexterity ||
+                         player.skills.agility < trainingTargets.agility;
+    
+    // Phase 0: Get cash, then train
+    if (gamePhase === 0) {
+        if (money < 10000000) return "crime";
+        if (needsTraining) return "training";
+        return "crime";
+    }
+    
+    // Phase 1: Train then faction
+    if (gamePhase === 1) {
+        if (needsTraining) return "training";
+        return "faction";
+    }
+    
+    // Phase 2: Faction primary, training if weak
+    if (gamePhase === 2) {
+        const allStatsGood = player.skills.strength >= trainingTargets.strength &&
+                            player.skills.defense >= trainingTargets.defense &&
+                            player.skills.dexterity >= trainingTargets.dexterity &&
+                            player.skills.agility >= trainingTargets.agility;
+        if (!allStatsGood) return "training";
+        return "faction";
+    }
+    
+    return "none";
 }
 
-function chooseCrime(ns) {
-    let bestCrime = null;
-    let bestScore = 0;
+async function doCrime(ns, owner) {
+    const crime = chooseCrime(ns);
+    if (!crime) {
+        await ns.sleep(10000);
+        return;
+    }
+    
+    const duration = ns.singularity.commitCrime(crime, config.crime.focus);
+    ns.print(`[Activity] Crime: ${crime} (${Math.round(duration / 1000)}s)`);\n    await ns.sleep(duration + 200);
+}
 
-    for (const crime of config.crime.crimes) {
-        const stats = ns.singularity.getCrimeStats(crime);
-        const chance = ns.singularity.getCrimeChance(crime);
-        if (chance < config.crime.minSuccessChance) continue;
-        const score = (stats.money * chance) / Math.max(1, stats.time);
-        if (score > bestScore) {
-            bestScore = score;
-            bestCrime = crime;
+async function doTraining(ns, owner) {
+    const trainingTargets = config.training?.targetStats || { strength: 60, defense: 60, dexterity: 60, agility: 60 };
+    const player = ns.getPlayer();
+    
+    let target = null;
+    if (player.skills.hacking < config.training.targetHacking) {
+        target = { type: "hacking" };
+    } else {
+        const stats = [
+            { stat: "strength", value: player.skills.strength, target: trainingTargets.strength },
+            { stat: "defense", value: player.skills.defense, target: trainingTargets.defense },
+            { stat: "dexterity", value: player.skills.dexterity, target: trainingTargets.dexterity },
+            { stat: "agility", value: player.skills.agility, target: trainingTargets.agility },
+        ];
+        let lowest = null;
+        for (const s of stats) {
+            if (s.value < s.target && (!lowest || s.value < lowest.value)) {
+                lowest = s;
+            }
         }
+        if (lowest) target = { type: "gym", stat: lowest.stat };
     }
-
-    if (!bestCrime && config.crime.crimes.length > 0) {
-        return config.crime.crimes[0];
+    
+    if (!target) {
+        await ns.sleep(30000);
+        return;
     }
-
-    return bestCrime;
-}
-
-function getLock(ns) {
-    const raw = ns.peek(PORTS.ACTIVITY);
-    if (raw === "NULL PORT DATA") return null;
-    const parts = String(raw).split("|");
-    if (parts.length < 2) return null;
-    const expires = Number(parts[1]);
-    if (Number.isNaN(expires)) return null;
-    return { owner: parts[0], expires };
-}
-
-function claimLock(ns, owner, ttlMs) {
-    const now = Date.now();
-    const lock = getLock(ns);
-    if (!lock || lock.expires <= now || lock.owner === owner) {
-        ns.clearPort(PORTS.ACTIVITY);
-        ns.writePort(PORTS.ACTIVITY, `${owner}|${now + ttlMs}`);
-        return true;
+    
+    if (config.training.autoTravel) {
+        try {
+            ns.singularity.travelToCity(config.training.city);
+        } catch (e) {}
     }
-    return lock.owner === owner;
-}
-
-function releaseLock(ns, owner) {
-    const lock = getLock(ns);
-    if (lock && lock.owner === owner) {
-        ns.clearPort(PORTS.ACTIVITY);
-    }
-}
-
-function getDesiredActivity(ns) {
-    const raw = ns.peek(PORTS.ACTIVITY_MODE);
-    if (raw === "NULL PORT DATA") return "none";
-    return String(raw);
-}
+    
+    if (target.type === "hacking") {
+        ns.singularity.universityCourse(config.training.university, config.training.course, config.training.focus);
+        ns.print(`[Activity] Training: Hacking`);\n    } else {
+        ns.singularity.gymWorkout(config.training.gym, target.stat, config.training.focus);
+        ns.print(`[Activity] Training: ${target.stat}`);\n    }\n    await ns.sleep(180000);\n}\n\nasync function doFactionWork(ns, owner) {\n    const player = ns.getPlayer();\n    const factions = player.factions.filter(f => f !== \"Bladeburners\");\n    \n    if (factions.length === 0) {\n        await ns.sleep(30000);\n        return;\n    }\n    \n    const faction = factions[0];\n    const work = ns.singularity.getCurrentWork();\n    \n    if (!work || work.type !== \"FACTION\" || work.factionName !== faction) {\n        ns.singularity.workForFaction(faction, config.factions.workType || \"Hacking Contracts\");\n        ns.print(`[Activity] Faction: Working for ${faction}`);\n    }\n    \n    await ns.sleep(180000);\n}\n\nfunction chooseCrime(ns) {\n    let bestCrime = null;\n    let bestScore = 0;\n\n    for (const crime of config.crime.crimes) {\n        const stats = ns.singularity.getCrimeStats(crime);\n        const chance = ns.singularity.getCrimeChance(crime);\n        if (chance < config.crime.minSuccessChance) continue;\n        const score = (stats.money * chance) / Math.max(1, stats.time);\n        if (score > bestScore) {\n            bestScore = score;\n            bestCrime = crime;\n        }\n    }\n\n    return bestCrime || config.crime.crimes[0];\n}\n\nfunction hasSingularityAccess(ns) {\n    try {\n        ns.singularity.getCurrentWork();\n        return true;\n    } catch (e) {\n        return false;\n    }\n}\n\nfunction getLock(ns) {\n    const raw = ns.peek(PORTS.ACTIVITY);\n    if (raw === \"NULL PORT DATA\") return null;\n    const parts = String(raw).split(\"|\");\n    if (parts.length < 2) return null;\n    const expires = Number(parts[1]);\n    if (Number.isNaN(expires)) return null;\n    return { owner: parts[0], expires };\n}\n\nfunction claimLock(ns, owner, ttlMs) {\n    const now = Date.now();\n    const lock = getLock(ns);\n    if (!lock || lock.expires <= now || lock.owner === owner) {\n        ns.clearPort(PORTS.ACTIVITY);\n        ns.writePort(PORTS.ACTIVITY, `${owner}|${now + ttlMs}`);\n        return true;\n    }\n    return false;\n}\n\nfunction releaseLock(ns, owner) {\n    const lock = getLock(ns);\n    if (lock && lock.owner === owner) {\n        ns.clearPort(PORTS.ACTIVITY);\n    }\n}\n

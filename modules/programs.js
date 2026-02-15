@@ -95,15 +95,24 @@ async function managePrograms(ns) {
             continue; // Already have it
         }
         
-        // Try to create it
+        // If preferring buying and have TOR, try to buy first
+        if (config.programs.preferBuying && hasTorRouter(ns) && config.programs.autoBuyPrograms) {
+            if (await buyProgram(ns, program.name)) {
+                return; // Only buy/create one at a time
+            }
+        }
+        
+        // Otherwise try to create it
         if (!isCreatingProgram(ns) && canCreateProgram(ns, program.name)) {
             await createProgram(ns, program.name);
             return; // Only create one at a time
         }
         
-        // If we can't create it and have TOR, try to buy it
-        if (hasTorRouter(ns) && config.programs.autoBuyPrograms) {
-            await buyProgram(ns, program.name);
+        // If not preferring buying and haven't bought yet, try to buy now
+        if (!config.programs.preferBuying && hasTorRouter(ns) && config.programs.autoBuyPrograms) {
+            if (await buyProgram(ns, program.name)) {
+                return;
+            }
         }
     }
 }
@@ -158,6 +167,7 @@ async function createProgram(ns, programName) {
  * Buy a program from darkweb
  * @param {NS} ns
  * @param {string} programName
+ * @returns {boolean} - True if purchase was successful
  */
 async function buyProgram(ns, programName) {
     try {
@@ -168,11 +178,13 @@ async function buyProgram(ns, programName) {
             const success = ns.singularity.purchaseProgram(programName);
             if (success) {
                 log(ns, `Purchased ${programName} for ${formatMoney(cost)}`, "INFO");
+                return true;
             }
         }
     } catch (e) {
         // Can't buy or singularity not available
     }
+    return false;
 }
 
 /**

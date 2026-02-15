@@ -69,6 +69,7 @@ export const config = {
         autoBuyPrograms: true,         // Buy programs from darkweb if can't create
         autoCreatePrograms: true,      // Create programs when idle
         autoBackdoor: true,            // Automatically backdoor faction servers
+        preferBuying: true,            // Prefer buying over creating (default: true)
         purchaseThreshold: 0.05,       // Buy programs when we have 5% of cost
         priorityPrograms: [
             "BruteSSH.exe",

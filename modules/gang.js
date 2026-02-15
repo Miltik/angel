@@ -1,17 +1,19 @@
 /**
- * Gang automation module - Intelligent member specialization with respect maximization
+ * Gang automation module - Phase-aware intelligent member specialization
  * 
  * Strategy: Specialize members by role, maximize Territory Warfare for respect,
- * manage wanted level dynamically, and prevent task overlap conflicts.
+ * manage wanted level dynamically. Phase determines intensity (3+ = full warfare)
  * 
  * @param {NS} ns
  */
 import { config } from "/angel/config.js";
 
+const PHASE_PORT = 7;
+
 export async function main(ns) {
     ns.disableLog("ALL");
     ns.ui.openTail();
-    ns.print("[Gang] Module started - Strategic lifecycle: Training → Respect Building → Sustainability");
+    ns.print("[Gang] 👾 Module started - Phase-aware respect maximization");
 
     while (true) {
         try {
@@ -30,6 +32,15 @@ export async function main(ns) {
             await ns.sleep(5000);
         }
     }
+}
+
+/**
+ * Read game phase from orchestrator port
+ */
+function readGamePhase(ns) {
+    const phasePortData = ns.peek(PHASE_PORT);
+    if (phasePortData === "NULL PORT DATA") return 0;
+    return parseInt(phasePortData) || 0;
 }
 
 function recruitMembers(ns) {
@@ -169,13 +180,16 @@ function getTaskPool(availableTasks, info, phase) {
 }
 
 /**
- * Assign a role to a member based on their stats and gang needs
+ * Assign a role to a member based on their stats, gang needs, and game phase
  * Returns the taskPool key that maps to the appropriate task
  */
-function assignRole(member, allMembers, info, phase, taskPool) {
+function assignRole(member, allMembers, info, gangPhase, taskPool) {
     const m = member.info;
     const trainUntil = 60;
     const isHacking = info.isHacking;
+    
+    // Read global game phase for intensity modulation
+    const globalPhase = parseInt(ns.peek(PHASE_PORT)) || 0;
     
     // Check if member still needs training
     const needsTraining = isHacking
@@ -205,8 +219,8 @@ function assignRole(member, allMembers, info, phase, taskPool) {
         }
     }
 
-    // Phase-specific role assignment
-    switch (phase) {
+    // Phase-specific role assignment WITH GLOBAL PHASE INTENSIFICATION
+    switch (gangPhase) {
         case "training":
             return "trainCombat";
             
@@ -218,8 +232,12 @@ function assignRole(member, allMembers, info, phase, taskPool) {
             return "moneyTask";
             
         case "respect_building":
-            // Maximize! Territory warfare first, then money earners
-            if (taskPool.territoryWarfare && Math.random() < 0.75) {
+            // GLOBAL PHASE MODULATION
+            // Phase 0-2: Moderate warfare (75%)
+            // Phase 3+: MAXIMUM warfare (90%)
+            const warfareChance = globalPhase >= 3 ? 0.9 : 0.75;
+            
+            if (taskPool.territoryWarfare && Math.random() < warfareChance) {
                 return "territoryWarfare";
             }
             if (wantedPenalty < 0.9 && taskPool.wantedReduction) {

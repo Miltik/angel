@@ -34,6 +34,7 @@ export async function main(ns) {
         "scanner.js",
         "start.js",
         "status.js",
+        "networkMap.js",
         
         // Modules
         "modules/hacking.js",

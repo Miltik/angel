@@ -170,11 +170,20 @@ async function ensureModuleRunning(ns, script, name) {
         return;
     }
     
+    // Check RAM requirements
+    const scriptRam = ns.getScriptRam(script, "home");
+    const availableRam = ns.getServerMaxRam("home") - ns.getServerUsedRam("home");
+    
+    if (scriptRam > availableRam) {
+        log(ns, `Failed to start ${name} module: needs ${scriptRam.toFixed(2)}GB, have ${availableRam.toFixed(2)}GB`, "WARN");
+        return;
+    }
+    
     // Try to start it
     const pid = ns.exec(script, "home");
     
     if (pid === 0) {
-        log(ns, `Failed to start ${name} module (insufficient RAM?)`, "WARN");
+        log(ns, `Failed to start ${name} module: exec returned 0 (check for errors in module)`, "WARN");
     } else {
         log(ns, `Started ${name} module (PID: ${pid})`, "INFO");
     }

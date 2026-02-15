@@ -10,7 +10,11 @@ export async function main(ns) {
     // Check if we have SF4 (Singularity access)
     if (!hasSingularityAccess(ns)) {
         log(ns, "Singularity functions not available (need SF4)", "WARN");
-        return;
+        log(ns, "Augmentation module will remain idle until SF4 is obtained", "INFO");
+        // Keep running but do nothing
+        while (true) {
+            await ns.sleep(60000);
+        }
     }
     
     log(ns, "Augmentation module started", "INFO");

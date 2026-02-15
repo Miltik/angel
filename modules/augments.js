@@ -1,3 +1,8 @@
+import { config } from "/angel/config.js";
+import { formatMoney, log } from "/angel/utils.js";
+
+const PHASE_PORT = 7;
+
 /** @param {NS} ns */
 export async function main(ns) {
     ns.disableLog("ALL");
@@ -5,21 +10,19 @@ export async function main(ns) {
     
     // Check if we have SF4 (Singularity access)
     if (!hasSingularityAccess(ns)) {
-        ns.print("Singularity functions not available (need SF4)");
-        ns.print("Augmentation module will remain idle until SF4 is obtained");
-        // Keep running but do nothing
+        log(ns, "💊 Singularity access not available (need SF4) - waiting...", "INFO");
         while (true) {
             await ns.sleep(60000);
         }
     }
     
-    ns.print("💊 Augmentation module started - Phase-aware aggressive buying");
+    log(ns, "💊 Augmentation module started - Phase-aware cascading", "INFO");
     
     while (true) {
         try {
             await augmentLoop(ns);
         } catch (e) {
-            ns.print(`💊 Augmentation management error: ${e}`);
+            log(ns, `💊 Augmentation error: ${e}`, "ERROR");
         }
         await ns.sleep(60000); // Check every minute
     }
@@ -29,28 +32,78 @@ export async function main(ns) {
  * Read game phase from orchestrator port (port 7)
  */
 function readGamePhase(ns) {
-    const phasePortData = ns.peek(7);
+    const phasePortData = ns.peek(PHASE_PORT);
     if (phasePortData === "NULL PORT DATA") return 0;
     return parseInt(phasePortData) || 0;
 }
 
 /**
- * Get phase-appropriate spending strategy
+ * Get phase configuration object
+ * @param {number} phase
+ */
+function getPhaseConfig(phase) {
+    const phaseKey = `phase${phase}`;
+    return config.gamePhases[phaseKey] || config.gamePhases.phase0;
+}
+
+/**
+ * Get phase-appropriate augmentation strategy
+ * @param {number} phase
  */
 function getAugmentStrategy(phase) {
+    const phaseConfig = getPhaseConfig(phase);
+    const spendingConfig = phaseConfig.spending || {};
+    
+    // Strategy based on phase progression
     switch(phase) {
-        case 0: // Bootstrap - very conservative
-            return { maxSpend: 1000000, buyAll: false, aggressive: false };
-        case 1: // Early Scaling - moderate
-            return { maxSpend: 50000000, buyAll: false, aggressive: false };
-        case 2: // Mid Game - increasing spending
-            return { maxSpend: 200000000, buyAll: false, aggressive: true };
-        case 3: // Gang Phase - very aggressive
-            return { maxSpend: 500000000, buyAll: true, aggressive: true };
-        case 4: // Late Game - maximum
-            return { maxSpend: 1000000000, buyAll: true, aggressive: true };
+        case 0: // Bootstrap
+            return {
+                phase,
+                maxSpend: 1000000,
+                buyAll: false,
+                strategy: "priority_only",
+                threshold: 0.2,
+            };
+        case 1: // Early Scaling
+            return {
+                phase,
+                maxSpend: spendingConfig.augmentsTargetCost || 50000000,
+                buyAll: false,
+                strategy: "priority_focus",
+                threshold: 0.15,
+            };
+        case 2: // Mid Game
+            return {
+                phase,
+                maxSpend: spendingConfig.augmentsTargetCost || 200000000,
+                buyAll: false,
+                strategy: "priority_aggressive",
+                threshold: 0.1,
+            };
+        case 3: // Gang Phase
+            return {
+                phase,
+                maxSpend: spendingConfig.augmentsTargetCost || 500000000,
+                buyAll: true,
+                strategy: "buy_all",
+                threshold: 0.05,
+            };
+        case 4: // Late Game
+            return {
+                phase,
+                maxSpend: spendingConfig.augmentsTargetCost || 1000000000,
+                buyAll: true,
+                strategy: "buy_all_unlimited",
+                threshold: 0.01,
+            };
         default:
-            return { maxSpend: 1000000, buyAll: false, aggressive: false };
+            return {
+                phase: 0,
+                maxSpend: 1000000,
+                buyAll: false,
+                strategy: "priority_only",
+                threshold: 0.2,
+            };
     }
 }
 
@@ -69,20 +122,8 @@ function hasSingularityAccess(ns) {
 }
 
 /**
- * Inline format money (remove imports)
- * @param {number} amount
- * @returns {string}
- */
-function formatMoney(amount) {
-    if (amount >= 1e12) return `$${(amount / 1e12).toFixed(2)}t`;
-    if (amount >= 1e9) return `$${(amount / 1e9).toFixed(2)}b`;
-    if (amount >= 1e6) return `$${(amount / 1e6).toFixed(2)}m`;
-    if (amount >= 1e3) return `$${(amount / 1e3).toFixed(2)}k`;
-    return `$${amount.toFixed(0)}`;
-}
-
-/**
  * Get available augmentations from joined factions
+ * Filters by reputation requirement
  * @param {NS} ns
  * @returns {Array}
  */
@@ -118,24 +159,30 @@ function getAvailableAugmentsInline(ns) {
 }
 
 /**
- * Get priority augmentations (those in augmentPriority config)
+ * Get priority augmentations from config
+ * Uses augmentPriority list from config
  * @param {NS} ns
  * @param {Array} available
  * @returns {Array}
  */
 function getPriorityAugmentsInline(ns, available) {
-    // Priority list hardcoded (removing config dependency)
-    const priorities = [
-        "BitWire",
-        "Artificial Bio-neural Network Implant",
-        "Artificial Synaptic Potentiation",
-    ];
+    const priorities = config.augmentations.augmentPriority || [];
+    
+    if (priorities.length === 0) {
+        // Default fallback if config is empty
+        const defaults = [
+            "BitWire",
+            "Artificial Bio-neural Network Implant",
+            "Artificial Synaptic Potentiation",
+        ];
+        return available.filter(aug => defaults.includes(aug.name));
+    }
     
     return available.filter(aug => priorities.includes(aug.name));
 }
 
 /**
- * Main augmentation loop - phase-aware
+ * Main augmentation loop - phase-aware cascading
  * @param {NS} ns
  */
 async function augmentLoop(ns) {
@@ -144,57 +191,103 @@ async function augmentLoop(ns) {
     const money = ns.getServerMoneyAvailable("home");
     const available = getAvailableAugmentsInline(ns);
     
-    // Show status
+    // Get queue status
     const ownedCount = ns.singularity.getOwnedAugmentations(false).length;
     const installedCount = ns.singularity.getOwnedAugmentations(true).length;
     const queuedCount = ownedCount - installedCount;
     
-    ns.print(`💊 Phase ${phase} | Money: ${formatMoney(money)} | Queued: ${queuedCount}`);
+    // Display status
+    log(ns, `💊 [Phase ${phase}] Money: ${formatMoney(money)} | Strategy: ${strategy.strategy} | Queued: ${queuedCount}`, "INFO");
     
     if (available.length === 0) {
-        ns.print(`💊 No augmentations available yet`);
+        log(ns, `💊 No augmentations available yet`, "INFO");
         return;
     }
     
-    // Sort augments by price (cheapest first for priority buying)
+    // Sort by price (cheapest first)
     available.sort((a, b) => a.price - b.price);
     
-    // Phase 3-4: Buy ALL available augmentations
+    // Strategy: buyAll (phases 3-4)
     if (strategy.buyAll) {
-        for (const aug of available) {
-            if (money >= aug.price) {
-                const success = ns.singularity.purchaseAugmentation(aug.faction, aug.name);
-                if (success) {
-                    ns.print(`💊 Purchased: ${aug.name} (${aug.faction}) ${formatMoney(aug.price)}`);
-                    money = ns.getServerMoneyAvailable("home");
-                }
-            }
-        }
+        await buyAllAvailable(ns, available, money);
         return;
     }
     
-    // Phase 0-2: Buy priority augments only
+    // Strategy: Priority focus (phases 0-2)
     const priority = getPriorityAugmentsInline(ns, available);
-    for (const aug of priority) {
-        if (money >= aug.price && money < strategy.maxSpend) {
-            const success = ns.singularity.purchaseAugmentation(aug.faction, aug.name);
-            if (success) {
-                ns.print(`💊 Purchased priority: ${aug.name} ${formatMoney(aug.price)}`);
-                money = ns.getServerMoneyAvailable("home");
-            }
-        }
+    if (priority.length > 0) {
+        await buyPriorityAugments(ns, priority, money, strategy);
+        return;
     }
     
-    // Show next augment info
-    if (available.length > 0 && !(money >= available[0].price)) {
+    // Fallback: Show next affordable aug
+    if (available.length > 0 && money < available[0].price) {
         const nextAug = available[0];
         const needed = nextAug.price - money;
-        ns.print(`💊 Next: ${nextAug.name} - Need ${formatMoney(needed)} more`);
+        log(ns, `💊 Next: ${nextAug.name} - Need ${formatMoney(needed)} more`, "INFO");
     }
 }
 
 /**
- * Purchase all affordable augmentations
+ * Buy all available augmentations
+ * @param {NS} ns
+ * @param {Array} available
+ * @param {number} initialMoney
+ */
+async function buyAllAvailable(ns, available, initialMoney) {
+    let money = initialMoney;
+    let purchased = 0;
+    
+    for (const aug of available) {
+        if (money >= aug.price) {
+            const success = ns.singularity.purchaseAugmentation(aug.faction, aug.name);
+            if (success) {
+                log(ns, `💊 Purchased: ${aug.name} (${aug.faction}) for ${formatMoney(aug.price)}`, "SUCCESS");
+                money = ns.getServerMoneyAvailable("home");
+                purchased++;
+            }
+        }
+    }
+    
+    if (purchased > 0) {
+        log(ns, `💊 Batch purchased ${purchased} augmentations`, "SUCCESS");
+    }
+}
+
+/**
+ * Buy priority augmentations
+ * @param {NS} ns
+ * @param {Array} priority
+ * @param {number} initialMoney
+ * @param {object} strategy
+ */
+async function buyPriorityAugments(ns, priority, initialMoney, strategy) {
+    let money = initialMoney;
+    let purchased = 0;
+    const spendThreshold = initialMoney * strategy.threshold;
+    
+    for (const aug of priority) {
+        if (money >= aug.price && money <= spendThreshold) {
+            const success = ns.singularity.purchaseAugmentation(aug.faction, aug.name);
+            if (success) {
+                log(ns, `💊 Purchased priority: ${aug.name} for ${formatMoney(aug.price)}`, "SUCCESS");
+                money = ns.getServerMoneyAvailable("home");
+                purchased++;
+            }
+        }
+    }
+    
+    if (purchased > 0) {
+        log(ns, `💊 Batch purchased ${purchased} priority augmentations`, "SUCCESS");
+    } else if (priority.length > 0 && money < priority[0].price) {
+        const nextAug = priority[0];
+        const needed = nextAug.price - money;
+        log(ns, `💊 Next priority: ${nextAug.name} - Need ${formatMoney(needed)} more`, "INFO");
+    }
+}
+
+/**
+ * Purchase all affordable augmentations (exported for external use)
  * @param {NS} ns
  * @returns {number} - Number of augments purchased
  */
@@ -203,18 +296,17 @@ export function buyAllAffordable(ns) {
     
     const available = getAvailableAugmentsInline(ns);
     let purchased = 0;
+    let money = ns.getServerMoneyAvailable("home");
     
-    // Sort by price (cheapest first for now)
+    // Sort by price (cheapest first)
     available.sort((a, b) => a.price - b.price);
     
     for (const aug of available) {
-        const money = ns.getServerMoneyAvailable("home");
-        
         if (money >= aug.price) {
             const success = ns.singularity.purchaseAugmentation(aug.faction, aug.name);
-            
             if (success) {
-                ns.print(`Purchased: ${aug.name} from ${aug.faction}`);
+                log(ns, `Purchased: ${aug.name} from ${aug.faction}`, "SUCCESS");
+                money = ns.getServerMoneyAvailable("home");
                 purchased++;
             }
         }
@@ -224,7 +316,7 @@ export function buyAllAffordable(ns) {
 }
 
 /**
- * Purchase priority augmentations only
+ * Purchase priority augmentations only (exported for external use)
  * @param {NS} ns
  * @returns {number} - Number of augments purchased
  */
@@ -234,15 +326,14 @@ export function buyPriority(ns) {
     const available = getAvailableAugmentsInline(ns);
     const priority = getPriorityAugmentsInline(ns, available);
     let purchased = 0;
+    let money = ns.getServerMoneyAvailable("home");
     
     for (const aug of priority) {
-        const money = ns.getServerMoneyAvailable("home");
-        
         if (money >= aug.price) {
             const success = ns.singularity.purchaseAugmentation(aug.faction, aug.name);
-            
             if (success) {
-                ns.print(`Purchased priority augment: ${aug.name}`);
+                log(ns, `Purchased priority: ${aug.name}`, "SUCCESS");
+                money = ns.getServerMoneyAvailable("home");
                 purchased++;
             }
         }
@@ -263,22 +354,32 @@ export function displayAugments(ns) {
     
     const available = getAvailableAugmentsInline(ns);
     const priority = getPriorityAugmentsInline(ns, available);
+    const phase = readGamePhase(ns);
     
-    ns.tprint("\n=== PRIORITY AUGMENTATIONS ===");
-    for (const aug of priority) {
-        ns.tprint(`${aug.name} (${aug.faction}): ${formatMoney(aug.price)}`);
+    ns.tprint("\n╔════════════════════════════════════════╗");
+    ns.tprint("║     AUGMENTATION STATUS (Phase " + phase + ")      ║");
+    ns.tprint("╚════════════════════════════════════════╝\n");
+    
+    if (priority.length > 0) {
+        ns.tprint("=== PRIORITY AUGMENTATIONS ===");
+        for (const aug of priority) {
+            ns.tprint(`${aug.name} (${aug.faction}): ${formatMoney(aug.price)}`);
+        }
+        ns.tprint("");
     }
     
-    ns.tprint(`\n=== ALL AVAILABLE (${available.length}) ===`);
+    ns.tprint(`=== ALL AVAILABLE (${available.length}) ===`);
     for (const aug of available) {
         const isPriority = priority.some(p => p.name === aug.name);
         const marker = isPriority ? "[P]" : "";
         ns.tprint(`${marker} ${aug.name} (${aug.faction}): ${formatMoney(aug.price)}`);
     }
+    
+    ns.tprint("");
 }
 
 /**
- * Check if we should install augmentations (and reset)
+ * Check if we should install augmentations
  * @param {NS} ns
  * @returns {boolean}
  */
@@ -288,8 +389,8 @@ export function shouldInstallAugments(ns) {
     const owned = ns.singularity.getOwnedAugmentations(false);
     const installed = ns.singularity.getOwnedAugmentations(true);
     
-    // If we have purchased augments that aren't installed
-    return owned.length < installed.length;
+    // If we have more owned than installed, we have queued augments
+    return owned.length > installed.length;
 }
 
 /**
@@ -300,7 +401,9 @@ export function installAugmentations(ns) {
     if (!hasSingularityAccess(ns)) return;
     
     if (shouldInstallAugments(ns)) {
-        ns.print("Installing augmentations and resetting...");
+        const queued = ns.singularity.getOwnedAugmentations(false).length - 
+                      ns.singularity.getOwnedAugmentations(true).length;
+        log(ns, `💊 Installing ${queued} queued augmentations and resetting...`, "INFO");
         ns.singularity.installAugmentations("/angel/angel.js");
     }
 }

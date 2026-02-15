@@ -32,6 +32,8 @@ async function programsLoop(ns) {
     await managePrograms(ns);
     
     // Backdoor important servers
+    const backdoored = countBackdoors(ns);
+    log(ns, `Backdoors installed: ${backdoored}`, "INFO");
     await backdoorServers(ns);
 }
 
@@ -195,6 +197,37 @@ async function buyProgram(ns, programName) {
 }
 
 /**
+ * Count how many backdoors have been installed
+ * @param {NS} ns
+ * @returns {number}
+ */
+function countBackdoors(ns) {
+    let count = 0;
+    try {
+        const allServers = [];
+        function scanAll(server) {
+            if (allServers.includes(server)) return;
+            allServers.push(server);
+            const connected = ns.scan(server);
+            for (const next of connected) {
+                scanAll(next);
+            }
+        }
+        scanAll("home");
+        
+        for (const server of allServers) {
+            if (ns.getServer(server).backdoorInstalled) {
+                count++;
+            }
+        }
+    } catch (e) {
+        // Ignore
+    }
+    
+    return count;
+}
+
+/**
  * Backdoor important servers for faction access
  * @param {NS} ns
  */
@@ -203,8 +236,8 @@ async function backdoorServers(ns) {
     
     const player = ns.getPlayer();
     
-    // Important faction servers to backdoor
-    const targets = [
+    // Priority faction servers
+    const factionTargets = [
         { server: "CSEC", faction: "CyberSec", reqLevel: 50 },
         { server: "avmnite-02h", faction: "NiteSec", reqLevel: 200 },
         { server: "I.I.I.I", faction: "The Black Hand", reqLevel: 350 },
@@ -212,7 +245,9 @@ async function backdoorServers(ns) {
         { server: "w0r1d_d43m0n", faction: "Daedalus", reqLevel: 3000 },
     ];
     
-    for (const target of targets) {
+    // Try faction servers first
+    let backdooredCount = 0;
+    for (const target of factionTargets) {
         // Skip if we don't meet requirements
         if (player.skills.hacking < target.reqLevel) {
             continue;
@@ -230,8 +265,54 @@ async function backdoorServers(ns) {
         
         // Try to backdoor it
         await attemptBackdoor(ns, target.server, target.faction);
+        backdooredCount++;
+        return; // Only do one per cycle for stability
+    }
+    
+    // If no faction servers to do, backdoor other rooted servers
+    const allServers = getAllRootedServers(ns);
+    for (const server of allServers) {
+        // Skip if already backdoored
+        if (ns.getServer(server).backdoorInstalled) {
+            continue;
+        }
+        
+        // Skip faction/player servers (already handled)
+        if (server.startsWith("angel-") || server.startsWith("player-") || factionTargets.some(t => t.server === server)) {
+            continue;
+        }
+        
+        // Skip home
+        if (server === "home") {
+            continue;
+        }
+        
+        // Backdoor this server
+        await attemptBackdoor(ns, server, "General");
+        return; // Only do one per cycle for stability
     }
 }
+
+/**
+ * Get all rooted servers on the network
+ * @param {NS} ns
+ * @returns {string[]}
+ */
+function getAllRootedServers(ns) {
+    const servers = [];
+    
+    function scan(server) {
+        const connected = ns.scan(server);
+        for (const next of connected) {
+            if (!servers.includes(next) && ns.hasRootAccess(next)) {
+                servers.push(next);
+                scan(next);
+            }
+        }
+    }
+    
+    scan("home");
+    return servers;\n}
 
 /**
  * Attempt to backdoor a server
@@ -241,7 +322,7 @@ async function backdoorServers(ns) {
  */
 async function attemptBackdoor(ns, server, faction) {
     try {
-        log(ns, `Installing backdoor on ${server} for ${faction}...`, "INFO");
+        log(ns, `Backdooring ${server}...`, "INFO");
         
         // Connect to the server
         const connected = await connectToServer(ns, server);
@@ -249,10 +330,12 @@ async function attemptBackdoor(ns, server, faction) {
         if (connected) {
             // Install backdoor (requires singularity)
             await ns.singularity.installBackdoor();
-            log(ns, `Successfully backdoored ${server}!`, "INFO");
+            log(ns, `✓ Successfully backdoored ${server}!`, "INFO");
             
             // Return home
             ns.singularity.connect("home");
+        } else {
+            log(ns, `Could not connect to ${server}`, "WARN");
         }
     } catch (e) {
         log(ns, `Failed to backdoor ${server}: ${e}`, "WARN");

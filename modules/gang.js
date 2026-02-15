@@ -18,7 +18,8 @@ export async function main(ns) {
             }
 
             recruitMembers(ns);
-            assignTasks(ns);
+            const summary = assignTasks(ns);
+            printStatus(ns, summary);
             await ns.sleep(30000);
         } catch (e) {
             ns.print(`[Gang] Error: ${e}`);
@@ -41,12 +42,12 @@ function assignTasks(ns) {
     const tasks = ns.gang.getTaskNames();
     if (members.length === 0) {
         ns.print("[Gang] No members to assign");
-        return;
+        return { info, members, tasks, assigned: {} };
     }
 
     if (tasks.length === 0) {
         ns.print("[Gang] No tasks available yet");
-        return;
+        return { info, members, tasks, assigned: {} };
     }
 
     const moneyTask = tasks.includes(config.gang.moneyTask) ? config.gang.moneyTask : tasks[0];
@@ -58,6 +59,8 @@ function assignTasks(ns) {
             : tasks[0];
 
     const needsVigilante = info.wantedPenalty < config.gang.minWantedPenalty;
+
+    const assigned = {};
 
     for (let idx = 0; idx < members.length; idx++) {
         const name = members[idx];
@@ -78,6 +81,29 @@ function assignTasks(ns) {
         const ok = ns.gang.setMemberTask(name, task);
         if (!ok) {
             ns.print(`[Gang] Failed to assign ${name} to ${task}`);
+        } else {
+            assigned[task] = (assigned[task] || 0) + 1;
         }
+    }
+
+    return { info, members, tasks, assigned };
+}
+
+function printStatus(ns, summary) {
+    const info = summary.info;
+    const count = summary.members.length;
+    const assigned = summary.assigned || {};
+
+    ns.print("[Gang] ===== Status =====");
+    ns.print(`[Gang] Members: ${count} | Type: ${info.isHacking ? "Hacking" : "Combat"}`);
+    ns.print(`[Gang] Wanted Penalty: ${info.wantedPenalty.toFixed(3)} | Respect: ${Math.floor(info.respect)}`);
+    ns.print(`[Gang] Money Gain: $${Math.floor(info.moneyGainRate * 5)}/s (approx)`);
+
+    const tasks = Object.keys(assigned);
+    if (tasks.length > 0) {
+        const parts = tasks.map((task) => `${task}: ${assigned[task]}`);
+        ns.print(`[Gang] Tasks: ${parts.join(" | ")}`);
+    } else {
+        ns.print("[Gang] Tasks: none assigned");
     }
 }

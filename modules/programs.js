@@ -9,7 +9,6 @@ export async function main(ns) {
         ns.print("[Programs] Warning: tail failed");
     }
     
-    let modeToggle = 0; // 0 = buying programs, 1 = backdoors
     let loopCount = 0;
     
     while (true) {
@@ -21,17 +20,10 @@ export async function main(ns) {
             
             ns.print(`[Programs] Loop ${loopCount}`);
             
-            // Phase 1: Buy TOR and Programs
-            if (modeToggle === 0) {
-                const allDone = await phaseBuyPrograms(ns);
-                if (allDone) {
-                    modeToggle = 1; // Switch to backdoor phase
-                    ns.print("[Programs] Program acquisition complete, moving to backdoors");
-                }
-            } 
-            // Phase 2: Backdoor servers
-            else if (modeToggle === 1) {
-                await phaseBackdoors(ns);
+            // Buy TOR and Programs
+            const allDone = await phaseBuyPrograms(ns);
+            if (allDone) {
+                ns.print("[Programs] Program acquisition complete. Idle mode.");
             }
             
         } catch (e) {
@@ -125,66 +117,6 @@ async function phaseBuyPrograms(ns) {
     }
 }
 
-async function phaseBackdoors(ns) {
-    // autoBackdoor default: true
-    ns.print("[Programs] Phase: Installing backdoors");
-    
-    try {
-        const player = ns.getPlayer();
-        const targets = [
-            { name: "CSEC", level: 50 },
-            { name: "avmnite-02h", level: 200 },
-            { name: "I.I.I.I", level: 350 },
-            { name: "run4theh111z", level: 500 },
-        ];
-        
-        for (const target of targets) {
-            try {
-                if (player.skills.hacking < target.level) {
-                    ns.print(`[Programs] Not high enough level for ${target.name} (need ${target.level})`);
-                    continue;
-                }
-                
-                const srv = ns.getServer(target.name);
-                if (srv.backdoorInstalled) {
-                    ns.print(`[Programs] Already backdoored ${target.name}`);
-                    continue;
-                }
-                
-                if (!ns.hasRootAccess(target.name)) {
-                    ns.print(`[Programs] No root on ${target.name}`);
-                    continue;
-                }
-                
-                ns.print(`[Programs] Backdooring ${target.name}...`);
-                
-                // Connect
-                const path = findPath(ns, target.name);
-                for (const hop of path) {
-                    ns.singularity.connect(hop);
-                    await ns.sleep(100);
-                }
-                
-                // Install
-                ns.singularity.installBackdoor();
-                await ns.sleep(1000);
-                
-                ns.print(`[Programs] ✓ Backdoored ${target.name}`);
-                
-                // Return home before returning
-                await connectToHome(ns);
-                
-                return; // Do one per cycle
-            } catch (e) {
-                ns.print(`[Programs] Error on ${target.name}: ${e}`);
-                await connectToHome(ns);
-            }
-        }
-    } catch (e) {
-        ns.print(`[Programs] Backdoor phase error: ${e}`);
-    }
-}
-
 function hasTor(ns) {
     try {
         ns.singularity.getDarkwebPrograms();
@@ -192,32 +124,4 @@ function hasTor(ns) {
     } catch (e) {
         return false;
     }
-}
-
-function findPath(ns, target) {
-    const path = [];
-    const visited = new Set();
-    
-    function dfs(server) {
-        if (visited.has(server)) return false;
-        visited.add(server);
-        
-        if (server === target) {
-            path.push(server);
-            return true;
-        }
-        
-        const connected = ns.scan(server);
-        for (const next of connected) {
-            if (dfs(next)) {
-                path.push(server);
-                return true;
-            }
-        }
-        
-        return false;
-    }
-    
-    dfs("home");
-    return path.reverse();
 }

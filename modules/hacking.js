@@ -3,41 +3,44 @@ export async function main(ns) {
     ns.disableLog("ALL");
     ns.ui.openTail();
     
-    ns.print("Hacking module started");
+    ns.print("🖥 Hacking module started - Phase-aware dynamic targeting");
     ns.print("Waiting for other modules to initialize...");
     
     // Wait 5 seconds to let other modules start up first
     await ns.sleep(5000);
     
-    ns.print("Beginning hacking operations");
+    ns.print("🖥 Beginning hacking operations");
     
     while (true) {
         try {
             await hackingLoop(ns);
         } catch (e) {
-            ns.print(`Hacking loop error: ${e}`);
+            ns.print(`🖥 Hacking loop error: ${e}`);
         }
         await ns.sleep(200); // batchDelay
     }
 }
 
 /**
- * Main hacking loop
+ * Main hacking loop - phase-aware
  * @param {NS} ns
  */
 async function hackingLoop(ns) {
-    // Get best target
+    // Read current game phase from orchestrator
+    const currentPhase = readGamePhase(ns);
+    
+    // Get best target based on phase
     const targets = getHackableServersInline(ns);
     if (targets.length === 0) {
-        ns.print("No hackable targets found");
+        ns.print("🖥 No hackable targets found");
         await ns.sleep(5000);
         return;
     }
     
-    const target = getBestTargetInline(ns, targets);
+    const target = selectTargetByPhase(ns, targets, currentPhase);
     const targetInfo = analyzeTarget(ns, target);
     
-    ns.print(`Target: ${target} | Money: ${formatMoneyInline(targetInfo.currentMoney)}/${formatMoneyInline(targetInfo.maxMoney)} | Security: ${targetInfo.currentSecurity.toFixed(2)}/${targetInfo.minSecurity}`);
+    ns.print(`🖥 Target: ${target} | Money: ${formatMoneyInline(targetInfo.currentMoney)}/${formatMoneyInline(targetInfo.maxMoney)} | Security: ${targetInfo.currentSecurity.toFixed(2)}/${targetInfo.minSecurity}`);
     
     // Prepare target (weaken to min security, grow to max money)
     if (!isTargetPrepped(ns, target)) {
@@ -47,6 +50,91 @@ async function hackingLoop(ns) {
     
     // Execute hack/grow/weaken cycle
     await executeHackCycle(ns, target);
+}
+
+/**
+ * Read game phase from orchestrator port (port 7)
+ */
+function readGamePhase(ns) {
+    const phasePortData = ns.peek(7);
+    if (phasePortData === "NULL PORT DATA") return 0;
+    return parseInt(phasePortData) || 0;
+}
+
+/**
+ * Select target based on phase and profitability
+ * Adapts server selection to current game phase
+ */
+function selectTargetByPhase(ns, targets, phase) {
+    const player = ns.getPlayer();
+    
+    // Phase 0-1: Focus on early, easily hackable servers
+    if (phase <= 1) {
+        const earlyServers = ["n00dles", "foodnstuff", "sigma-cosmetics", "joesguns", "nectar-net"];
+        for (const server of earlyServers) {
+            if (targets.includes(server)) {
+                return server;
+            }
+        }
+    }
+    
+    // Phase 2: Expand to mid-tier servers
+    if (phase === 2) {
+        const midServers = ["joesguns", "nectar-net", "hong-fang-tea", "harakiri-sushi", "iron-gym", "phantasy"];
+        const available = midServers.filter(s => targets.includes(s));
+        if (available.length > 0) {
+            return available[0];
+        }
+    }
+    
+    // Phase 3+: Use profitability-based targeting
+    return getBestTargetByProfitInline(ns, targets);
+}
+
+/**
+ * Calculate target score based on profitability (money/time ratio)
+ * Higher score = better target
+ */
+function calculateProfitabilityScore(ns, server) {
+    const maxMoney = ns.getServerMaxMoney(server);
+    if (maxMoney <= 0) return 0;
+    
+    const minSecurity = ns.getServerMinSecurityLevel(server);
+    const requiredHacking = ns.getServerRequiredHackingLevel(server);
+    const player = ns.getPlayer();
+    
+    // Base score: money
+    let score = maxMoney;
+    
+    // Reduce score if we're over-leveled (diminishing returns on super-easy servers)
+    if (requiredHacking < player.skills.hacking * 0.3) {
+        score *= 0.5;
+    }
+    
+    // Reduce score if security is high
+    if (minSecurity > 10) {
+        score *= 0.8;
+    }
+    
+    return score;
+}
+
+/**
+ * Get best target by profitability (money gain per hack)
+ */
+function getBestTargetByProfitInline(ns, servers) {
+    let bestTarget = null;
+    let bestScore = 0;
+    
+    for (const server of servers) {
+        const score = calculateProfitabilityScore(ns, server);
+        if (score > bestScore) {
+            bestScore = score;
+            bestTarget = server;
+        }
+    }
+    
+    return bestTarget || servers[0];
 }
 
 /**
@@ -307,33 +395,8 @@ function getHackableServersInline(ns) {
 }
 
 /**
- * Get best target server based on current hacking level (inline)
+ * Get best target server based on profitability score (inline)
  */
 function getBestTargetInline(ns, servers) {
-    const player = ns.getPlayer();
-    
-    let bestTarget = null;
-    let bestScore = 0;
-    
-    for (const server of servers) {
-        // Skip servers we can't hack
-        if (ns.getServerRequiredHackingLevel(server) > player.skills.hacking) {
-            continue;
-        }
-        
-        // Skip servers with no money
-        const maxMoney = ns.getServerMaxMoney(server);
-        if (maxMoney === 0) continue;
-        
-        // Calculate simple score (money / security)
-        const minSecurity = ns.getServerMinSecurityLevel(server);
-        const score = maxMoney / minSecurity;
-        
-        if (score > bestScore) {
-            bestScore = score;
-            bestTarget = server;
-        }
-    }
-    
-    return bestTarget || servers[0];
+    return getBestTargetByProfitInline(ns, servers);
 }

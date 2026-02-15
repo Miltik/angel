@@ -90,28 +90,35 @@ async function managePrograms(ns) {
         { name: "AutoLink.exe", createTime: 600000 },
     ];
     
+    // If preferring buying with TOR, buy all missing programs quickly
+    if (config.programs.preferBuying && hasTorRouter(ns) && config.programs.autoBuyPrograms) {
+        for (const program of programs) {
+            if (!ns.fileExists(program.name, "home")) {
+                await buyProgram(ns, program.name);
+                await ns.sleep(100); // Small delay between purchases
+            }
+        }
+        return;
+    }
+    
+    // Otherwise, create first missing program (one at a time)
     for (const program of programs) {
         if (ns.fileExists(program.name, "home")) {
             continue; // Already have it
         }
         
-        // If preferring buying and have TOR, try to buy first
-        if (config.programs.preferBuying && hasTorRouter(ns) && config.programs.autoBuyPrograms) {
-            if (await buyProgram(ns, program.name)) {
-                return; // Only buy/create one at a time
-            }
-        }
-        
-        // Otherwise try to create it
         if (!isCreatingProgram(ns) && canCreateProgram(ns, program.name)) {
             await createProgram(ns, program.name);
             return; // Only create one at a time
         }
-        
-        // If not preferring buying and haven't bought yet, try to buy now
-        if (!config.programs.preferBuying && hasTorRouter(ns) && config.programs.autoBuyPrograms) {
-            if (await buyProgram(ns, program.name)) {
-                return;
+    }
+    
+    // If not preferring buying, try to buy any remaining missing programs
+    if (hasTorRouter(ns) && config.programs.autoBuyPrograms) {
+        for (const program of programs) {
+            if (!ns.fileExists(program.name, "home")) {
+                await buyProgram(ns, program.name);
+                await ns.sleep(100); // Small delay between purchases
             }
         }
     }

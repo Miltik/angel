@@ -214,3 +214,13 @@ export function getBestTarget(ns, servers) {
     
     return bestTarget || servers[0];
 }
+
+/**
+ * Get list of servers connected to a target
+ * @param {NS} ns
+ * @param {string} server - Server to scan from
+ * @returns {string[]} List of connected servers
+ */
+export function getScan(ns, server) {
+    return ns.scan(server);
+}

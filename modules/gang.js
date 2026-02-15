@@ -65,10 +65,6 @@ function assignTasks(ns) {
 
     // Build task pool
     const taskPool = getTaskPool(availableTasks, info, phase);
-    
-    // Debug: Print task pool
-    ns.print(`[Gang] DEBUG: Available tasks (${availableTasks.length}): ${availableTasks.join(", ")}`);
-    ns.print(`[Gang] DEBUG: Task pool -> TW:${taskPool.territoryWarfare}, Money:${taskPool.moneyTask}, Wanted:${taskPool.wantedReduction}, Train:${taskPool.trainCombat}`);
 
     // Assign members with role-based specialization
     const assigned = {};
@@ -82,15 +78,11 @@ function assignTasks(ns) {
 
         // Get task for this role
         const task = taskPool[role];
-        if (!task) {
-            ns.print(`[Gang] DEBUG: No task for role="${role}", available=${Object.keys(taskPool).map(k => `${k}:${taskPool[k]}`).join(", ")}`);
-            continue;
-        }
+        if (!task) continue;
 
         // Assign task
         const ok = ns.gang.setMemberTask(member.name, task);
         if (!ok) {
-            ns.print(`[Gang] DEBUG: setMemberTask failed for ${member.name}, task="${task}", trying fallback...`);
             // Fallback to any available task
             for (const fallback of availableTasks) {
                 if (ns.gang.setMemberTask(member.name, fallback)) {
@@ -103,15 +95,13 @@ function assignTasks(ns) {
         }
     }
     
-    // Verify actual assignments by reading back
-    ns.print(`[Gang] DEBUG: Verifying actual member assignments...`);
+    // Verify actual assignments by reading back from game state
     const actualAssignments = {};
     for (const name of members) {
         const m = ns.gang.getMemberInformation(name);
         const actualTask = m.task || "Unassigned";
         actualAssignments[actualTask] = (actualAssignments[actualTask] || 0) + 1;
     }
-    ns.print(`[Gang] DEBUG: Actual tasks in game: ${JSON.stringify(actualAssignments)}`);
 
     return { info, members, tasks: availableTasks, assigned: actualAssignments, phase, roleAssignments };
 }
@@ -275,11 +265,6 @@ function printStatus(ns, summary) {
     ns.print(`[Gang] Members: ${count} | Type: ${info.isHacking ? "🖥 Hacking" : "⚔ Combat"}`);
     ns.print(`[Gang] Wanted: ${info.wantedPenalty.toFixed(3)} | Respect: ${Math.floor(info.respect)} | Power: ${info.power.toFixed(2)}`);
     ns.print(`[Gang] Money Gain: $${Math.floor(info.moneyGainRate * 5)}/s | Territory: ${info.territory.toFixed(1)}%`);
-    
-    // Available tasks
-    if (summary.tasks && summary.tasks.length > 0) {
-        ns.print(`[Gang] Available: ${summary.tasks.join(", ")}`);
-    }
     
     // Role distribution - map taskPool keys to display names
     const roleNames = {

@@ -64,6 +64,10 @@ function assignTasks(ns) {
 
     // Build task pool
     const taskPool = getTaskPool(availableTasks, info, phase);
+    
+    // Debug: Print task pool
+    ns.print(`[Gang] DEBUG: Available tasks: ${availableTasks.join(", ")}`);
+    ns.print(`[Gang] DEBUG: Task pool: territoryWarfare=${taskPool.territoryWarfare}, moneyTask=${taskPool.moneyTask}, wantedReduction=${taskPool.wantedReduction}`);
 
     // Assign members with role-based specialization
     const assigned = {};

@@ -83,7 +83,7 @@ function assignTasks(ns) {
 
     for (const member of memberData) {
         // Determine which role this member should have
-        const role = assignRole(member, memberData, info, phase, taskPool);
+        const role = assignRole(ns, member, memberData, info, phase, taskPool);
         if (!roleAssignments[role]) roleAssignments[role] = [];
         roleAssignments[role].push(member.name);
 
@@ -183,7 +183,7 @@ function getTaskPool(availableTasks, info, phase) {
  * Assign a role to a member based on their stats, gang needs, and game phase
  * Returns the taskPool key that maps to the appropriate task
  */
-function assignRole(member, allMembers, info, gangPhase, taskPool) {
+function assignRole(ns, member, allMembers, info, gangPhase, taskPool) {
     const m = member.info;
     const trainUntil = 60;
     const isHacking = info.isHacking;

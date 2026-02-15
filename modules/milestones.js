@@ -189,7 +189,15 @@ function getDaemonStatus(ns) {
                           ns.fileExists("relaySMTP.exe", "home") &&
                           ns.fileExists("HTTPWorm.exe", "home") &&
                           ns.fileExists("SQLInject.exe", "home");
-    const rooted = ns.hasRootAccess(daemonServer);
+    
+    // Try to check daemon access, handle error if daemon doesn't exist yet
+    let rooted = false;
+    try {
+        rooted = ns.hasRootAccess(daemonServer);
+    } catch (e) {
+        // Daemon not yet accessible or hostname invalid
+        rooted = false;
+    }
     
     return {
         hackLevel,

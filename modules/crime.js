@@ -53,19 +53,15 @@ export async function main(ns) {
             }
 
             // Execute activity
-            switch (activity) {
-                case "crime":
-                    await doCrime(ns, owner);
-                    break;
-                case "training":
-                    await doTraining(ns, owner);
-                    break;
-                case "faction":
-                    await doFactionWork(ns, owner);
-                    break;
-                default:
-                    releaseLock(ns, owner);
-                    await ns.sleep(30000);
+            if (activity === "crime") {
+                await doCrime(ns, owner);
+            } else if (activity === "training") {
+                await doTraining(ns, owner);
+            } else if (activity === "faction") {
+                await doFactionWork(ns, owner);
+            } else {
+                releaseLock(ns, owner);
+                await ns.sleep(30000);
             }
             
             releaseLock(ns, owner);
@@ -116,12 +112,14 @@ function chooseActivity(ns, gamePhase) {
 async function doCrime(ns, owner) {
     const crime = chooseCrime(ns);
     if (!crime) {
+        releaseLock(ns, owner);
         await ns.sleep(10000);
         return;
     }
     
     const duration = ns.singularity.commitCrime(crime, config.crime.focus);
     ns.print(`[Activity] Crime: ${crime} (${Math.round(duration / 1000)}s)`);
+    releaseLock(ns, owner);
     await ns.sleep(duration + 200);
 }
 
@@ -149,6 +147,7 @@ async function doTraining(ns, owner) {
     }
     
     if (!target) {
+        releaseLock(ns, owner);
         await ns.sleep(30000);
         return;
     }
@@ -156,24 +155,29 @@ async function doTraining(ns, owner) {
     if (config.training.autoTravel) {
         try {
             ns.singularity.travelToCity(config.training.city);
-        } catch (e) {}
+        } catch (e) {
+            // Travel failed
+        }
     }
     
     if (target.type === "hacking") {
         ns.singularity.universityCourse(config.training.university, config.training.course, config.training.focus);
-        ns.print(`[Activity] Training: Hacking`);
+        ns.print("[Activity] Training: Hacking");
     } else {
         ns.singularity.gymWorkout(config.training.gym, target.stat, config.training.focus);
         ns.print(`[Activity] Training: ${target.stat}`);
     }
+    
+    releaseLock(ns, owner);
     await ns.sleep(180000);
 }
 
 async function doFactionWork(ns, owner) {
     const player = ns.getPlayer();
-    const factions = player.factions.filter(f => f !== \"Bladeburners\");
+    const factions = player.factions.filter(f => f !== "Bladeburners");
     
     if (factions.length === 0) {
+        releaseLock(ns, owner);
         await ns.sleep(30000);
         return;
     }
@@ -181,11 +185,12 @@ async function doFactionWork(ns, owner) {
     const faction = factions[0];
     const work = ns.singularity.getCurrentWork();
     
-    if (!work || work.type !== \"FACTION\" || work.factionName !== faction) {
-        ns.singularity.workForFaction(faction, config.factions.workType || \"Hacking Contracts\");
+    if (!work || work.type !== "FACTION" || work.factionName !== faction) {
+        ns.singularity.workForFaction(faction, config.factions.workType || "Hacking Contracts");
         ns.print(`[Activity] Faction: Working for ${faction}`);
     }
     
+    releaseLock(ns, owner);
     await ns.sleep(180000);
 }
 
@@ -218,8 +223,8 @@ function hasSingularityAccess(ns) {
 
 function getLock(ns) {
     const raw = ns.peek(PORTS.ACTIVITY);
-    if (raw === \"NULL PORT DATA\") return null;
-    const parts = String(raw).split(\"|\");
+    if (raw === "NULL PORT DATA") return null;
+    const parts = String(raw).split("|");
     if (parts.length < 2) return null;
     const expires = Number(parts[1]);
     if (Number.isNaN(expires)) return null;
@@ -243,4 +248,3 @@ function releaseLock(ns, owner) {
         ns.clearPort(PORTS.ACTIVITY);
     }
 }
-

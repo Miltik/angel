@@ -1,8 +1,17 @@
 /**
- * Crime automation module
+ * Crime automation module (phase-aware: active phases 0-2, skip 3+)
  * @param {NS} ns
  */
 import { config, PORTS } from "/angel/config.js";
+
+const PHASE_PORT = 7; // Read game phase from orchestrator
+
+/**
+ * Read current game phase from orchestrator
+ */
+function readGamePhase(ns) {
+    return parseInt(ns.peek(PHASE_PORT)) || 0;
+}
 
 export async function main(ns) {
     ns.disableLog("ALL");
@@ -76,6 +85,11 @@ function hasSingularityAccess(ns) {
 }
 
 function shouldRunCrime(ns) {
+    // Crime is only active in early phases (0-2)
+    // Phases 3-4 focus on hacking/servers/gang instead
+    const gamePhase = readGamePhase(ns);
+    if (gamePhase >= 3) return false;
+    
     const money = ns.getServerMoneyAvailable("home");
     return money < config.crime.onlyWhenMoneyBelow;
 }

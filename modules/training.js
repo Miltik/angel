@@ -1,8 +1,17 @@
 /**
- * Training automation module (university + gym)
+ * Training automation module (phase-aware: active phases 0-2, skip 3+)
  * @param {NS} ns
  */
 import { config, PORTS } from "/angel/config.js";
+
+const PHASE_PORT = 7; // Read game phase from orchestrator
+
+/**
+ * Read current game phase from orchestrator
+ */
+function readGamePhase(ns) {
+    return parseInt(ns.peek(PHASE_PORT)) || 0;
+}
 
 export async function main(ns) {
     ns.disableLog("ALL");
@@ -92,6 +101,11 @@ function hasSingularityAccess(ns) {
 }
 
 function getTrainingTarget(ns) {
+    // Training is only active in early phases (0-2)
+    // Phases 3-4 focus on hacking/gang/sleeves instead
+    const gamePhase = readGamePhase(ns);
+    if (gamePhase >= 3) return null;
+    
     const player = ns.getPlayer();
 
     if (player.skills.hacking < config.training.targetHacking) {

@@ -1,8 +1,17 @@
 /**
- * Company work automation module
+ * Company work automation module (phase-aware: active phases 1-2, skip 0 and 3+)
  * @param {NS} ns
  */
 import { config, PORTS } from "/angel/config.js";
+
+const PHASE_PORT = 7; // Read game phase from orchestrator
+
+/**
+ * Read current game phase from orchestrator
+ */
+function readGamePhase(ns) {
+    return parseInt(ns.peek(PHASE_PORT)) || 0;
+}
 
 export async function main(ns) {
     ns.disableLog("ALL");
@@ -28,6 +37,15 @@ export async function main(ns) {
 
             const desired = getDesiredActivity(ns);
             if (desired !== "none" && desired !== "company") {
+                releaseLock(ns, owner);
+                await ns.sleep(30000);
+                continue;
+            }
+
+            // Company work is only active in phases 1-2
+            // Skip in phase 0 (too poor) and phases 3-4 (focus on hacking)
+            const gamePhase = readGamePhase(ns);
+            if (gamePhase === 0 || gamePhase >= 3) {
                 releaseLock(ns, owner);
                 await ns.sleep(30000);
                 continue;

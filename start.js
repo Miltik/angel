@@ -45,6 +45,6 @@ export async function main(ns) {
         ns.tprint(`✓ ANGEL started (PID: ${pid})`);
         ns.tprint("");
         ns.tprint("The orchestrator is now running!");
-        ns.tprint("Use 'tail /angel/angel.js' to view status");
+        ns.tprint("Tail window will open automatically");
     }
 }

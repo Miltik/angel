@@ -14,10 +14,13 @@ import { getServerStats } from "/angel/modules/servers.js";
 
 export async function main(ns) {
     ns.disableLog("ALL");
-    ns.tail();
+    ns.clearLog();
     
     // Print banner
     printBanner(ns);
+    
+    // Open tail window
+    ns.ui.openTail();
     
     // Initialize
     await initialize(ns);
@@ -92,6 +95,7 @@ async function orchestrate(ns) {
  * @param {NS} ns
  */
 function displayStatus(ns) {
+    ns.clearLog();
     const money = ns.getServerMoneyAvailable("home");
     const player = ns.getPlayer();
     

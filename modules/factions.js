@@ -4,7 +4,7 @@ import { formatNumber, formatMoney, log } from "/angel/utils.js";
 /** @param {NS} ns */
 export async function main(ns) {
     ns.disableLog("ALL");
-    ns.tail();
+    ns.ui.openTail();
     
     // Check if we have SF4 (Singularity access)
     if (!hasSingularityAccess(ns)) {

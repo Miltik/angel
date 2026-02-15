@@ -1,50 +1,66 @@
 /**
- * Sleeve automation module (phase-aware: active phases 3-4)
+ * Sleeve automation module (phase-aware: active in phases 3-4)
+ * Delegates criminal/training work to sleeves while main character focuses on hacking
+ * 
  * @param {NS} ns
  */
 import { config } from "/angel/config.js";
+import { log } from "/angel/utils.js";
 
-const PHASE_PORT = 7; // Read game phase from orchestrator
+const PHASE_PORT = 7;
 
 /**
  * Read current game phase from orchestrator
  */
 function readGamePhase(ns) {
-    return parseInt(ns.peek(PHASE_PORT)) || 0;
+    const phasePortData = ns.peek(PHASE_PORT);
+    if (phasePortData === "NULL PORT DATA") return 0;
+    return parseInt(phasePortData) || 0;
 }
 
 export async function main(ns) {
     ns.disableLog("ALL");
     ns.ui.openTail();
-    ns.print("[Sleeves] Module started");
+    log(ns, "🧬 Sleeve module started - Phase-gated activation (P3+)", "INFO");
 
-    // Sleeves only active in phases 3-4 (late game)
+    // Wait for phase 3+ (when sleeves are needed for delegation work)
     while (true) {
         const gamePhase = readGamePhase(ns);
-        if (gamePhase < 3) {
-            ns.print("[Sleeves] Waiting for phase 3+ to enable sleeves automation");
-            await ns.sleep(60000);
-            continue;
-        }
-        break;
+        if (gamePhase >= 3) break;
+        log(ns, `🧬 Waiting for phase 3+ (currently P${gamePhase})`, "INFO");
+        await ns.sleep(60000);
     }
 
     if (!hasSleeves(ns)) {
-        ns.print("[Sleeves] No sleeves unlocked yet");
+        log(ns, "🧬 No sleeves unlocked yet - idle", "WARN");
         while (true) {
             await ns.sleep(60000);
         }
     }
 
+    log(ns, "🧬 Sleeves active - starting automation", "SUCCESS");
+
     while (true) {
         try {
-            const count = ns.sleeve.getNumSleeves();
-            for (let i = 0; i < count; i++) {
-                manageSleeve(ns, i);
+            const gamePhase = readGamePhase(ns);
+            if (gamePhase < 3) {
+                log(ns, "🧬 Phase dropped below 3 - pausing", "WARN");
+                await ns.sleep(60000);
+                continue;
             }
+
+            const count = ns.sleeve.getNumSleeves();
+            let summary = { trained: 0, working: 0, recovering: 0 };
+            
+            for (let i = 0; i < count; i++) {
+                const status = manageSleeve(ns, i, gamePhase);
+                summary[status]++;
+            }
+            
+            printStatus(ns, count, summary, gamePhase);
             await ns.sleep(30000);
         } catch (e) {
-            ns.print(`[Sleeves] Error: ${e}`);
+            log(ns, `🧬 Error: ${e}`, "ERROR");
             await ns.sleep(5000);
         }
     }
@@ -58,48 +74,58 @@ function hasSleeves(ns) {
     }
 }
 
-function manageSleeve(ns, i) {
+/**
+ * Manage a single sleeve - returns status category
+ */
+function manageSleeve(ns, i, gamePhase) {
     const info = ns.sleeve.getSleeveStats(i);
-    const mode = config.sleeves.mode;
+    const maxShock = config.sleeves.maxShock || 25;
+    const targetStats = config.sleeves.targetStats || { strength: 100, defense: 100, dexterity: 100, agility: 100 };
 
-    if (config.sleeves.recoverShock && info.shock > config.sleeves.maxShock) {
+    // Priority 1: Recover from shock
+    if (info.shock > maxShock) {
         ns.sleeve.setToShockRecovery(i);
-        ns.print(`[Sleeves] Sleeve ${i} recovering shock (${info.shock.toFixed(1)})`);
-        return;
+        return "recovering";
     }
 
-    if (mode === "crime") {
-        ns.sleeve.setToCommitCrime(i, config.sleeves.crime);
-        return;
-    }
+    // Priority 2: Check if sleeves need training or work
+    // Phase 3: Start heavy training
+    // Phase 4: Transition to money work if trained
+    const allTrained = info.strength >= targetStats.strength &&
+                       info.defense >= targetStats.defense &&
+                       info.dexterity >= targetStats.dexterity &&
+                       info.agility >= targetStats.agility;
 
-    if (mode === "faction") {
-        if (tryFactionWork(ns, i)) return;
-        ns.sleeve.setToCommitCrime(i, config.sleeves.fallbackCrime);
-        return;
-    }
-
-    if (mode === "training" || mode === "balanced") {
-        if (info.hacking < config.sleeves.targetHacking) {
-            ns.sleeve.setToUniversityCourse(i, config.sleeves.university, config.sleeves.course);
-            return;
+    if (!allTrained && gamePhase <= 3) {
+        // Phase 3 or below: prioritize training
+        if (info.hacking < (config.sleeves.targetHacking || 100)) {
+            ns.sleeve.setToUniversityCourse(i, config.sleeves.university || "Rothman University", "Algorithms");
+            return "trained";
         }
 
-        const stat = lowestCombatStat(info, config.sleeves.targetStats);
+        // Train lowest combat stat
+        const stat = lowestCombatStat(info, targetStats);
         if (stat) {
-            ns.sleeve.setToGymWorkout(i, config.sleeves.gym, stat);
-            return;
-        }
-
-        if (mode === "training") {
-            ns.sleeve.setToCommitCrime(i, config.sleeves.fallbackCrime);
-            return;
+            const gym = config.sleeves.gym || "Powerhouse Gym";
+            ns.sleeve.setToGymWorkout(i, gym, stat);
+            return "trained";
         }
     }
 
-    ns.sleeve.setToCommitCrime(i, config.sleeves.crime);
+    // Priority 3: Faction work if available
+    if (tryFactionWork(ns, i)) {
+        return "working";
+    }
+
+    // Fallback: Crime work
+    const crime = config.sleeves.fallbackCrime || "Mug someone";
+    ns.sleeve.setToCommitCrime(i, crime);
+    return "working";
 }
 
+/**
+ * Find the lowest combat stat below target
+ */
 function lowestCombatStat(info, targets) {
     const stats = [
         { name: "strength", value: info.strength, target: targets.strength },
@@ -120,14 +146,26 @@ function lowestCombatStat(info, targets) {
     return lowest ? lowest.name : null;
 }
 
+/**
+ * Try to assign faction work
+ */
 function tryFactionWork(ns, i) {
     const player = ns.getPlayer();
-    for (const faction of config.sleeves.factionPriority) {
+    const factionPriority = config.sleeves.factionPriority || ["CyberSec", "NiteSec"];
+    
+    for (const faction of factionPriority) {
         if (!player.factions.includes(faction)) continue;
-        const ok = ns.sleeve.setToFactionWork(i, faction, config.sleeves.factionWorkType);
+        const ok = ns.sleeve.setToFactionWork(i, faction, "Hacking Contracts");
         if (ok) {
             return true;
         }
     }
     return false;
+}
+
+/**
+ * Display sleeve status
+ */
+function printStatus(ns, count, summary, gamePhase) {
+    log(ns, `🧬 [P${gamePhase}] Sleeves: ${count} | Trained: ${summary.trained} | Working: ${summary.working} | Recovering: ${summary.recovering}`, "INFO");
 }

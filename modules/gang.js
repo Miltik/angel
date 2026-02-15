@@ -50,6 +50,7 @@ function assignTasks(ns) {
         return { info, members, tasks: availableTasks, assigned: {}, phase: "no_members" };
     }
     if (availableTasks.length === 0) {
+        ns.print("[Gang] WARNING: No tasks available!");
         return { info, members, tasks: availableTasks, assigned: {}, phase: "no_tasks" };
     }
 
@@ -66,8 +67,8 @@ function assignTasks(ns) {
     const taskPool = getTaskPool(availableTasks, info, phase);
     
     // Debug: Print task pool
-    ns.print(`[Gang] DEBUG: Available tasks: ${availableTasks.join(", ")}`);
-    ns.print(`[Gang] DEBUG: Task pool: territoryWarfare=${taskPool.territoryWarfare}, moneyTask=${taskPool.moneyTask}, wantedReduction=${taskPool.wantedReduction}`);
+    ns.print(`[Gang] DEBUG: Available tasks (${availableTasks.length}): ${availableTasks.join(", ")}`);
+    ns.print(`[Gang] DEBUG: Task pool -> TW:${taskPool.territoryWarfare}, Money:${taskPool.moneyTask}, Wanted:${taskPool.wantedReduction}, Train:${taskPool.trainCombat}`);
 
     // Assign members with role-based specialization
     const assigned = {};
@@ -81,11 +82,15 @@ function assignTasks(ns) {
 
         // Get task for this role
         const task = taskPool[role];
-        if (!task) continue;
+        if (!task) {
+            ns.print(`[Gang] DEBUG: No task for role="${role}", available=${Object.keys(taskPool).map(k => `${k}:${taskPool[k]}`).join(", ")}`);
+            continue;
+        }
 
         // Assign task
         const ok = ns.gang.setMemberTask(member.name, task);
         if (!ok) {
+            ns.print(`[Gang] DEBUG: setMemberTask failed for ${member.name}, task="${task}", trying fallback...`);
             // Fallback to any available task
             for (const fallback of availableTasks) {
                 if (ns.gang.setMemberTask(member.name, fallback)) {
@@ -97,8 +102,18 @@ function assignTasks(ns) {
             assigned[task] = (assigned[task] || 0) + 1;
         }
     }
+    
+    // Verify actual assignments by reading back
+    ns.print(`[Gang] DEBUG: Verifying actual member assignments...`);
+    const actualAssignments = {};
+    for (const name of members) {
+        const m = ns.gang.getMemberInformation(name);
+        const actualTask = m.task || "Unassigned";
+        actualAssignments[actualTask] = (actualAssignments[actualTask] || 0) + 1;
+    }
+    ns.print(`[Gang] DEBUG: Actual tasks in game: ${JSON.stringify(actualAssignments)}`);
 
-    return { info, members, tasks: availableTasks, assigned, phase, roleAssignments };
+    return { info, members, tasks: availableTasks, assigned: actualAssignments, phase, roleAssignments };
 }
 
 /**

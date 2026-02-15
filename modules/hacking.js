@@ -120,7 +120,7 @@ async function executeHackCycle(ns, target) {
  * @param {string} target
  */
 async function distributeHack(ns, target) {
-    await distributeOperation(ns, target, SCRIPTS.hack);
+    await distributeOperation(ns, target, "hack");
 }
 
 /**
@@ -129,7 +129,7 @@ async function distributeHack(ns, target) {
  * @param {string} target
  */
 async function distributeGrow(ns, target) {
-    await distributeOperation(ns, target, SCRIPTS.grow);
+    await distributeOperation(ns, target, "grow");
 }
 
 /**
@@ -138,7 +138,7 @@ async function distributeGrow(ns, target) {
  * @param {string} target
  */
 async function distributeWeaken(ns, target) {
-    await distributeOperation(ns, target, SCRIPTS.weaken);
+    await distributeOperation(ns, target, "weaken");
 }
 
 /**

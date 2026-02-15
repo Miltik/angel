@@ -146,7 +146,7 @@ export const config = {
         enablePrograms: true,
         enableCrime: true,
         enableTraining: true,
-        enableCompany: true,
+        enableCompany: false,  // Integrated into crime.js unified activity selector
         enableSleeves: true,
         enableStocks: true,
         enableGang: true,

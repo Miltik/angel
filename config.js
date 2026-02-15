@@ -16,6 +16,11 @@ export const config = {
         enableCrime: true,
         enableTraining: true,
         enableCompany: true,
+        enableSleeves: true,
+        enableStocks: true,
+        enableGang: true,
+        enableBladeburner: true,
+        enableHacknet: true,
     },
 
     // Hacking settings
@@ -140,6 +145,69 @@ export const config = {
         ],
     },
 
+    // Sleeve automation settings (if sleeves unlocked)
+    sleeves: {
+        mode: "balanced", // balanced | training | crime | faction
+        crime: "Mug someone",
+        fallbackCrime: "Shoplift",
+        maxShock: 75,
+        recoverShock: true,
+        targetHacking: 800,
+        targetStats: {
+            strength: 50,
+            defense: 50,
+            dexterity: 50,
+            agility: 50,
+        },
+        university: "Rothman University",
+        course: "Algorithms",
+        gym: "Powerhouse Gym",
+        factionPriority: [
+            "CyberSec",
+            "NiteSec",
+            "The Black Hand",
+            "BitRunners",
+        ],
+        factionWorkType: "Hacking",
+    },
+
+    // Stock market automation settings (TIX + 4S)
+    stocks: {
+        enableShorts: false,
+        minForecast: 0.6,
+        sellForecast: 0.5,
+        maxPositionRatio: 0.25,
+        maxSpendRatio: 0.2,
+        reserveMoney: 1000000000,
+    },
+
+    // Gang automation settings
+    gang: {
+        trainUntil: 60,
+        minWantedPenalty: 0.9,
+        moneyTask: "Human Trafficking",
+        wantedTask: "Vigilante Justice",
+    },
+
+    // Bladeburner automation settings
+    bladeburner: {
+        minSuccessChance: 0.6,
+        staminaThreshold: 0.5,
+        loopDelay: 60000,
+        contracts: [
+            "Tracking",
+            "Bounty Hunter",
+            "Retirement",
+        ],
+    },
+
+    // Hacknet automation settings
+    hacknet: {
+        maxSpendRatio: 0.15,
+        reserveMoney: 500000000,
+        allowCache: false,
+    },
+
     // Early game targets (sorted by difficulty)
     targets: {
         earlyGame: [
@@ -185,6 +253,11 @@ export const SCRIPTS = {
     crime: "/angel/modules/crime.js",
     training: "/angel/modules/training.js",
     company: "/angel/modules/company.js",
+    sleeves: "/angel/modules/sleeves.js",
+    stocks: "/angel/modules/stocks.js",
+    gang: "/angel/modules/gang.js",
+    bladeburner: "/angel/modules/bladeburner.js",
+    hacknet: "/angel/modules/hacknet.js",
     
     // Workers (actual hacking scripts)
     hack: "/angel/workers/hack.js",

@@ -45,6 +45,11 @@ export async function main(ns) {
         "modules/crime.js",
         "modules/training.js",
         "modules/company.js",
+        "modules/sleeves.js",
+        "modules/stocks.js",
+        "modules/gang.js",
+        "modules/bladeburner.js",
+        "modules/hacknet.js",
         
         // Workers
         "workers/hack.js",

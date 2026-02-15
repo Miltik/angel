@@ -174,6 +174,36 @@ async function ensureModulesRunning(ns) {
         await ensureModuleRunning(ns, SCRIPTS.crime, "Crime");
         await ns.sleep(1500);
     }
+
+    // Hacknet module
+    if (config.orchestrator.enableHacknet) {
+        await ensureModuleRunning(ns, SCRIPTS.hacknet, "Hacknet");
+        await ns.sleep(1500);
+    }
+
+    // Stocks module
+    if (config.orchestrator.enableStocks) {
+        await ensureModuleRunning(ns, SCRIPTS.stocks, "Stocks");
+        await ns.sleep(1500);
+    }
+
+    // Gang module
+    if (config.orchestrator.enableGang) {
+        await ensureModuleRunning(ns, SCRIPTS.gang, "Gang");
+        await ns.sleep(1500);
+    }
+
+    // Bladeburner module
+    if (config.orchestrator.enableBladeburner) {
+        await ensureModuleRunning(ns, SCRIPTS.bladeburner, "Bladeburner");
+        await ns.sleep(1500);
+    }
+
+    // Sleeves module
+    if (config.orchestrator.enableSleeves) {
+        await ensureModuleRunning(ns, SCRIPTS.sleeves, "Sleeves");
+        await ns.sleep(1500);
+    }
     
     // Hacking module - start last as it consumes most RAM
     if (config.orchestrator.enableHacking) {
@@ -230,6 +260,15 @@ export function stopAll(ns) {
         SCRIPTS.serverMgmt,
         SCRIPTS.factions,
         SCRIPTS.augments,
+        SCRIPTS.programs,
+        SCRIPTS.crime,
+        SCRIPTS.training,
+        SCRIPTS.company,
+        SCRIPTS.hacknet,
+        SCRIPTS.stocks,
+        SCRIPTS.gang,
+        SCRIPTS.bladeburner,
+        SCRIPTS.sleeves,
     ];
     
     for (const module of modules) {
@@ -258,6 +297,15 @@ export function getSystemHealth(ns) {
         { name: "Servers", script: SCRIPTS.serverMgmt, enabled: config.orchestrator.enableServerMgmt },
         { name: "Factions", script: SCRIPTS.factions, enabled: config.orchestrator.enableFactions },
         { name: "Augments", script: SCRIPTS.augments, enabled: config.orchestrator.enableAugments },
+        { name: "Programs", script: SCRIPTS.programs, enabled: config.orchestrator.enablePrograms },
+        { name: "Crime", script: SCRIPTS.crime, enabled: config.orchestrator.enableCrime },
+        { name: "Training", script: SCRIPTS.training, enabled: config.orchestrator.enableTraining },
+        { name: "Company", script: SCRIPTS.company, enabled: config.orchestrator.enableCompany },
+        { name: "Hacknet", script: SCRIPTS.hacknet, enabled: config.orchestrator.enableHacknet },
+        { name: "Stocks", script: SCRIPTS.stocks, enabled: config.orchestrator.enableStocks },
+        { name: "Gang", script: SCRIPTS.gang, enabled: config.orchestrator.enableGang },
+        { name: "Bladeburner", script: SCRIPTS.bladeburner, enabled: config.orchestrator.enableBladeburner },
+        { name: "Sleeves", script: SCRIPTS.sleeves, enabled: config.orchestrator.enableSleeves },
     ];
     
     const health = {

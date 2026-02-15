@@ -51,7 +51,7 @@ export const config = {
 
     // Augmentation settings (for SF4)
     augmentations: {
-        autoBuyAugments: false,        // Don't auto-buy by default (expensive!)
+        autoBuyAugments: true,         // Auto-buy augments when affordable
         preBuyAugments: true,          // Queue augments before reset
         reserveMoneyForAugments: true,
         augmentPriority: [

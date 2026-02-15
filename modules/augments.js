@@ -1,7 +1,3 @@
-import { config } from "/angel/config.js";
-import { formatMoney, log } from "/angel/utils.js";
-import { getAvailableAugments, getPriorityAugments } from "/angel/modules/factions.js";
-
 /** @param {NS} ns */
 export async function main(ns) {
     ns.disableLog("ALL");
@@ -9,21 +5,21 @@ export async function main(ns) {
     
     // Check if we have SF4 (Singularity access)
     if (!hasSingularityAccess(ns)) {
-        log(ns, "Singularity functions not available (need SF4)", "WARN");
-        log(ns, "Augmentation module will remain idle until SF4 is obtained", "INFO");
+        ns.print("Singularity functions not available (need SF4)");
+        ns.print("Augmentation module will remain idle until SF4 is obtained");
         // Keep running but do nothing
         while (true) {
             await ns.sleep(60000);
         }
     }
     
-    log(ns, "Augmentation module started", "INFO");
+    ns.print("Augmentation module started");
     
     while (true) {
         try {
             await augmentLoop(ns);
         } catch (e) {
-            log(ns, `Augmentation management error: ${e}`, "ERROR");
+            ns.print(`Augmentation management error: ${e}`);
         }
         await ns.sleep(60000); // Check every minute
     }
@@ -44,38 +40,98 @@ function hasSingularityAccess(ns) {
 }
 
 /**
+ * Inline format money (remove imports)
+ * @param {number} amount
+ * @returns {string}
+ */
+function formatMoney(amount) {
+    if (amount >= 1e12) return `$${(amount / 1e12).toFixed(2)}t`;
+    if (amount >= 1e9) return `$${(amount / 1e9).toFixed(2)}b`;
+    if (amount >= 1e6) return `$${(amount / 1e6).toFixed(2)}m`;
+    if (amount >= 1e3) return `$${(amount / 1e3).toFixed(2)}k`;
+    return `$${amount.toFixed(0)}`;
+}
+
+/**
+ * Get available augmentations from joined factions
+ * @param {NS} ns
+ * @returns {Array}
+ */
+function getAvailableAugmentsInline(ns) {
+    if (!hasSingularityAccess(ns)) return [];
+    
+    const player = ns.getPlayer();
+    const owned = ns.singularity.getOwnedAugmentations(true);
+    const available = [];
+    
+    for (const faction of player.factions) {
+        const augments = ns.singularity.getAugmentationsFromFaction(faction);
+        const factionRep = ns.singularity.getFactionRep(faction);
+        
+        for (const aug of augments) {
+            if (owned.includes(aug)) continue;
+            
+            const repReq = ns.singularity.getAugmentationRepReq(aug);
+            const price = ns.singularity.getAugmentationPrice(aug);
+            
+            if (factionRep >= repReq) {
+                available.push({
+                    name: aug,
+                    faction,
+                    price,
+                    repReq,
+                });
+            }
+        }
+    }
+    
+    return available;
+}
+
+/**
+ * Get priority augmentations (those in augmentPriority config)
+ * @param {NS} ns
+ * @param {Array} available
+ * @returns {Array}
+ */
+function getPriorityAugmentsInline(ns, available) {
+    // Priority list hardcoded (removing config dependency)
+    const priorities = [
+        "BitWire",
+        "Artificial Bio-neural Network Implant",
+        "Artificial Synaptic Potentiation",
+    ];
+    
+    return available.filter(aug => priorities.includes(aug.name));
+}
+
+/**
  * Main augmentation loop
  * @param {NS} ns
  */
 async function augmentLoop(ns) {
     const money = ns.getServerMoneyAvailable("home");
-    const available = getAvailableAugments(ns);
-    const priority = getPriorityAugments(ns);
+    const available = getAvailableAugmentsInline(ns);
+    const priority = getPriorityAugmentsInline(ns, available);
     
     // Show status
     const ownedCount = ns.singularity.getOwnedAugmentations(true).length;
-    log(ns, `═══ Augmentations ═══`, "INFO");
-    log(ns, `Money: ${formatMoney(money)} | Owned: ${ownedCount}`, "INFO");
+    ns.print(`═══ Augmentations ═══`);
+    ns.print(`Money: ${formatMoney(money)} | Owned: ${ownedCount}`);
     
     if (available.length === 0) {
-        log(ns, "No augmentations available yet", "INFO");
+        ns.print(`No augmentations available yet`);
         return;
     }
     
     // Show all available augmentations
-    log(ns, `Available augments:`, "INFO");
+    ns.print(`Available augments:`);
     for (const aug of available.slice(0, 5)) {
         const affordable = money >= aug.price ? "✓" : "✗";
-        log(ns, `  ${affordable} ${aug.name} (${aug.faction}): ${formatMoney(aug.price)}`, "INFO");
+        ns.print(`  ${affordable} ${aug.name} (${aug.faction}): ${formatMoney(aug.price)}`);
     }
     if (available.length > 5) {
-        log(ns, `  ... and ${available.length - 5} more`, "INFO");
-    }
-    
-    // Only buy if enabled
-    if (!config.augmentations.autoBuyAugments) {
-        log(ns, "Autobuy disabled", "WARN");
-        return;
+        ns.print(`  ... and ${available.length - 5} more`);
     }
     
     // Try to buy priority augments first
@@ -85,7 +141,7 @@ async function augmentLoop(ns) {
             const success = ns.singularity.purchaseAugmentation(aug.faction, aug.name);
             
             if (success) {
-                log(ns, `Purchased: ${aug.name} (${aug.faction}) for ${formatMoney(aug.price)}`, "INFO");
+                ns.print(`Purchased: ${aug.name} (${aug.faction}) for ${formatMoney(aug.price)}`);
                 boughtCount++;
                 money = ns.getServerMoneyAvailable("home");
             }
@@ -95,7 +151,7 @@ async function augmentLoop(ns) {
     if (boughtCount === 0 && priority.length > 0) {
         const nextAug = priority[0];
         const needed = nextAug.price - money;
-        log(ns, `Next aug: ${nextAug.name} - Need ${formatMoney(needed)} more`, "WARN");
+        ns.print(`Next: ${nextAug.name} - Need ${formatMoney(needed)} more`);
     }
 }
 
@@ -107,7 +163,7 @@ async function augmentLoop(ns) {
 export function buyAllAffordable(ns) {
     if (!hasSingularityAccess(ns)) return 0;
     
-    const available = getAvailableAugments(ns);
+    const available = getAvailableAugmentsInline(ns);
     let purchased = 0;
     
     // Sort by price (cheapest first for now)
@@ -120,7 +176,7 @@ export function buyAllAffordable(ns) {
             const success = ns.singularity.purchaseAugmentation(aug.faction, aug.name);
             
             if (success) {
-                log(ns, `Purchased: ${aug.name} from ${aug.faction}`, "INFO");
+                ns.print(`Purchased: ${aug.name} from ${aug.faction}`);
                 purchased++;
             }
         }
@@ -137,7 +193,8 @@ export function buyAllAffordable(ns) {
 export function buyPriority(ns) {
     if (!hasSingularityAccess(ns)) return 0;
     
-    const priority = getPriorityAugments(ns);
+    const available = getAvailableAugmentsInline(ns);
+    const priority = getPriorityAugmentsInline(ns, available);
     let purchased = 0;
     
     for (const aug of priority) {
@@ -147,7 +204,7 @@ export function buyPriority(ns) {
             const success = ns.singularity.purchaseAugmentation(aug.faction, aug.name);
             
             if (success) {
-                log(ns, `Purchased priority augment: ${aug.name}`, "INFO");
+                ns.print(`Purchased priority augment: ${aug.name}`);
                 purchased++;
             }
         }
@@ -166,8 +223,8 @@ export function displayAugments(ns) {
         return;
     }
     
-    const available = getAvailableAugments(ns);
-    const priority = getPriorityAugments(ns);
+    const available = getAvailableAugmentsInline(ns);
+    const priority = getPriorityAugmentsInline(ns, available);
     
     ns.tprint("\n=== PRIORITY AUGMENTATIONS ===");
     for (const aug of priority) {
@@ -205,7 +262,7 @@ export function installAugmentations(ns) {
     if (!hasSingularityAccess(ns)) return;
     
     if (shouldInstallAugments(ns)) {
-        log(ns, "Installing augmentations and resetting...", "INFO");
+        ns.print("Installing augmentations and resetting...");
         ns.singularity.installAugmentations("/angel/angel.js");
     }
 }

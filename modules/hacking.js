@@ -1,27 +1,23 @@
-import { config, SCRIPTS } from "/angel/config.js";
-import { formatMoney, formatNumber, log, getAvailableRam, deployFiles, getBestTarget } from "/angel/utils.js";
-import { getRootedServers, getHackableServers } from "/angel/scanner.js";
-
 /** @param {NS} ns */
 export async function main(ns) {
     ns.disableLog("ALL");
     ns.ui.openTail();
     
-    log(ns, "Hacking module started", "INFO");
-    log(ns, "Waiting for other modules to initialize...", "INFO");
+    ns.print("Hacking module started");
+    ns.print("Waiting for other modules to initialize...");
     
     // Wait 5 seconds to let other modules start up first
     await ns.sleep(5000);
     
-    log(ns, "Beginning hacking operations", "INFO");
+    ns.print("Beginning hacking operations");
     
     while (true) {
         try {
             await hackingLoop(ns);
         } catch (e) {
-            log(ns, `Hacking loop error: ${e}`, "ERROR");
+            ns.print(`Hacking loop error: ${e}`);
         }
-        await ns.sleep(config.hacking.batchDelay);
+        await ns.sleep(200); // batchDelay
     }
 }
 
@@ -31,17 +27,17 @@ export async function main(ns) {
  */
 async function hackingLoop(ns) {
     // Get best target
-    const targets = getHackableServers(ns);
+    const targets = getHackableServersInline(ns);
     if (targets.length === 0) {
-        log(ns, "No hackable targets found", "WARN");
+        ns.print("No hackable targets found");
         await ns.sleep(5000);
         return;
     }
     
-    const target = getBestTarget(ns, targets);
+    const target = getBestTargetInline(ns, targets);
     const targetInfo = analyzeTarget(ns, target);
     
-    log(ns, `Target: ${target} | Money: ${formatMoney(targetInfo.currentMoney)}/${formatMoney(targetInfo.maxMoney)} | Security: ${targetInfo.currentSecurity.toFixed(2)}/${targetInfo.minSecurity}`, "INFO");
+    ns.print(`Target: ${target} | Money: ${formatMoneyInline(targetInfo.currentMoney)}/${formatMoneyInline(targetInfo.maxMoney)} | Security: ${targetInfo.currentSecurity.toFixed(2)}/${targetInfo.minSecurity}`);
     
     // Prepare target (weaken to min security, grow to max money)
     if (!isTargetPrepped(ns, target)) {
@@ -78,8 +74,8 @@ function analyzeTarget(ns, target) {
  */
 function isTargetPrepped(ns, target) {
     const info = analyzeTarget(ns, target);
-    const securityOk = info.currentSecurity <= info.minSecurity + config.hacking.targetSecurityThreshold;
-    const moneyOk = info.currentMoney >= info.maxMoney * config.hacking.targetMoneyThreshold;
+    const securityOk = info.currentSecurity <= info.minSecurity + 5; // targetSecurityThreshold
+    const moneyOk = info.currentMoney >= info.maxMoney * 0.75; // targetMoneyThreshold
     return securityOk && moneyOk;
 }
 
@@ -89,17 +85,17 @@ function isTargetPrepped(ns, target) {
  * @param {string} target
  */
 async function prepTarget(ns, target) {
-    log(ns, `Prepping target: ${target}`, "INFO");
+    ns.print(`Prepping target: ${target}`);
     
     const info = analyzeTarget(ns, target);
     
-    // Weaken if security is too high
-    if (info.currentSecurity > info.minSecurity + config.hacking.targetSecurityThreshold) {
+    // Weaken if security is too high (using 5 as threshold, from config)
+    if (info.currentSecurity > info.minSecurity + 5) {
         await distributeWeaken(ns, target);
     }
     
-    // Grow if money is too low
-    if (info.currentMoney < info.maxMoney * config.hacking.targetMoneyThreshold) {
+    // Grow if money is too low (using 0.75 as threshold, from config)
+    if (info.currentMoney < info.maxMoney * 0.75) {
         await distributeGrow(ns, target);
     }
 }
@@ -152,34 +148,57 @@ async function distributeWeaken(ns, target) {
  * @param {string} script
  */
 async function distributeOperation(ns, target, script) {
-    const servers = getRootedServers(ns);
-    const scriptRam = ns.getScriptRam(script);
+    const servers = getRootedServersInline(ns);
+    
+    // Determine script path
+    let scriptPath;
+    if (script === "hack") scriptPath = "/angel/workers/hack.js";
+    else if (script === "grow") scriptPath = "/angel/workers/grow.js";
+    else if (script === "weaken") scriptPath = "/angel/workers/weaken.js";
+    else scriptPath = script;
+    
+    const scriptRam = ns.getScriptRam(scriptPath);
     
     if (scriptRam === 0) {
-        log(ns, `Script ${script} not found`, "ERROR");
+        ns.print(`Script ${scriptPath} not found`);
+        return;
+    }
+    
+    // Check if we have enough total available RAM (leave 30% buffer for other modules)
+    const totalAvailable = getTotalAvailableRamInline(ns);
+    const usageLimit = totalAvailable * 0.60; // Only use 60% of total available
+    
+    if (usageLimit < scriptRam) {
+        ns.print(`Not enough available RAM for operation (need ${scriptRam.toFixed(2)}GB, limit is ${usageLimit.toFixed(2)}GB)`);
         return;
     }
     
     let totalThreads = 0;
+    let usedRam = 0;
     
     for (const server of servers) {
         // Deploy script to server
-        await deployFiles(ns, [script], server);
+        try {
+            await ns.scp(scriptPath, server, "home");
+        } catch (e) {
+            ns.print(`Failed to deploy to ${server}: ${e}`);
+            continue;
+        }
         
-        // Calculate available RAM (reserve some on home)
-        const reserved = server === "home" ? config.hacking.reservedHomeRam : 0;
-        const availableRam = getAvailableRam(ns, server, reserved);
+        // Calculate available RAM (reserve 20GB on home)
+        const reserved = server === "home" ? 20 : 0; // reservedHomeRam
+        const availableRam = getAvailableRamInline(ns, server, reserved);
         const threads = Math.floor(availableRam / scriptRam);
         
-        if (threads > 0) {
-            ns.exec(script, server, threads, target);
+        if (threads > 0 && usedRam + (threads * scriptRam) <= usageLimit) {
+            ns.exec(scriptPath, server, threads, target);
             totalThreads += threads;
+            usedRam += threads * scriptRam;
         }
     }
     
     if (totalThreads > 0) {
-        const operation = script.split("/").pop().replace(".js", "");
-        log(ns, `Launched ${operation} on ${target} with ${totalThreads} threads`, "INFO");
+        ns.print(`Launched ${script} on ${target} with ${totalThreads} threads (${usedRam.toFixed(2)}GB)`);
     }
 }
 
@@ -189,13 +208,132 @@ async function distributeOperation(ns, target, script) {
  * @returns {number}
  */
 export function getTotalAvailableRam(ns) {
-    const servers = getRootedServers(ns);
+    const servers = getRootedServersInline(ns);
     let total = 0;
     
     for (const server of servers) {
-        const reserved = server === "home" ? config.hacking.reservedHomeRam : 0;
-        total += getAvailableRam(ns, server, reserved);
+        const reserved = server === "home" ? 20 : 0; // reservedHomeRam
+        total += getAvailableRamInline(ns, server, reserved);
     }
     
     return total;
+}
+
+// ========================================
+// INLINE HELPER FUNCTIONS (no imports)
+// ========================================
+
+/**
+ * Format money with $ sign (inline, no imports)
+ */
+function formatMoneyInline(money) {
+    if (money >= 1e12) return `$${(money / 1e12).toFixed(2)}t`;
+    if (money >= 1e9) return `$${(money / 1e9).toFixed(2)}b`;
+    if (money >= 1e6) return `$${(money / 1e6).toFixed(2)}m`;
+    if (money >= 1e3) return `$${(money / 1e3).toFixed(2)}k`;
+    return `$${money.toFixed(0)}`;
+}
+
+/**
+ * Get total RAM available across all servers (inline)
+ */
+function getTotalAvailableRamInline(ns) {
+    const servers = getRootedServersInline(ns);
+    let total = 0;
+    
+    for (const server of servers) {
+        const reserved = server === "home" ? 20 : 0;
+        total += getAvailableRamInline(ns, server, reserved);
+    }
+    
+    return total;
+}
+
+/**
+ * Get available RAM on a server (inline, no imports)
+ */
+function getAvailableRamInline(ns, server, reserved = 0) {
+    const maxRam = ns.getServerMaxRam(server);
+    const usedRam = ns.getServerUsedRam(server);
+    const available = maxRam - usedRam - reserved;
+    return Math.max(0, available);
+}
+
+/**
+ * Recursively scan the entire network (inline, no imports)
+ */
+function scanAllInline(ns, server = "home", visited = new Set()) {
+    visited.add(server);
+    
+    const neighbors = ns.scan(server);
+    for (const neighbor of neighbors) {
+        if (!visited.has(neighbor)) {
+            scanAllInline(ns, neighbor, visited);
+        }
+    }
+    
+    return Array.from(visited);
+}
+
+/**
+ * Get all servers we have root access to (inline)
+ */
+function getRootedServersInline(ns) {
+    const allServers = scanAllInline(ns);
+    return allServers.filter(server => ns.hasRootAccess(server));
+}
+
+/**
+ * Get all servers with money (potential hack targets) (inline)
+ */
+function getMoneyServersInline(ns) {
+    const allServers = scanAllInline(ns);
+    return allServers.filter(server => {
+        return ns.getServerMaxMoney(server) > 0 && 
+               ns.hasRootAccess(server);
+    });
+}
+
+/**
+ * Get hackable servers (rooted, has money, within our level) (inline)
+ */
+function getHackableServersInline(ns) {
+    const player = ns.getPlayer();
+    const moneyServers = getMoneyServersInline(ns);
+    
+    return moneyServers.filter(server => {
+        return ns.getServerRequiredHackingLevel(server) <= player.skills.hacking;
+    });
+}
+
+/**
+ * Get best target server based on current hacking level (inline)
+ */
+function getBestTargetInline(ns, servers) {
+    const player = ns.getPlayer();
+    
+    let bestTarget = null;
+    let bestScore = 0;
+    
+    for (const server of servers) {
+        // Skip servers we can't hack
+        if (ns.getServerRequiredHackingLevel(server) > player.skills.hacking) {
+            continue;
+        }
+        
+        // Skip servers with no money
+        const maxMoney = ns.getServerMaxMoney(server);
+        if (maxMoney === 0) continue;
+        
+        // Calculate simple score (money / security)
+        const minSecurity = ns.getServerMinSecurityLevel(server);
+        const score = maxMoney / minSecurity;
+        
+        if (score > bestScore) {
+            bestScore = score;
+            bestTarget = server;
+        }
+    }
+    
+    return bestTarget || servers[0];
 }

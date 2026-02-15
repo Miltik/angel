@@ -1,6 +1,3 @@
-import { config } from "/angel/config.js";
-import { formatMoney, log } from "/angel/utils.js";
-
 /** @param {NS} ns */
 export async function main(ns) {
     ns.disableLog("ALL");
@@ -19,11 +16,8 @@ export async function main(ns) {
         loopCount++;
         try {
             // Ensure we're always at home
-            try {
-                ns.singularity.connect("home");
-            } catch (e) {
-                // Ignored
-            }
+            const homeConn = await connectToHome(ns);
+            if (!homeConn) ns.print("[Programs] WARNING: Failed to connect to home!");
             
             ns.print(`[Programs] Loop ${loopCount}`);
             
@@ -42,16 +36,31 @@ export async function main(ns) {
             
         } catch (e) {
             ns.print(`[Programs] Error: ${e}`);
+            await connectToHome(ns);
         }
         
         // Always return home before sleeping
-        try {
-            ns.singularity.connect("home");
-        } catch (e) {
-            // Ignore
-        }
+        await connectToHome(ns);
         
         await ns.sleep(30000);
+    }
+}
+
+// Helper to safely connect to home with verification
+async function connectToHome(ns) {
+    try {
+        ns.singularity.connect("home");
+        await ns.sleep(50);
+        // Verify we actually connected to home
+        const current = ns.singularity.getCurrentServer ? ns.singularity.getCurrentServer() : "home";
+        if (current !== "home") {
+            ns.print(`[Programs] Connection failed! Still at: ${current}`);
+            return false;
+        }
+        return true;
+    } catch (e) {
+        ns.print(`[Programs] Connect home error: ${e}`);
+        return false;
     }
 }
 
@@ -59,8 +68,8 @@ async function phaseBuyPrograms(ns) {
     ns.print("[Programs] Phase: Buying programs");
     
     try {
-        // Buy TOR if needed
-        if (!hasTor(ns) && config.programs.autoBuyTor) {
+        // Buy TOR if needed (autoBuyTor default: true)
+        if (!hasTor(ns)) {
             const money = ns.getServerMoneyAvailable("home");
             if (money >= 200000) {
                 try {
@@ -76,8 +85,8 @@ async function phaseBuyPrograms(ns) {
             }
         }
         
-        // Buy programs
-        if (config.programs.autoBuyPrograms && hasTor(ns) && config.programs.preferBuying) {
+        // Buy programs (autoBuyPrograms default: true, preferBuying default: true)
+        if (hasTor(ns)) {
             const programs = ["BruteSSH.exe", "FTPCrack.exe", "relaySMTP.exe", "HTTPWorm.exe", "SQLInject.exe"];
             
             for (const prog of programs) {
@@ -108,7 +117,7 @@ async function phaseBuyPrograms(ns) {
             return true; // All programs done
         }
         
-        return true; // Programs disabled or complete
+        return false; // Still need TOR
         
     } catch (e) {
         ns.print(`[Programs] Phase error: ${e}`);
@@ -117,10 +126,7 @@ async function phaseBuyPrograms(ns) {
 }
 
 async function phaseBackdoors(ns) {
-    if (!config.programs.autoBackdoor) {
-        return;
-    }
-    
+    // autoBackdoor default: true
     ns.print("[Programs] Phase: Installing backdoors");
     
     try {
@@ -166,17 +172,12 @@ async function phaseBackdoors(ns) {
                 ns.print(`[Programs] ✓ Backdoored ${target.name}`);
                 
                 // Return home before returning
-                ns.singularity.connect("home");
-                await ns.sleep(100);
+                await connectToHome(ns);
                 
                 return; // Do one per cycle
             } catch (e) {
                 ns.print(`[Programs] Error on ${target.name}: ${e}`);
-                try {
-                    ns.singularity.connect("home");
-                } catch (e2) {
-                    // Ignore
-                }
+                await connectToHome(ns);
             }
         }
     } catch (e) {

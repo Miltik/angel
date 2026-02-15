@@ -50,13 +50,18 @@ function assignTasks(ns) {
         return { info, members, tasks, assigned: {} };
     }
 
-    const moneyTask = tasks.includes(config.gang.moneyTask) ? config.gang.moneyTask : tasks[0];
-    const wantedTask = tasks.includes(config.gang.wantedTask) ? config.gang.wantedTask : tasks[0];
-    const trainTask = info.isHacking && tasks.includes("Train Hacking")
-        ? "Train Hacking"
-        : tasks.includes("Train Combat")
-            ? "Train Combat"
-            : tasks[0];
+    const moneyTask = pickTask(tasks, info.isHacking
+        ? [config.gang.moneyTask, "Money Laundering", "Cyberterrorism", "Fraud & Counterfeiting", "Identity Theft", "Phishing"]
+        : [config.gang.moneyTask, "Human Trafficking", "Armed Robbery", "Strongarm Civilians", "Mug People"]
+    );
+    const wantedTask = pickTask(tasks, info.isHacking
+        ? [config.gang.wantedTask, "Ethical Hacking", "Vigilante Justice"]
+        : [config.gang.wantedTask, "Vigilante Justice", "Terrorism"]
+    );
+    const trainTask = pickTask(tasks, info.isHacking
+        ? ["Train Hacking", "Train Combat"]
+        : ["Train Combat", "Train Hacking"]
+    );
 
     const needsVigilante = info.wantedPenalty < config.gang.minWantedPenalty;
 
@@ -78,12 +83,17 @@ function assignTasks(ns) {
             task = wantedTask;
         }
 
-        const ok = ns.gang.setMemberTask(name, task);
+        let ok = ns.gang.setMemberTask(name, task);
+        if (!ok && tasks.length > 0) {
+            ok = ns.gang.setMemberTask(name, tasks[0]);
+        }
+
+        const updated = ns.gang.getMemberInformation(name);
+        const actualTask = updated.task || "Unassigned";
         if (!ok) {
             ns.print(`[Gang] Failed to assign ${name} to ${task}`);
-        } else {
-            assigned[task] = (assigned[task] || 0) + 1;
         }
+        assigned[actualTask] = (assigned[actualTask] || 0) + 1;
     }
 
     return { info, members, tasks, assigned };
@@ -106,4 +116,11 @@ function printStatus(ns, summary) {
     } else {
         ns.print("[Gang] Tasks: none assigned");
     }
+}
+
+function pickTask(available, candidates) {
+    for (const name of candidates) {
+        if (available.includes(name)) return name;
+    }
+    return available[0];
 }

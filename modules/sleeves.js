@@ -1,13 +1,33 @@
 /**
- * Sleeve automation module
+ * Sleeve automation module (phase-aware: active phases 3-4)
  * @param {NS} ns
  */
 import { config } from "/angel/config.js";
+
+const PHASE_PORT = 7; // Read game phase from orchestrator
+
+/**
+ * Read current game phase from orchestrator
+ */
+function readGamePhase(ns) {
+    return parseInt(ns.peek(PHASE_PORT)) || 0;
+}
 
 export async function main(ns) {
     ns.disableLog("ALL");
     ns.ui.openTail();
     ns.print("[Sleeves] Module started");
+
+    // Sleeves only active in phases 3-4 (late game)
+    while (true) {
+        const gamePhase = readGamePhase(ns);
+        if (gamePhase < 3) {
+            ns.print("[Sleeves] Waiting for phase 3+ to enable sleeves automation");
+            await ns.sleep(60000);
+            continue;
+        }
+        break;
+    }
 
     if (!hasSleeves(ns)) {
         ns.print("[Sleeves] No sleeves unlocked yet");

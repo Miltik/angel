@@ -1,8 +1,17 @@
 /**
- * Bladeburner automation module
+ * Bladeburner automation module (phase-aware: active phase 4 only)
  * @param {NS} ns
  */
 import { config } from "/angel/config.js";
+
+const PHASE_PORT = 7; // Read game phase from orchestrator
+
+/**
+ * Read current game phase from orchestrator
+ */
+function readGamePhase(ns) {
+    return parseInt(ns.peek(PHASE_PORT)) || 0;
+}
 
 export async function main(ns) {
     ns.disableLog("ALL");
@@ -11,6 +20,14 @@ export async function main(ns) {
 
     while (true) {
         try {
+            // Bladeburner only active in phase 4 (very late game)
+            const gamePhase = readGamePhase(ns);
+            if (gamePhase < 4) {
+                ns.print("[Bladeburner] Waiting for phase 4 to enable Bladeburner");
+                await ns.sleep(60000);
+                continue;
+            }
+
             if (!ns.bladeburner.inBladeburner()) {
                 ns.print("[Bladeburner] Not in Bladeburner - idle");
                 await ns.sleep(60000);

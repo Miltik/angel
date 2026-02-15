@@ -1,8 +1,17 @@
 /**
- * Stock market automation module (TIX + 4S)
+ * Stock market automation module (phase-aware: active phases 3-4)
  * @param {NS} ns
  */
 import { config } from "/angel/config.js";
+
+const PHASE_PORT = 7; // Read game phase from orchestrator
+
+/**
+ * Read current game phase from orchestrator
+ */
+function readGamePhase(ns) {
+    return parseInt(ns.peek(PHASE_PORT)) || 0;
+}
 
 export async function main(ns) {
     ns.disableLog("ALL");
@@ -11,6 +20,14 @@ export async function main(ns) {
 
     while (true) {
         try {
+            // Stocks only active in phases 3-4 (after sufficient money accumulation)
+            const gamePhase = readGamePhase(ns);
+            if (gamePhase < 3) {
+                ns.print("[Stocks] Waiting for phase 3+ to enable stock trading");
+                await ns.sleep(60000);
+                continue;
+            }
+
             if (!hasStockAccess(ns)) {
                 ns.print("[Stocks] TIX/4S not available - idle");
                 await ns.sleep(60000);

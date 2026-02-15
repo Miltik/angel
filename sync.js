@@ -39,10 +39,9 @@ export async function main(ns) {
         // Modules
         "modules/hacking.js",
         "modules/servers.js",
-        "modules/factions.js",
         "modules/augments.js",
         "modules/programs.js",
-        "modules/crime.js",              // Unified: handles crime, training, faction, company
+        "modules/crime.js",              // Unified: activity + faction management
         "modules/training.js",
         "modules/sleeves.js",
         "modules/stocks.js",

@@ -141,7 +141,7 @@ export const config = {
         loopDelay: 1000,           // Main loop delay in ms
         enableHacking: true,
         enableServerMgmt: true,
-        enableFactions: true,
+        enableFactions: false,     // Moved into crime.js unified activity+faction module
         enableAugments: true,
         enablePrograms: true,
         enableCrime: true,

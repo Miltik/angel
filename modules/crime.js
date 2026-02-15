@@ -1,143 +1,221 @@
 /**
- * ANGEL Activity Module
+ * ANGEL Activity + Faction Module
  * Unified singularity automation: crime, training, faction, company work
- * Intelligently selects best activity for current game phase
+ * + Faction reputation management and augment tracking
+ * 
+ * Phase-aware: Intelligent activity selection (P0-2)
+ * Always-on: Faction invitations and rep tracking
+ * 
  * @param {NS} ns
  */
 import { config, PORTS } from "/angel/config.js";
+import { formatMoney, log } from "/angel/utils.js";
 
 const PHASE_PORT = 7;
+const ACTIVITY_OWNER = "activity";
+const ACTIVITY_LOCK_TTL = 180000;
 
+/**
+ * Read current game phase from orchestrator
+ */
 function readGamePhase(ns) {
-    return parseInt(ns.peek(PHASE_PORT)) || 0;
+    const phasePortData = ns.peek(PHASE_PORT);
+    if (phasePortData === "NULL PORT DATA") return 0;
+    return parseInt(phasePortData) || 0;
 }
 
 export async function main(ns) {
     ns.disableLog("ALL");
     ns.ui.openTail();
-    ns.print("[Activity] Unified activity module started (crime/training/faction/company)");
+    log(ns, "🎭 Activity + Faction module started (P0-2 activity, all-phase factions)", "INFO");
 
     if (!hasSingularityAccess(ns)) {
-        ns.print("[Activity] Singularity functions not available - need SF4");
+        log(ns, "🎭 Singularity access not available - need SF4", "WARN");
         while (true) {
             await ns.sleep(60000);
         }
     }
 
-    const owner = "activity";
+    log(ns, "🎭 Singularity access confirmed", "SUCCESS");
 
     while (true) {
         try {
             const gamePhase = readGamePhase(ns);
-            
-            // Only active in phases 0-2
-            if (gamePhase >= 3) {
+
+            // Faction management: ALWAYS ACTIVE (all phases)
+            await manageFactions(ns);
+
+            // Activity work: ONLY PHASES 0-2
+            if (gamePhase <= 2) {
+                await processActivity(ns, gamePhase);
+            } else {
+                // Phases 3+: Activity module sleeps (hacking focus)
                 await ns.sleep(30000);
-                continue;
             }
 
-            // Skip if faction work in progress (factions.js handles it)
-            const work = ns.singularity.getCurrentWork();
-            if (work && work.type === "FACTION") {
-                await ns.sleep(30000);
-                continue;
-            }
-
-            // Determine best activity for this phase
-            const activity = chooseActivity(ns, gamePhase);
-            
-            // Try to acquire lock
-            if (!claimLock(ns, owner, 180000)) {
-                await ns.sleep(10000);
-                continue;
-            }
-
-            // Execute activity
-            try {
-                if (activity === "crime") {
-                    await doCrime(ns);
-                } else if (activity === "training") {
-                    await doTraining(ns);
-                } else if (activity === "faction") {
-                    await doFactionWork(ns);
-                } else if (activity === "company") {
-                    await doCompanyWork(ns);
-                } else {
-                    await ns.sleep(30000);
-                }
-            } catch (err) {
-                ns.print(`[Activity] Error during ${activity}: ${err}`);
-                await ns.sleep(5000);
-            }
-
-            releaseLock(ns, owner);
+            await ns.sleep(5000);
         } catch (e) {
-            ns.print(`[Activity] Loop error: ${e}`);
+            log(ns, `🎭 Loop error: ${e}`, "ERROR");
             await ns.sleep(5000);
         }
     }
 }
 
+/**
+ * FACTION MANAGEMENT: Always active
+ * Tracks faction rep, handles invitations, displays status
+ */
+async function manageFactions(ns) {
+    const player = ns.getPlayer();
+    const currentFactions = player.factions;
+    const invitations = ns.singularity.checkFactionInvitations();
+
+    // Auto-join priority factions
+    if (config.factions?.autoJoinFactions && invitations.length > 0) {
+        const priorityFactions = config.factions.priorityFactions || [];
+        for (const faction of invitations) {
+            if (priorityFactions.includes(faction)) {
+                ns.singularity.joinFaction(faction);
+                log(ns, `🎭 Joined faction: ${faction}`, "SUCCESS");
+            }
+        }
+    }
+
+    // Display faction status and pending work
+    if (currentFactions.length > 0) {
+        const statusLines = [];
+        for (const faction of currentFactions) {
+            const rep = ns.singularity.getFactionRep(faction);
+            const repNeeded = getRepNeeded(ns, faction);
+            statusLines.push(`${faction}:${Math.floor(rep)}/${Math.floor(repNeeded)}`);
+        }
+        log(ns, `🎭 Factions: ${statusLines.join(" | ")}`, "DEBUG");
+    }
+
+    // Show pending invitations
+    if (invitations.length > 0) {
+        log(ns, `🎭 Pending invitations: ${invitations.join(", ")}`, "WARN");
+    }
+}
+
+/**
+ * ACTIVITY PROCESSING: Phases 0-2 only
+ * Chooses and executes best activity (crime, training, faction, company)
+ */
+async function processActivity(ns, gamePhase) {
+    // Check if already working on something
+    const currentWork = ns.singularity.getCurrentWork();
+    if (currentWork) {
+        log(ns, `🎭 [P${gamePhase}] Current: ${currentWork.type} (${currentWork.taskName || currentWork.factionName || ""})`, "DEBUG");
+        return;
+    }
+
+    // Determine best activity for this phase
+    const activity = chooseActivity(ns, gamePhase);
+
+    if (activity === "none") {
+        log(ns, `🎭 [P${gamePhase}] No activity needed`, "DEBUG");
+        return;
+    }
+
+    // Try to acquire activity lock (prevent conflicts)
+    if (!claimLock(ns, ACTIVITY_OWNER, ACTIVITY_LOCK_TTL)) {
+        return;
+    }
+
+    try {
+        log(ns, `🎭 [P${gamePhase}] Starting: ${activity}`, "INFO");
+
+        if (activity === "crime") {
+            await doCrime(ns);
+        } else if (activity === "training") {
+            await doTraining(ns);
+        } else if (activity === "faction") {
+            await doFactionWork(ns);
+        } else if (activity === "company") {
+            await doCompanyWork(ns);
+        }
+    } catch (err) {
+        log(ns, `🎭 Error during ${activity}: ${err}`, "ERROR");
+    }
+
+    releaseLock(ns, ACTIVITY_OWNER);
+}
+
+/**
+ * Choose best activity based on phase and player state
+ */
 function chooseActivity(ns, gamePhase) {
     const player = ns.getPlayer();
     const money = ns.getServerMoneyAvailable("home");
     const targets = config.training?.targetStats || { strength: 60, defense: 60, dexterity: 60, agility: 60 };
-    
-    const needsTraining = player.skills.hacking < config.training.targetHacking ||
-                         player.skills.strength < targets.strength ||
-                         player.skills.defense < targets.defense ||
-                         player.skills.dexterity < targets.dexterity ||
-                         player.skills.agility < targets.agility;
-    
+
+    const needsTraining = 
+        player.skills.hacking < (config.training?.targetHacking || 75) ||
+        player.skills.strength < targets.strength ||
+        player.skills.defense < targets.defense ||
+        player.skills.dexterity < targets.dexterity ||
+        player.skills.agility < targets.agility;
+
+    // Phase 0: Bootstrap - prioritize cash, then training
     if (gamePhase === 0) {
-        // Phase 0: Bootstrap - prioritize cash, then train
         if (money < 10000000) return "crime";
         if (needsTraining) return "training";
         return "crime";
     }
-    
+
+    // Phase 1: Early - prioritize faction, but train if needed
     if (gamePhase === 1) {
-        // Phase 1: Early - prioritize faction, training backup
         if (needsTraining) return "training";
-        if (money < config.company?.onlyWhenMoneyBelow) return "company";
+        const companyThreshold = config.company?.onlyWhenMoneyBelow || 200000000;
+        if (money < companyThreshold) return "company";
         return "faction";
     }
-    
+
+    // Phase 2: Mid - faction primary, company/training backup
     if (gamePhase === 2) {
-        // Phase 2: Mid - faction primary, company/training backup
-        const allGood = player.skills.strength >= targets.strength &&
-                       player.skills.defense >= targets.defense &&
-                       player.skills.dexterity >= targets.dexterity &&
-                       player.skills.agility >= targets.agility;
-        
-        if (!allGood) return "training";
-        if (money < config.company?.onlyWhenMoneyBelow) return "company";
+        const allTrained = 
+            player.skills.strength >= targets.strength &&
+            player.skills.defense >= targets.defense &&
+            player.skills.dexterity >= targets.dexterity &&
+            player.skills.agility >= targets.agility;
+
+        if (!allTrained) return "training";
+        const companyThreshold = config.company?.onlyWhenMoneyBelow || 200000000;
+        if (money < companyThreshold) return "company";
         return "faction";
     }
-    
+
     return "none";
 }
 
+/**
+ * Commit a crime and wait for completion
+ */
 async function doCrime(ns) {
     const crime = selectCrime(ns);
     if (!crime) {
+        log(ns, `🎭 Crime: No suitable crime found`, "WARN");
         await ns.sleep(5000);
         return;
     }
-    
+
     const stats = ns.singularity.getCrimeStats(crime);
     const duration = ns.singularity.commitCrime(crime, config.crime?.focus || "maximum");
-    ns.print(`[Activity] Crime: ${crime} for ${Math.round(duration / 1000)}s`);
+    log(ns, `🎭 Crime: ${crime} | Duration: ${(duration / 1000).toFixed(1)}s | %: ${(ns.singularity.getCrimeChance(crime) * 100).toFixed(0)}%`, "INFO");
     await ns.sleep(duration + 500);
 }
 
+/**
+ * Train stats or hacking
+ */
 async function doTraining(ns) {
     const targets = config.training?.targetStats || { strength: 60, defense: 60, dexterity: 60, agility: 60 };
     const player = ns.getPlayer();
-    
+
     // Determine training target
     let target = null;
-    if (player.skills.hacking < config.training?.targetHacking) {
+    if (player.skills.hacking < (config.training?.targetHacking || 75)) {
         target = { type: "university" };
     } else {
         const stats = [
@@ -154,115 +232,146 @@ async function doTraining(ns) {
         }
         if (lowest) target = { type: "gym", stat: lowest.name };
     }
-    
+
     if (!target) {
         await ns.sleep(30000);
         return;
     }
-    
+
     if (config.training?.autoTravel) {
         try {
             ns.singularity.travelToCity(config.training?.city || "Chongqing");
         } catch (e) {}
     }
-    
+
     if (target.type === "university") {
         ns.singularity.universityCourse(
-            config.training?.university || "Noodle Bar",
-            config.training?.course || "Data Structures",
+            config.training?.university || "Rothman University",
+            config.training?.course || "Algorithms",
             config.training?.focus || "maximum"
         );
-        ns.print("[Activity] Training: Hacking at university");
+        log(ns, `🎭 Training: Hacking at ${config.training?.university || "University"}`, "INFO");
     } else {
         ns.singularity.gymWorkout(
             config.training?.gym || "Powerhouse Gym",
             target.stat,
             config.training?.focus || "maximum"
         );
-        ns.print(`[Activity] Training: ${target.stat} at gym`);
+        log(ns, `🎭 Training: ${target.stat} at gym`, "INFO");
     }
-    
+
     await ns.sleep(180000);
 }
 
+/**
+ * Work for a faction
+ */
 async function doFactionWork(ns) {
     const player = ns.getPlayer();
     const factions = player.factions.filter(f => f !== "Bladeburners");
-    
-    if (factions.length === 0) {
-        await ns.sleep(30000);
-        return;
-    }
-    
-    const faction = factions[0];
-    const work = ns.singularity.getCurrentWork();
-    
-    if (!work || work.type !== "FACTION" || work.factionName !== faction) {
-        const workType = config.factions?.workType || "Hacking Contracts";
-        ns.singularity.workForFaction(faction, workType);
-        ns.print(`[Activity] Faction: ${faction} (${workType})`);
-    }
-    
-    await ns.sleep(180000);
-}
 
-async function doCompanyWork(ns) {
-    const player = ns.getPlayer();
-    const money = ns.getServerMoneyAvailable("home");
-    
-    if (money >= config.company?.onlyWhenMoneyBelow) {
+    if (factions.length === 0) {
+        log(ns, `🎭 Faction: No joined factions`, "WARN");
         await ns.sleep(30000);
         return;
     }
-    
-    const work = ns.singularity.getCurrentWork();
-    if (work && work.type === "COMPANY") {
-        // Already working for company
+
+    // Find faction with most rep needed
+    let bestFaction = null;
+    let mostNeeded = 0;
+
+    for (const faction of factions) {
+        const repNeeded = getRepNeeded(ns, faction);
+        if (repNeeded > mostNeeded) {
+            mostNeeded = repNeeded;
+            bestFaction = faction;
+        }
+    }
+
+    if (!bestFaction) {
+        log(ns, `🎭 Faction: All factions satisfied`, "DEBUG");
+        await ns.sleep(30000);
+        return;
+    }
+
+    const currentWork = ns.singularity.getCurrentWork();
+    if (currentWork && currentWork.type === "FACTION" && currentWork.factionName === bestFaction) {
+        // Already working
         await ns.sleep(180000);
         return;
     }
-    
+
+    const workType = config.factions?.workType || "Hacking Contracts";
+    ns.singularity.workForFaction(bestFaction, workType);
+    log(ns, `🎭 Faction: Working for ${bestFaction} (${workType}) | Rep needed: ${Math.floor(mostNeeded)}`, "INFO");
+
+    await ns.sleep(180000);
+}
+
+/**
+ * Work for a company
+ */
+async function doCompanyWork(ns) {
+    const player = ns.getPlayer();
+    const money = ns.getServerMoneyAvailable("home");
+    const threshold = config.company?.onlyWhenMoneyBelow || 200000000;
+
+    if (money >= threshold) {
+        await ns.sleep(30000);
+        return;
+    }
+
+    const currentWork = ns.singularity.getCurrentWork();
+    if (currentWork && currentWork.type === "COMPANY") {
+        // Already working
+        await ns.sleep(180000);
+        return;
+    }
+
     if (config.training?.autoTravel) {
         try {
-            ns.singularity.travelToCity("Chongqing");
+            ns.singularity.travelToCity(config.training?.city || "Chongqing");
         } catch (e) {}
     }
-    
+
     // Find a company with a job
     const companies = ["ECorp", "MegaCorp", "Bachman & Associates", "Blade Industries", "NWO"];
     let placed = false;
-    
+
     for (const company of companies) {
         try {
             const success = ns.singularity.workForCompany(company, config.company?.focus || "maximum");
             if (success) {
-                ns.print(`[Activity] Company: Working for ${company}`);
+                log(ns, `🎭 Company: Working for ${company} | Money: ${formatMoney(money)}/${formatMoney(threshold)}`, "INFO");
                 placed = true;
                 break;
             }
         } catch (e) {}
     }
-    
+
     if (!placed) {
-        ns.print("[Activity] No company work available");
+        log(ns, `🎭 Company: No positions available`, "WARN");
     }
-    
+
     await ns.sleep(180000);
 }
 
+/**
+ * Select best crime based on profitability and success chance
+ */
 function selectCrime(ns) {
     let best = null;
     let bestScore = 0;
-    
+
     const crimes = config.crime?.crimes || ["Shoplift", "Rob Store", "Mug Someone", "Larceny"];
-    
+
     for (const crime of crimes) {
         try {
             const stats = ns.singularity.getCrimeStats(crime);
             const chance = ns.singularity.getCrimeChance(crime);
-            
+
             if (chance < (config.crime?.minSuccessChance || 0.5)) continue;
-            
+
             const score = (stats.money * chance) / Math.max(1, stats.time);
             if (score > bestScore) {
                 bestScore = score;
@@ -270,10 +379,36 @@ function selectCrime(ns) {
             }
         } catch (e) {}
     }
-    
+
     return best || crimes[0];
 }
 
+/**
+ * Get total rep needed for unowned augments in a faction
+ */
+function getRepNeeded(ns, faction) {
+    const currentRep = ns.singularity.getFactionRep(faction);
+    const augments = ns.singularity.getAugmentationsFromFaction(faction);
+
+    let maxRepNeeded = 0;
+
+    for (const aug of augments) {
+        if (ns.singularity.getOwnedAugmentations(true).includes(aug)) {
+            continue;
+        }
+
+        const repReq = ns.singularity.getAugmentationRepReq(aug);
+        if (repReq > currentRep) {
+            maxRepNeeded = Math.max(maxRepNeeded, repReq - currentRep);
+        }
+    }
+
+    return maxRepNeeded;
+}
+
+/**
+ * Check singularity access
+ */
 function hasSingularityAccess(ns) {
     try {
         ns.singularity.getCurrentWork();
@@ -283,6 +418,9 @@ function hasSingularityAccess(ns) {
     }
 }
 
+/**
+ * Lock management for activity synchronization
+ */
 function getLock(ns) {
     const raw = ns.peek(PORTS.ACTIVITY);
     if (raw === "NULL PORT DATA") return null;
@@ -302,9 +440,9 @@ function claimLock(ns, owner, ttlMs) {
     return false;
 }
 
-function releaseLock(ns, station) {
+function releaseLock(ns, owner) {
     const lock = getLock(ns);
-    if (lock && lock.owner === station) {
+    if (lock && lock.owner === owner) {
         ns.clearPort(PORTS.ACTIVITY);
     }
 }

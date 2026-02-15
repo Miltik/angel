@@ -13,15 +13,44 @@ export async function main(ns) {
         }
     }
     
-    ns.print("Augmentation module started");
+    ns.print("💊 Augmentation module started - Phase-aware aggressive buying");
     
     while (true) {
         try {
             await augmentLoop(ns);
         } catch (e) {
-            ns.print(`Augmentation management error: ${e}`);
+            ns.print(`💊 Augmentation management error: ${e}`);
         }
         await ns.sleep(60000); // Check every minute
+    }
+}
+
+/**
+ * Read game phase from orchestrator port (port 7)
+ */
+function readGamePhase(ns) {
+    const phasePortData = ns.peek(7);
+    if (phasePortData === "NULL PORT DATA") return 0;
+    return parseInt(phasePortData) || 0;
+}
+
+/**
+ * Get phase-appropriate spending strategy
+ */
+function getAugmentStrategy(phase) {
+    switch(phase) {
+        case 0: // Bootstrap - very conservative
+            return { maxSpend: 1000000, buyAll: false, aggressive: false };
+        case 1: // Early Scaling - moderate
+            return { maxSpend: 50000000, buyAll: false, aggressive: false };
+        case 2: // Mid Game - increasing spending
+            return { maxSpend: 200000000, buyAll: false, aggressive: true };
+        case 3: // Gang Phase - very aggressive
+            return { maxSpend: 500000000, buyAll: true, aggressive: true };
+        case 4: // Late Game - maximum
+            return { maxSpend: 1000000000, buyAll: true, aggressive: true };
+        default:
+            return { maxSpend: 1000000, buyAll: false, aggressive: false };
     }
 }
 
@@ -106,52 +135,61 @@ function getPriorityAugmentsInline(ns, available) {
 }
 
 /**
- * Main augmentation loop
+ * Main augmentation loop - phase-aware
  * @param {NS} ns
  */
 async function augmentLoop(ns) {
+    const phase = readGamePhase(ns);
+    const strategy = getAugmentStrategy(phase);
     const money = ns.getServerMoneyAvailable("home");
     const available = getAvailableAugmentsInline(ns);
-    const priority = getPriorityAugmentsInline(ns, available);
     
     // Show status
-    const ownedCount = ns.singularity.getOwnedAugmentations(true).length;
-    ns.print(`═══ Augmentations ═══`);
-    ns.print(`Money: ${formatMoney(money)} | Owned: ${ownedCount}`);
+    const ownedCount = ns.singularity.getOwnedAugmentations(false).length;
+    const installedCount = ns.singularity.getOwnedAugmentations(true).length;
+    const queuedCount = ownedCount - installedCount;
+    
+    ns.print(`💊 Phase ${phase} | Money: ${formatMoney(money)} | Queued: ${queuedCount}`);
     
     if (available.length === 0) {
-        ns.print(`No augmentations available yet`);
+        ns.print(`💊 No augmentations available yet`);
         return;
     }
     
-    // Show all available augmentations
-    ns.print(`Available augments:`);
-    for (const aug of available.slice(0, 5)) {
-        const affordable = money >= aug.price ? "✓" : "✗";
-        ns.print(`  ${affordable} ${aug.name} (${aug.faction}): ${formatMoney(aug.price)}`);
-    }
-    if (available.length > 5) {
-        ns.print(`  ... and ${available.length - 5} more`);
+    // Sort augments by price (cheapest first for priority buying)
+    available.sort((a, b) => a.price - b.price);
+    
+    // Phase 3-4: Buy ALL available augmentations
+    if (strategy.buyAll) {
+        for (const aug of available) {
+            if (money >= aug.price) {
+                const success = ns.singularity.purchaseAugmentation(aug.faction, aug.name);
+                if (success) {
+                    ns.print(`💊 Purchased: ${aug.name} (${aug.faction}) ${formatMoney(aug.price)}`);
+                    money = ns.getServerMoneyAvailable("home");
+                }
+            }
+        }
+        return;
     }
     
-    // Try to buy priority augments first
-    let boughtCount = 0;
+    // Phase 0-2: Buy priority augments only
+    const priority = getPriorityAugmentsInline(ns, available);
     for (const aug of priority) {
-        if (money >= aug.price) {
+        if (money >= aug.price && money < strategy.maxSpend) {
             const success = ns.singularity.purchaseAugmentation(aug.faction, aug.name);
-            
             if (success) {
-                ns.print(`Purchased: ${aug.name} (${aug.faction}) for ${formatMoney(aug.price)}`);
-                boughtCount++;
+                ns.print(`💊 Purchased priority: ${aug.name} ${formatMoney(aug.price)}`);
                 money = ns.getServerMoneyAvailable("home");
             }
         }
     }
     
-    if (boughtCount === 0 && priority.length > 0) {
-        const nextAug = priority[0];
+    // Show next augment info
+    if (available.length > 0 && !(money >= available[0].price)) {
+        const nextAug = available[0];
         const needed = nextAug.price - money;
-        ns.print(`Next: ${nextAug.name} - Need ${formatMoney(needed)} more`);
+        ns.print(`💊 Next: ${nextAug.name} - Need ${formatMoney(needed)} more`);
     }
 }
 

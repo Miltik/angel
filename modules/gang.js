@@ -1,24 +1,26 @@
 /**
  * Gang automation module - Phase-aware intelligent member specialization
  * 
- * Strategy: Specialize members by role, maximize Territory Warfare for respect,
- * manage wanted level dynamically. Phase determines intensity (3+ = full warfare)
+ * Strategy: Specialize members by role, maximize Territory Warfare for respect.
+ * Phase determines intensity: P0-2 = 75% warfare, P3-4 = 90%+ warfare
+ * Respects coordinate with hacking phase progression.
  * 
  * @param {NS} ns
  */
 import { config } from "/angel/config.js";
+import { formatMoney, log } from "/angel/utils.js";
 
 const PHASE_PORT = 7;
 
 export async function main(ns) {
     ns.disableLog("ALL");
     ns.ui.openTail();
-    ns.print("[Gang] 👾 Module started - Phase-aware respect maximization");
+    log(ns, "👾 Gang module started - Phase-aware respect maximization", "INFO");
 
     while (true) {
         try {
             if (!ns.gang.inGang()) {
-                ns.print("[Gang] Not in a gang yet - idle");
+                log(ns, "👾 Not in a gang yet - idle", "INFO");
                 await ns.sleep(60000);
                 continue;
             }
@@ -28,14 +30,14 @@ export async function main(ns) {
             printStatus(ns, summary);
             await ns.sleep(30000);
         } catch (e) {
-            ns.print(`[Gang] Error: ${e}`);
+            log(ns, `👾 Error: ${e}`, "ERROR");
             await ns.sleep(5000);
         }
     }
 }
 
 /**
- * Read game phase from orchestrator port
+ * Read game phase from orchestrator port (port 7)
  */
 function readGamePhase(ns) {
     const phasePortData = ns.peek(PHASE_PORT);
@@ -43,26 +45,64 @@ function readGamePhase(ns) {
     return parseInt(phasePortData) || 0;
 }
 
+/**
+ * Get phase configuration
+ */
+function getPhaseConfig(phase) {
+    const phaseKey = `phase${phase}`;
+    return config.gamePhases[phaseKey] || config.gamePhases.phase0;
+}
+
+/**
+ * Calculate warfare intensity based on global phase
+ * Returns the target percentage of members to assign to Territory Warfare
+ */
+function getWarfareIntensity(globalPhase) {
+    switch (globalPhase) {
+        case 0: return 0.60;  // Bootstrap: moderate, build cash
+        case 1: return 0.70;  // Early: ramp up
+        case 2: return 0.75;  // Mid: steady
+        case 3: return 0.85;  // Gang Phase: aggressive
+        case 4: return 0.95;  // Late: maximum
+        default: return 0.75;
+    }
+}
+
+/**
+ * Get respect target for current phase (when to install augments)
+ */
+function getRespectTarget(globalPhase) {
+    switch (globalPhase) {
+        case 0: return 50000;      // Bootstrap: minimal
+        case 1: return 200000;     // Early: build some
+        case 2: return 1000000;    // Mid: scale up
+        case 3: return 5000000;    // Gang: aggressive
+        case 4: return 50000000;   // Late: maximum
+        default: return 100000;
+    }
+}
+
 function recruitMembers(ns) {
     while (ns.gang.canRecruitMember()) {
         const name = `angel-${Date.now()}`;
         ns.gang.recruitMember(name);
-        ns.print(`[Gang] Recruited ${name}`);
+        log(ns, `👾 Recruited ${name}`, "SUCCESS");
     }
 }
 
 function assignTasks(ns) {
+    const globalPhase = readGamePhase(ns);
     const info = ns.gang.getGangInformation();
     const members = ns.gang.getMemberNames();
     const tasks = ns.gang.getTaskNames();
     const availableTasks = tasks.filter((task) => task !== "Unassigned");
 
     if (members.length === 0) {
-        return { info, members, tasks: availableTasks, assigned: {}, phase: "no_members" };
+        return { info, members, tasks: availableTasks, assigned: {}, phase: "no_members", globalPhase };
     }
     if (availableTasks.length === 0) {
-        ns.print("[Gang] WARNING: No tasks available!");
-        return { info, members, tasks: availableTasks, assigned: {}, phase: "no_tasks" };
+        log(ns, "👾 WARNING: No tasks available!", "WARN");
+        return { info, members, tasks: availableTasks, assigned: {}, phase: "no_tasks", globalPhase };
     }
 
     // Get member data for specialization
@@ -71,11 +111,11 @@ function assignTasks(ns) {
         info: ns.gang.getMemberInformation(name),
     }));
 
-    // Determine phase based on member training status
-    const phase = getPhase(memberData, info.isHacking);
+    // Determine gang lifecycle phase
+    const gangPhase = getGangPhase(memberData, info.isHacking);
 
     // Build task pool
-    const taskPool = getTaskPool(availableTasks, info, phase);
+    const taskPool = getTaskPool(availableTasks, info, gangPhase);
 
     // Assign members with role-based specialization
     const assigned = {};
@@ -83,7 +123,7 @@ function assignTasks(ns) {
 
     for (const member of memberData) {
         // Determine which role this member should have
-        const role = assignRole(ns, member, memberData, info, phase, taskPool);
+        const role = assignRole(ns, member, memberData, info, gangPhase, taskPool, globalPhase);
         if (!roleAssignments[role]) roleAssignments[role] = [];
         roleAssignments[role].push(member.name);
 
@@ -114,13 +154,14 @@ function assignTasks(ns) {
         actualAssignments[actualTask] = (actualAssignments[actualTask] || 0) + 1;
     }
 
-    return { info, members, tasks: availableTasks, assigned: actualAssignments, phase, roleAssignments };
+    return { info, members, tasks: availableTasks, assigned: actualAssignments, gangPhase, globalPhase, roleAssignments };
 }
 
 /**
  * Determine which lifecycle phase the gang is in
+ * Independent of global phase (just member readiness)
  */
-function getPhase(memberData, isHacking) {
+function getGangPhase(memberData, isHacking) {
     if (memberData.length === 0) return "training";
     
     // Count members that are combat-ready (all stats 40+)
@@ -132,27 +173,26 @@ function getPhase(memberData, isHacking) {
     
     const readyRatio = readyForWarfare / memberData.length;
     
-    if (readyRatio < 0.3) return "training";           // Less than 30% ready: focus on training
-    if (readyRatio < 0.8) return "transition";         // 30-80%: mix training and warfare
-    return "respect_building";                         // 80%+: full respect maximization mode
+    if (readyRatio < 0.3) return "training";           // Less than 30% ready
+    if (readyRatio < 0.8) return "transition";         // 30-80%
+    return "respect_building";                         // 80%+
 }
 
 /**
- * Build task pool for roles based on phase and conditions
+ * Build task pool for roles based on gang phase and gang type
  */
-function getTaskPool(availableTasks, info, phase) {
+function getTaskPool(availableTasks, info, gangPhase) {
     const isHacking = info.isHacking;
-    const wantedPenalty = info.wantedPenalty;
 
     // Tasks by role
     const tasks = {
         // Warriors/Hackers who still need training
         trainCombat: findTask(availableTasks, isHacking
-            ? ["Train Combat", "Train Hacking"]
+            ? ["Train Hacking"]
             : ["Train Combat", "Train Hacking"]
         ),
         
-        // Territory Warfare - primary respect builder (hacking gang)
+        // Territory Warfare - primary respect builder (most important)
         territoryWarfare: findTask(availableTasks, 
             ["Territory Warfare"]
         ),
@@ -163,13 +203,13 @@ function getTaskPool(availableTasks, info, phase) {
             : ["Human Trafficking", "Armed Robbery", "Strongarm Civilians", "Grand Theft Auto"]
         ),
         
-        // Wanted management - use these when wanted is dangerous
+        // Wanted management - use when wanted is too high
         wantedReduction: findTask(availableTasks, isHacking
             ? ["Ethical Hacking", "Vigilante Justice"]
             : ["Vigilante Justice", "Terrorism"]
         ),
         
-        // Secondary respect builders (for when not doing warfare)
+        // Secondary respect builders
         secondaryRespect: findTask(availableTasks, isHacking
             ? ["Cyberterrorism", "Plant Virus", "DDoS Attacks"]
             : ["Kidnapping", "Terrorism", "Assassinate"]
@@ -180,16 +220,13 @@ function getTaskPool(availableTasks, info, phase) {
 }
 
 /**
- * Assign a role to a member based on their stats, gang needs, and game phase
+ * Assign a role to a member based on their stats, gang needs, and BOTH gang + global phases
  * Returns the taskPool key that maps to the appropriate task
  */
-function assignRole(ns, member, allMembers, info, gangPhase, taskPool) {
+function assignRole(ns, member, allMembers, info, gangPhase, taskPool, globalPhase) {
     const m = member.info;
     const trainUntil = 60;
     const isHacking = info.isHacking;
-    
-    // Read global game phase for intensity modulation
-    const globalPhase = parseInt(ns.peek(PHASE_PORT)) || 0;
     
     // Check if member still needs training
     const needsTraining = isHacking
@@ -200,7 +237,7 @@ function assignRole(ns, member, allMembers, info, gangPhase, taskPool) {
         return "trainCombat";
     }
 
-    // Count members by role to prevent overlap
+    // Count members and analyze wanted level
     const memberCount = allMembers.length;
     const wantedPenalty = info.wantedPenalty;
     
@@ -219,30 +256,44 @@ function assignRole(ns, member, allMembers, info, gangPhase, taskPool) {
         }
     }
 
-    // Phase-specific role assignment WITH GLOBAL PHASE INTENSIFICATION
+    // PHASE-INTENSIFIED warfare assignment
+    // Early phases: balance warfare with money/respect
+    // Late phases: aggressive warfare focus
+    const warfareIntensity = getWarfareIntensity(globalPhase);
+    
     switch (gangPhase) {
         case "training":
+            // All focus on training
             return "trainCombat";
             
         case "transition":
-            // Mix builders and earners
-            if (taskPool.territoryWarfare && Math.random() < 0.6) {
+            // Mix of territory warfare and money tasks
+            // Scale based on global phase
+            if (taskPool.territoryWarfare && Math.random() < warfareIntensity) {
                 return "territoryWarfare";
             }
             return "moneyTask";
             
         case "respect_building":
-            // GLOBAL PHASE MODULATION
-            // Phase 0-2: Moderate warfare (75%)
-            // Phase 3+: MAXIMUM warfare (90%)
-            const warfareChance = globalPhase >= 3 ? 0.9 : 0.75;
+            // Primary: Territory Warfare (scaled by global phase)
+            // Secondary: Handle wanted level
+            // Fallback: Money tasks
             
-            if (taskPool.territoryWarfare && Math.random() < warfareChance) {
+            if (taskPool.territoryWarfare && Math.random() < warfareIntensity) {
                 return "territoryWarfare";
             }
+            
+            // Check if wanted needs management
             if (wantedPenalty < 0.9 && taskPool.wantedReduction) {
                 return "wantedReduction";
             }
+            
+            // Late phase: still do warfare or secondary respect builders
+            if (globalPhase >= 3 && taskPool.secondaryRespect && Math.random() < 0.2) {
+                return "secondaryRespect";
+            }
+            
+            // Fallback to money/respect tasks
             return "moneyTask";
     }
 
@@ -263,55 +314,37 @@ function printStatus(ns, summary) {
     const info = summary.info;
     const count = summary.members.length;
     const assigned = summary.assigned || {};
-    const phase = summary.phase || "unknown";
+    const gangPhase = summary.gangPhase || "unknown";
+    const globalPhase = summary.globalPhase || 0;
     const roles = summary.roleAssignments || {};
+    
+    // Calculate warfare intensity for this phase
+    const intensity = Math.round(getWarfareIntensity(globalPhase) * 100);
+    const respectTarget = getRespectTarget(globalPhase);
 
-    ns.print("[Gang] ╔════════════════════════════════════╗");
-    ns.print("[Gang] ║       GANG INTELLIGENCE CORE       ║");
-    ns.print("[Gang] ╚════════════════════════════════════╝");
+    log(ns, `👾 [Phase ${globalPhase}] Gang ${info.isHacking ? "🖥 Hacking" : "⚔ Combat"} | Members: ${count}`, "INFO");
+    log(ns, `👾 Wanted: ${info.wantedPenalty.toFixed(3)} | Respect: ${Math.floor(info.respect)} (target: ${Math.floor(respectTarget)}) | Territory: ${info.territory.toFixed(1)}%`, "INFO");
+    log(ns, `👾 ${gangPhase.toUpperCase()} | Warfare Intensity: ${intensity}% | Power: ${info.power.toFixed(2)} | $${Math.floor(info.moneyGainRate * 5)}/s`, "INFO");
     
-    // Phase indicator with animation
-    const phaseEmoji = {
-        "training": "🎓",
-        "transition": "⚡",
-        "respect_building": "👑",
-        "no_members": "❌",
-        "no_tasks": "⏸"
-    }[phase] || "❓";
-    
-    ns.print(`[Gang] Phase: ${phaseEmoji} ${phase.toUpperCase()}`);
-    ns.print(`[Gang] Members: ${count} | Type: ${info.isHacking ? "🖥 Hacking" : "⚔ Combat"}`);
-    ns.print(`[Gang] Wanted: ${info.wantedPenalty.toFixed(3)} | Respect: ${Math.floor(info.respect)} | Power: ${info.power.toFixed(2)}`);
-    ns.print(`[Gang] Money Gain: $${Math.floor(info.moneyGainRate * 5)}/s | Territory: ${info.territory.toFixed(1)}%`);
-    
-    // Role distribution - map taskPool keys to display names
-    const roleNames = {
-        "trainCombat": "📚 Training",
-        "territoryWarfare": "⭐ Territory Warfare",
-        "moneyTask": "💰 Money Tasks",
-        "wantedReduction": "🛡️ Peacekeeping",
-        "secondaryRespect": "🔥 Secondary Respect"
-    };
-    
+    // Role distribution
     if (Object.keys(roles).length > 0) {
-        ns.print(`[Gang] ───── Role Distribution ─────`);
-        for (const [roleKey, members] of Object.entries(roles)) {
-            const displayName = roleNames[roleKey] || roleKey;
-            ns.print(`[Gang]   ${displayName}: ${members.length}`);
-        }
+        const roleNames = {
+            "trainCombat": "📚 Training",
+            "territoryWarfare": "⭐ Warfare",
+            "moneyTask": "💰 Money",
+            "wantedReduction": "🛡️ Wanted",
+            "secondaryRespect": "🔥 2ndary"
+        };
+        
+        const roleDistribution = Object.entries(roles)
+            .map(([roleKey, members]) => {
+                const displayName = roleNames[roleKey] || roleKey;
+                return `${displayName}:${members.length}`;
+            })
+            .join(" | ");
+        
+        log(ns, `👾 Roles: ${roleDistribution}`, "DEBUG");
     }
-    
-    // Task distribution summary
-    const tasks = Object.keys(assigned);
-    if (tasks.length > 0) {
-        ns.print(`[Gang] ───── Task Distribution ─────`);
-        tasks.forEach(task => {
-            ns.print(`[Gang]   • ${task}: ${assigned[task]}`);
-        });
-    } else {
-        ns.print("[Gang] No tasks assigned (tasks may be unavailable)");
-    }
-    ns.print("[Gang]");
     
     return;
 }

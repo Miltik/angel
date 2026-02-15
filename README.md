@@ -47,7 +47,8 @@ The system will automatically:
 │   ├── hacking.js        # Automated hacking operations
 │   ├── servers.js        # Server purchase and management
 │   ├── factions.js       # Faction automation (SF4)
-│   └── augments.js       # Augmentation management (SF4)
+│   ├── augments.js       # Augmentation management (SF4)
+│   └── programs.js       # TOR, programs, and backdoors
 └── workers/
     ├── hack.js           # Hack worker script
     ├── grow.js           # Grow worker script
@@ -88,6 +89,13 @@ Edit `config.js` to customize ANGEL's behavior:
 - `autoBuyAugments`: Automatically purchase augments (default: false)
 - `preBuyAugments`: Queue augments before reset (default: true)
 - `augmentPriority`: List of priority augmentations
+
+### Programs & Backdoor Settings
+- `autoBuyTor`: Auto-purchase TOR router (default: true)
+- `autoBuyPrograms`: Buy programs from darkweb (default: true)
+- `autoCreatePrograms`: Create programs when idle (default: true)
+- `autoBackdoor`: Backdoor faction servers automatically (default: true)
+- `purchaseThreshold`: Buy when we have this % of cost (default: 0.05)
 
 ## 📦 Modules
 
@@ -141,6 +149,24 @@ run /angel/modules/factions.js --tail
 ```
 run /angel/modules/augments.js
 ```
+
+### Programs & Backdoor Module (`modules/programs.js`)
+- Automatically purchases TOR router when affordable
+- Creates or buys port opener programs (BruteSSH, FTPCrack, etc.)
+- Purchases useful programs from darkweb
+- Automatically backdoors faction servers (CSEC, NiteSec, BitRunners, etc.)
+- Tracks owned programs and port opener count
+
+**Run standalone:**
+```
+run /angel/modules/programs.js
+```
+
+**Key features:**
+- **TOR Router**: Auto-purchases when you have $200k
+- **Programs**: Creates programs when idle, buys from darkweb if needed
+- **Backdoors**: Installs backdoors on faction servers for easy invites
+- **Port Openers**: Prioritizes tools that unlock more servers
 
 ## 🛠️ Utilities
 

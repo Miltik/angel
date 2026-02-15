@@ -40,6 +40,7 @@ export async function main(ns) {
         "modules/servers.js",
         "modules/factions.js",
         "modules/augments.js",
+        "modules/programs.js",
         
         // Workers
         "workers/hack.js",

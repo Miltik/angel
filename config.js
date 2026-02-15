@@ -12,6 +12,7 @@ export const config = {
         enableServerMgmt: true,
         enableFactions: true,
         enableAugments: true,
+        enablePrograms: true,
     },
 
     // Hacking settings
@@ -62,6 +63,22 @@ export const config = {
         ],
     },
 
+    // Programs and backdoor settings
+    programs: {
+        autoBuyTor: true,              // Automatically purchase TOR router
+        autoBuyPrograms: true,         // Buy programs from darkweb if can't create
+        autoCreatePrograms: true,      // Create programs when idle
+        autoBackdoor: true,            // Automatically backdoor faction servers
+        purchaseThreshold: 0.05,       // Buy programs when we have 5% of cost
+        priorityPrograms: [
+            "BruteSSH.exe",
+            "FTPCrack.exe",
+            "relaySMTP.exe",
+            "HTTPWorm.exe",
+            "SQLInject.exe",
+        ],
+    },
+
     // Early game targets (sorted by difficulty)
     targets: {
         earlyGame: [
@@ -102,6 +119,7 @@ export const SCRIPTS = {
     serverMgmt: "/angel/modules/servers.js",
     factions: "/angel/modules/factions.js",
     augments: "/angel/modules/augments.js",
+    programs: "/angel/modules/programs.js",
     
     // Workers (actual hacking scripts)
     hack: "/angel/workers/hack.js",

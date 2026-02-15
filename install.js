@@ -25,6 +25,7 @@ export async function main(ns) {
         "/angel/modules/servers.js",
         "/angel/modules/factions.js",
         "/angel/modules/augments.js",
+        "/angel/modules/programs.js",
         "/angel/workers/hack.js",
         "/angel/workers/grow.js",
         "/angel/workers/weaken.js",

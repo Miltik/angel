@@ -133,6 +133,11 @@ function displayStatus(ns) {
 async function ensureModulesRunning(ns) {
     // Start non-hacking modules first to ensure they have RAM
     
+    // Programs module
+    if (config.orchestrator.enablePrograms) {
+        await ensureModuleRunning(ns, SCRIPTS.programs, "Programs & Backdoor");
+    }
+    
     // Server management module
     if (config.orchestrator.enableServerMgmt) {
         await ensureModuleRunning(ns, SCRIPTS.serverMgmt, "Server Management");

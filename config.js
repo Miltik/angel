@@ -13,6 +13,9 @@ export const config = {
         enableFactions: true,
         enableAugments: true,
         enablePrograms: true,
+        enableCrime: true,
+        enableTraining: true,
+        enableCompany: true,
     },
 
     // Hacking settings
@@ -80,6 +83,63 @@ export const config = {
         ],
     },
 
+    // Crime automation settings (SF4)
+    crime: {
+        onlyWhenMoneyBelow: 5000000000, // Only commit crimes when money is below this
+        minSuccessChance: 0.4,          // Minimum success chance to pick a crime
+        focus: false,
+        crimes: [
+            "Shoplift",
+            "Rob store",
+            "Mug someone",
+            "Larceny",
+            "Deal Drugs",
+            "Bond Forgery",
+            "Grand Theft Auto",
+        ],
+    },
+
+    // University + gym training settings (SF4)
+    training: {
+        autoTravel: true,
+        city: "Sector-12",
+        university: "Rothman University",
+        course: "Algorithms",
+        gym: "Powerhouse Gym",
+        targetHacking: 800,
+        targetStats: {
+            strength: 50,
+            defense: 50,
+            dexterity: 50,
+            agility: 50,
+        },
+        focus: false,
+    },
+
+    // Company job automation settings (SF4)
+    company: {
+        onlyWhenMoneyBelow: 10000000000, // Only work a job when money is below this
+        autoApply: true,
+        focus: false,
+        preferredCompanies: [
+            "MegaCorp",
+            "Four Sigma",
+            "ECorp",
+            "Bachman & Associates",
+            "Clarke Incorporated",
+            "NWO",
+            "OmniTek Incorporated",
+            "KuaiGong International",
+            "Fulcrum Technologies",
+        ],
+        preferredFields: [
+            "Software",
+            "IT",
+            "Security",
+            "Business",
+        ],
+    },
+
     // Early game targets (sorted by difficulty)
     targets: {
         earlyGame: [
@@ -108,6 +168,7 @@ export const PORTS = {
     HACKING: 2,
     SERVERS: 3,
     FACTIONS: 4,
+    ACTIVITY: 5,
 };
 
 // Script paths (relative to /angel/)
@@ -121,6 +182,9 @@ export const SCRIPTS = {
     factions: "/angel/modules/factions.js",
     augments: "/angel/modules/augments.js",
     programs: "/angel/modules/programs.js",
+    crime: "/angel/modules/crime.js",
+    training: "/angel/modules/training.js",
+    company: "/angel/modules/company.js",
     
     // Workers (actual hacking scripts)
     hack: "/angel/workers/hack.js",

@@ -156,6 +156,24 @@ async function ensureModulesRunning(ns) {
         await ensureModuleRunning(ns, SCRIPTS.augments, "Augmentations");
         await ns.sleep(1500);
     }
+
+    // Training module (university/gym)
+    if (config.orchestrator.enableTraining) {
+        await ensureModuleRunning(ns, SCRIPTS.training, "Training");
+        await ns.sleep(1500);
+    }
+
+    // Company work module
+    if (config.orchestrator.enableCompany) {
+        await ensureModuleRunning(ns, SCRIPTS.company, "Company Work");
+        await ns.sleep(1500);
+    }
+
+    // Crime module
+    if (config.orchestrator.enableCrime) {
+        await ensureModuleRunning(ns, SCRIPTS.crime, "Crime");
+        await ns.sleep(1500);
+    }
     
     // Hacking module - start last as it consumes most RAM
     if (config.orchestrator.enableHacking) {

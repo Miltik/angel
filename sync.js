@@ -42,6 +42,9 @@ export async function main(ns) {
         "modules/factions.js",
         "modules/augments.js",
         "modules/programs.js",
+        "modules/crime.js",
+        "modules/training.js",
+        "modules/company.js",
         
         // Workers
         "workers/hack.js",

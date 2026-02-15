@@ -80,8 +80,18 @@ function assignTasks(ns) {
 
         if (needsTraining) {
             task = trainTask;
-        } else if (needsVigilante && idx === 0) {
-            task = wantedTask;
+        } else if (needsVigilante) {
+            // Assign up to 25% of members to vigilante work when wanted is high
+            const vigilanteCount = Math.ceil(members.length * 0.25);
+            if (idx < vigilanteCount) {
+                task = wantedTask;
+            }
+        } else if (info.wantedPenalty < 0.85) {
+            // Even when not urgent, keep some members on wanted reduction when moderate
+            const urgentVigilanteCount = Math.ceil(members.length * 0.15);
+            if (idx < urgentVigilanteCount) {
+                task = wantedTask;
+            }
         }
 
         let ok = ns.gang.setMemberTask(name, task);

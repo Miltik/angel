@@ -6,7 +6,15 @@
  * @param {NS} ns
  */
 
-import { getScan } from "./utils.js";
+/**
+ * Get list of servers connected to a target
+ * @param {NS} ns
+ * @param {string} server - Server to scan from
+ * @returns {string[]} List of connected servers
+ */
+function getScan(ns, server) {
+    return ns.scan(server);
+}
 
 const STATUS_COLORS = {
     "rooted": "✓",

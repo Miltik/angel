@@ -261,6 +261,11 @@ function printStatus(ns, summary) {
     ns.print(`[Gang] Wanted: ${info.wantedPenalty.toFixed(3)} | Respect: ${Math.floor(info.respect)} | Power: ${info.power.toFixed(2)}`);
     ns.print(`[Gang] Money Gain: $${Math.floor(info.moneyGainRate * 5)}/s | Territory: ${info.territory.toFixed(1)}%`);
     
+    // Available tasks
+    if (summary.tasks && summary.tasks.length > 0) {
+        ns.print(`[Gang] Available: ${summary.tasks.join(", ")}`);
+    }
+    
     // Role distribution - map taskPool keys to display names
     const roleNames = {
         "trainCombat": "📚 Training",

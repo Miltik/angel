@@ -136,21 +136,25 @@ async function ensureModulesRunning(ns) {
     // Programs module
     if (config.orchestrator.enablePrograms) {
         await ensureModuleRunning(ns, SCRIPTS.programs, "Programs & Backdoor");
+        await ns.sleep(1500); // Stagger startup
     }
     
     // Server management module
     if (config.orchestrator.enableServerMgmt) {
         await ensureModuleRunning(ns, SCRIPTS.serverMgmt, "Server Management");
+        await ns.sleep(1500);
     }
     
     // Faction module (if SF4 available)
     if (config.orchestrator.enableFactions) {
         await ensureModuleRunning(ns, SCRIPTS.factions, "Factions");
+        await ns.sleep(1500);
     }
     
     // Augmentation module (if SF4 available)
     if (config.orchestrator.enableAugments) {
         await ensureModuleRunning(ns, SCRIPTS.augments, "Augmentations");
+        await ns.sleep(1500);
     }
     
     // Hacking module - start last as it consumes most RAM

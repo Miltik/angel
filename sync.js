@@ -15,12 +15,12 @@ export async function main(ns) {
     // CONFIGURATION - UPDATE THESE VALUES
     // ========================================
     
-    const GITHUB_USER = "YOUR_GITHUB_USERNAME";        // e.g., "cpawl" or "john-doe"
-    const GITHUB_REPO = "YOUR_REPO_NAME";              // e.g., "bitburner-scripts" or "angel"
-    const GITHUB_BRANCH = "main";                       // or "master", "develop", etc.
+    const GITHUB_USER = "Miltik";                      // GitHub username
+    const GITHUB_REPO = "angel";                        // Repository name
+    const GITHUB_BRANCH = "main";                       // Branch name
     
     // Optional: If files are in a subdirectory, specify it here
-    const REPO_SUBDIR = "";                             // e.g., "angel" or leave empty ""
+    const REPO_SUBDIR = "";                             // Files are in repository root
     
     // ========================================
     // FILE LIST - Add/remove files as needed

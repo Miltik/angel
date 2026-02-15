@@ -20,7 +20,7 @@ export async function main(ns) {
     
     // Replace with your actual GitHub raw URL for sync.js
     // Format: https://raw.githubusercontent.com/USERNAME/REPO/BRANCH/sync.js
-    const SYNC_SCRIPT_URL = "https://raw.githubusercontent.com/YOUR_USERNAME/YOUR_REPO/main/sync.js";
+    const SYNC_SCRIPT_URL = "https://raw.githubusercontent.com/Miltik/angel/main/sync.js";
     
     // ========================================
     

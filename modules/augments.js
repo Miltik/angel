@@ -48,24 +48,54 @@ function hasSingularityAccess(ns) {
  * @param {NS} ns
  */
 async function augmentLoop(ns) {
-    // Only buy if enabled
-    if (!config.augmentations.autoBuyAugments) {
-        return;
-    }
-    
     const money = ns.getServerMoneyAvailable("home");
     const available = getAvailableAugments(ns);
     const priority = getPriorityAugments(ns);
     
+    // Show status
+    const ownedCount = ns.singularity.getOwnedAugmentations(true).length;
+    log(ns, `═══ Augmentations ═══`, "INFO");
+    log(ns, `Money: ${formatMoney(money)} | Owned: ${ownedCount}`, "INFO");
+    
+    if (available.length === 0) {
+        log(ns, "No augmentations available yet", "INFO");
+        return;
+    }
+    
+    // Show all available augmentations
+    log(ns, `Available augments:`, "INFO");
+    for (const aug of available.slice(0, 5)) {
+        const affordable = money >= aug.price ? "✓" : "✗";
+        log(ns, `  ${affordable} ${aug.name} (${aug.faction}): ${formatMoney(aug.price)}`, "INFO");
+    }
+    if (available.length > 5) {
+        log(ns, `  ... and ${available.length - 5} more`, "INFO");
+    }
+    
+    // Only buy if enabled
+    if (!config.augmentations.autoBuyAugments) {
+        log(ns, "Autobuy disabled", "WARN");
+        return;
+    }
+    
     // Try to buy priority augments first
+    let boughtCount = 0;
     for (const aug of priority) {
         if (money >= aug.price) {
             const success = ns.singularity.purchaseAugmentation(aug.faction, aug.name);
             
             if (success) {
-                log(ns, `Purchased augmentation: ${aug.name} from ${aug.faction} for ${formatMoney(aug.price)}`, "INFO");
+                log(ns, `Purchased: ${aug.name} (${aug.faction}) for ${formatMoney(aug.price)}`, "INFO");
+                boughtCount++;
+                money = ns.getServerMoneyAvailable("home");
             }
         }
+    }
+    
+    if (boughtCount === 0 && priority.length > 0) {
+        const nextAug = priority[0];
+        const needed = nextAug.price - money;
+        log(ns, `Next aug: ${nextAug.name} - Need ${formatMoney(needed)} more`, "WARN");
     }
 }
 

@@ -24,6 +24,22 @@ export async function main(ns) {
  * @param {NS} ns
  */
 async function serverLoop(ns) {
+    const ownedServers = ns.getPurchasedServers();
+    let totalRam = 0;
+    let minRam = Infinity;
+    let maxRam = 0;
+    
+    for (const server of ownedServers) {
+        const ram = ns.getServerMaxRam(server);
+        totalRam += ram;
+        minRam = Math.min(minRam, ram);
+        maxRam = Math.max(maxRam, ram);
+    }
+    
+    if (ownedServers.length > 0) {
+        log(ns, `Servers: ${ownedServers.length}/${config.servers.maxServers} | Total RAM: ${formatRam(totalRam)} | Min/Max: ${formatRam(minRam)}/${formatRam(maxRam)}`, "INFO");
+    }
+    
     // Try to root new servers
     const newlyRooted = rootAll(ns);
     if (newlyRooted > 0) {
@@ -67,19 +83,26 @@ async function buyNewServer(ns, availableMoney) {
     
     // Start with smallest RAM and work up to what we can afford
     let targetRam = 8; // Start with 8GB
+    let lastAffordable = 8;
     
     // Find the highest RAM we can afford (powers of 2)
     while (targetRam <= config.servers.maxServerRam) {
         const cost = ns.getPurchasedServerCost(targetRam);
         if (cost > availableMoney * config.servers.purchaseThreshold) {
-            targetRam /= 2; // Step back to previous affordable size
             break;
         }
+        lastAffordable = targetRam;
         targetRam *= 2;
     }
     
+    targetRam = lastAffordable;
+    
     // Make sure we have at least 8GB to buy
-    if (targetRam < 8) return;
+    if (targetRam < 8) {
+        const cost8gb = ns.getPurchasedServerCost(8);
+        log(ns, `Need ${formatMoney(cost8gb - availableMoney)} more to buy first server`, "INFO");
+        return;
+    }
     
     const cost = ns.getPurchasedServerCost(targetRam);
     
@@ -89,7 +112,7 @@ async function buyNewServer(ns, availableMoney) {
         const hostname = ns.purchaseServer(serverName, targetRam);
         
         if (hostname) {
-            log(ns, `Purchased server ${hostname} with ${formatRam(targetRam)} for ${formatMoney(cost)}`, "INFO");
+            log(ns, `Purchased ${hostname}: ${formatRam(targetRam)} for ${formatMoney(cost)}`, "INFO");
         }
     }
 }

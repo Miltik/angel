@@ -48,8 +48,27 @@ function hasSingularityAccess(ns) {
  * @param {NS} ns
  */
 async function factionLoop(ns) {
+    const player = ns.getPlayer();
+    const currentFactions = player.factions;
+    
     // Get faction invitations
     const invitations = ns.singularity.checkFactionInvitations();
+    
+    // Display faction status
+    if (currentFactions.length > 0) {
+        log(ns, `═══ Factions (${currentFactions.length} joined) ═══`, "INFO");
+        for (const faction of currentFactions) {
+            const rep = ns.singularity.getFactionRep(faction);
+            const repNeeded = getRepNeeded(ns, faction);
+            const repStr = `Rep: ${formatNumber(rep)} / ${formatNumber(rep + repNeeded)}`;
+            log(ns, `  • ${faction}: ${repStr}`, "INFO");
+        }
+    }
+    
+    // Show pending invitations
+    if (invitations.length > 0) {
+        log(ns, `Pending invitations: ${invitations.join(", ")}`, "WARN");
+    }
     
     // Auto-join priority factions
     if (config.factions.autoJoinFactions) {
@@ -75,7 +94,18 @@ async function workForBestFaction(ns) {
     const player = ns.getPlayer();
     const factions = player.factions;
     
-    if (factions.length === 0) return;
+    if (factions.length === 0) {
+        log(ns, "Waiting for faction invitations...", "INFO");
+        return;
+    }
+    
+    // Check current work
+    const currentWork = ns.singularity.getCurrentWork();
+    if (currentWork && currentWork.type === "FACTION") {
+        const progress = currentWork.cyclesPassed || 0;
+        log(ns, `Currently working for ${currentWork.factionName} (progress: ${progress} cycles)`, "INFO");
+        return;
+    }
     
     // Find faction with best augments we can't afford yet
     let bestFaction = null;
@@ -102,17 +132,15 @@ async function workForBestFaction(ns) {
     }
     
     if (bestFaction) {
-        // Check if we're already working for this faction
-        const currentWork = ns.singularity.getCurrentWork();
+        // Start working for faction (hacking contracts are usually best)
+        const success = ns.singularity.workForFaction(bestFaction, "hacking", false);
         
-        if (!currentWork || currentWork.type !== "FACTION" || currentWork.factionName !== bestFaction) {
-            // Start working for faction (hacking contracts are usually best)
-            const success = ns.singularity.workForFaction(bestFaction, "hacking", false);
-            
-            if (success) {
-                log(ns, `Started working for ${bestFaction}`, "INFO");
-            }
+        if (success) {
+            const repNeeded = getRepNeeded(ns, bestFaction);
+            log(ns, `Working for ${bestFaction} (${formatNumber(repNeeded)} rep needed)`, "INFO");
         }
+    } else {
+        log(ns, "All priority factions have sufficient reputation", "INFO");
     }
 }
 

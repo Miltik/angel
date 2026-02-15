@@ -19,7 +19,7 @@ export const config = {
         targetMoneyThreshold: 0.75,  // Hack when money is above 75% of max
         targetSecurityThreshold: 5,   // Only hack when security is within 5 of min
         batchDelay: 200,              // Delay between batch operations (ms)
-        reservedHomeRam: 32,          // RAM to reserve on home server (GB)
+        reservedHomeRam: 64,          // RAM to reserve on home server (GB) - increased for modules
         shareExcessRam: true,         // Use excess RAM for share() scripts
     },
 

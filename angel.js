@@ -131,10 +131,7 @@ function displayStatus(ns) {
  * @param {NS} ns
  */
 async function ensureModulesRunning(ns) {
-    // Hacking module
-    if (config.orchestrator.enableHacking) {
-        await ensureModuleRunning(ns, SCRIPTS.hacking, "Hacking");
-    }
+    // Start non-hacking modules first to ensure they have RAM
     
     // Server management module
     if (config.orchestrator.enableServerMgmt) {
@@ -149,6 +146,11 @@ async function ensureModulesRunning(ns) {
     // Augmentation module (if SF4 available)
     if (config.orchestrator.enableAugments) {
         await ensureModuleRunning(ns, SCRIPTS.augments, "Augmentations");
+    }
+    
+    // Hacking module - start last as it consumes most RAM
+    if (config.orchestrator.enableHacking) {
+        await ensureModuleRunning(ns, SCRIPTS.hacking, "Hacking");
     }
 }
 

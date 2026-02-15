@@ -8,6 +8,12 @@ export async function main(ns) {
     ns.ui.openTail();
     
     log(ns, "Hacking module started", "INFO");
+    log(ns, "Waiting for other modules to initialize...", "INFO");
+    
+    // Wait 5 seconds to let other modules start up first
+    await ns.sleep(5000);
+    
+    log(ns, "Beginning hacking operations", "INFO");
     
     while (true) {
         try {

@@ -26,6 +26,13 @@ export async function main(ns) {
                 continue;
             }
 
+            const desired = getDesiredActivity(ns);
+            if (desired !== "none" && desired !== "training") {
+                releaseLock(ns, owner);
+                await ns.sleep(30000);
+                continue;
+            }
+
             const target = getTrainingTarget(ns);
             if (!target) {
                 releaseLock(ns, owner);
@@ -141,4 +148,10 @@ function releaseLock(ns, owner) {
     if (lock && lock.owner === owner) {
         ns.clearPort(PORTS.ACTIVITY);
     }
+}
+
+function getDesiredActivity(ns) {
+    const raw = ns.peek(PORTS.ACTIVITY_MODE);
+    if (raw === "NULL PORT DATA") return "none";
+    return String(raw);
 }

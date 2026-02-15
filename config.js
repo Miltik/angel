@@ -21,6 +21,7 @@ export const config = {
         enableGang: true,
         enableBladeburner: true,
         enableHacknet: true,
+        enableMilestones: true,
     },
 
     // Hacking settings
@@ -62,6 +63,9 @@ export const config = {
         autoBuyAugments: true,         // Auto-buy augments when affordable
         preBuyAugments: true,          // Queue augments before reset
         reserveMoneyForAugments: true,
+        installOnThreshold: true,
+        minQueuedAugs: 10,
+        minQueuedCost: 5000000000,
         augmentPriority: [
             // Hacking augments
             "BitWire",
@@ -143,6 +147,14 @@ export const config = {
             "Security",
             "Business",
         ],
+    },
+
+    // Milestone coordinator settings
+    milestones: {
+        mode: "balanced",
+        loopDelay: 30000,
+        notifyDaemon: true,
+        notifyInterval: 300000,
     },
 
     // Sleeve automation settings (if sleeves unlocked)
@@ -237,6 +249,7 @@ export const PORTS = {
     SERVERS: 3,
     FACTIONS: 4,
     ACTIVITY: 5,
+    ACTIVITY_MODE: 6,
 };
 
 // Script paths (relative to /angel/)
@@ -258,6 +271,7 @@ export const SCRIPTS = {
     gang: "/angel/modules/gang.js",
     bladeburner: "/angel/modules/bladeburner.js",
     hacknet: "/angel/modules/hacknet.js",
+    milestones: "/angel/modules/milestones.js",
     
     // Workers (actual hacking scripts)
     hack: "/angel/workers/hack.js",

@@ -50,6 +50,7 @@ export async function main(ns) {
         "modules/gang.js",
         "modules/bladeburner.js",
         "modules/hacknet.js",
+        "modules/milestones.js",
         
         // Workers
         "workers/hack.js",

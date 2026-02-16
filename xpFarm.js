@@ -28,6 +28,7 @@ export async function main(ns) {
         ["reserve", 0],
         ["once", false],
         ["interval", 10000],
+        ["clean", true],
     ]);
     
     const worker = "angel/workers/weaken.js";
@@ -54,6 +55,9 @@ export async function main(ns) {
             return;
         }
         
+        if (flags.clean) {
+            stopWorkers(ns, servers, worker);
+        }
         const deployed = await deployWorkers(ns, servers, worker);
         const { totalThreads, usedServers } = launchWeaken(ns, servers, target, worker, reserveHome);
         
@@ -125,4 +129,15 @@ function launchWeaken(ns, servers, target, worker, reserveHome) {
     }
     
     return { totalThreads, usedServers };
+}
+
+function stopWorkers(ns, servers, worker) {
+    for (const server of servers) {
+        const processes = ns.ps(server);
+        for (const proc of processes) {
+            if (proc.filename === worker) {
+                ns.kill(proc.pid);
+            }
+        }
+    }
 }

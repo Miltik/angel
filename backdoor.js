@@ -1,9 +1,8 @@
 /**
  * ANGEL Backdoor Script
- * Self-contained network crawler that backdoors all hackable servers
+ * Simple recursive crawler that backdoors all reachable servers
  * 
  * Run manually: run /angel/backdoor.js
- * Or let the programs module handle it automatically
  * 
  * @param {NS} ns
  */
@@ -16,89 +15,60 @@ export async function main(ns) {
     ns.tprint("╚════════════════════════════════════════╝");
     ns.tprint("");
     
-    // Scan all servers
-    ns.tprint("Scanning network...");
-    const allServers = scanNetwork(ns);
-    ns.tprint(`Found ${allServers.length} servers`);
-    ns.tprint("");
+    const visited = new Set();
+    let backdoored = 0;
+    let attempted = 0;
     
-    // Filter to servers we can backdoor
-    const hackableServers = allServers.filter(server => {
-        // Skip home and purchased servers - can't backdoor own servers
-        if (server === "home") return false;
+    async function crawl(server, parent = null) {
+        if (visited.has(server)) return;
+        visited.add(server);
         
-        // Skip suspicious/location names
-        if (server === "." || server === ".." || server.length === 0) return false;
+        if (parent) {
+            const connected = ns.singularity.connect(server);
+            if (!connected) {
+                ns.tprint(`✗ ${server}: connect failed`);
+                return;
+            }
+        }
         
-        const srv = ns.getServer(server);
-        if (srv.purchasedByPlayer) return false;
-        
-        // Only backdoor real hackable servers (not terminals/HQs)
-        // Real servers have server growth and base difficulty
-        if (!srv.serverGrowth || srv.serverGrowth === 0) return false;
-        
-        // Only include servers with backdoor support
-        if (srv.backdoorInstalled === undefined) return false;
-        
-        // Can backdoor if: rooted AND not already backdoored
-        return srv.hasAdminRights && srv.backdoorInstalled === false;
-    });
-    
-    ns.tprint(`${hackableServers.length} servers ready for backdoor`);
-    ns.tprint("");
-    
-    if (hackableServers.length === 0) {
-        ns.tprint("✓ All servers already backdoored!");
-        return;
-    }
-    
-    // Backdoor each server
-    ns.tprint("Installing backdoors...");
-    ns.tprint("─────────────────────────────────────────");
-    
-    let successful = 0;
-    let failed = 0;
-    
-    for (const server of hackableServers) {
-        try {
-            // Check if we have the required hack level
+        if (server !== "home") {
             const srv = ns.getServer(server);
-            if (ns.getPlayer().skills.hacking < srv.requiredHackingSkill) {
-                ns.tprint(`✗ ${server} - Hacking level too low (need ${srv.requiredHackingSkill}, have ${ns.getPlayer().skills.hacking})`);
-                failed++;
-                continue;
-            }
+            const canBackdoor = srv.backdoorInstalled !== undefined;
+            const hackLevelOk = ns.getPlayer().skills.hacking >= srv.requiredHackingSkill;
             
-            // Travel to server and backdoor
-            try {
-                await ns.singularity.connect(server);
-            } catch (e) {
-                ns.tprint(`✗ ${server} - Failed to connect: ${e.message || e}`);
-                failed++;
-                continue;
+            if (canBackdoor && srv.hasAdminRights && !srv.backdoorInstalled && hackLevelOk) {
+                attempted++;
+                try {
+                    await ns.singularity.installBackdoor();
+                    backdoored++;
+                    ns.tprint(`✓ ${server}`);
+                } catch (e) {
+                    ns.tprint(`✗ ${server}: ${String(e).substring(0, 40)}`);
+                }
             }
-            
-            try {
-                await ns.singularity.installBackdoor();
-                ns.tprint(`✓ ${server}`);
-                successful++;
-            } catch (e) {
-                ns.tprint(`✗ ${server} - Failed to backdoor: ${e.message || e}`);
-                failed++;
-            }
-            
-            // Small delay between backdoors
-            await ns.sleep(100);
+        }
+        
+        let adjacent = [];
+        try {
+            adjacent = ns.scan(server);
         } catch (e) {
-            ns.tprint(`✗ ${server} - ${e.message || e}`);
-            failed++;
+            ns.tprint(`! Failed to scan ${server}: ${String(e).substring(0, 30)}`);
+        }
+        
+        for (const next of adjacent) {
+            if (next !== parent) {
+                await crawl(next, server);
+            }
+        }
+        
+        if (parent) {
+            ns.singularity.connect(parent);
         }
     }
     
-    // Return home
-    try {
-        await ns.singularity.connect("home");
-    } catch (e) {}
+    ns.tprint("Starting recursive crawler from home...");
+    ns.tprint("─────────────────────────────────────────");
+    await crawl("home");
     
     ns.tprint("─────────────────────────────────────────");
     ns.tprint("");
@@ -106,34 +76,7 @@ export async function main(ns) {
     ns.tprint("║        BACKDOOR COMPLETE               ║");
     ns.tprint("╚════════════════════════════════════════╝");
     ns.tprint("");
-    ns.tprint(`✓ Successful: ${successful}`);
-    ns.tprint(`✗ Failed: ${failed}`);
+    ns.tprint(`✓ Backdoored: ${backdoored}`);
+    ns.tprint(`- Attempted: ${attempted}`);
     ns.tprint("");
-}
-
-/**
- * Scan entire network and return all server hostnames
- */
-function scanNetwork(ns) {
-    const servers = [];
-    const visited = new Set();
-    const queue = ["home"];
-    
-    while (queue.length > 0) {
-        const server = queue.shift();
-        if (visited.has(server)) continue;
-        
-        visited.add(server);
-        servers.push(server);
-        
-        // Get all connected servers
-        const connected = ns.scan(server);
-        for (const next of connected) {
-            if (!visited.has(next)) {
-                queue.push(next);
-            }
-        }
-    }
-    
-    return servers;
 }

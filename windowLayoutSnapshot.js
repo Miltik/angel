@@ -11,8 +11,8 @@
 
 const DEFAULTS_KEY = "angelWindowDefaults";
 const STATES_KEY = "angelWindowStates";
-const DEFAULTS_FILE = "angel_windowdefaults.json";
-const STATES_FILE = "angel_windowstates.json";
+const DEFAULTS_FILES = ["/angel/angel_windowdefaults.json", "angel_windowdefaults.json"];
+const STATES_FILES = ["/angel/angel_windowstates.json", "angel_windowstates.json"];
 
 export async function main(ns) {
     ns.disableLog("ALL");
@@ -61,15 +61,20 @@ export async function main(ns) {
         // localStorage may be unavailable in some contexts
     }
 
+    const payload = JSON.stringify(layout, null, 2);
     try {
-        ns.write(DEFAULTS_FILE, JSON.stringify(layout, null, 2), "w");
-        ns.write(STATES_FILE, JSON.stringify(layout, null, 2), "w");
+        for (const path of DEFAULTS_FILES) {
+            ns.write(path, payload, "w");
+        }
+        for (const path of STATES_FILES) {
+            ns.write(path, payload, "w");
+        }
     } catch (e) {
-        ns.tprint(`⚠️ Failed to write layout files: ${e}`);
+        ns.tprint(`⚠️ Failed to write one or more layout files: ${e}`);
     }
 
     const ids = Object.keys(layout).sort();
     ns.tprint(`✅ Captured ${ids.length} windows.`);
-    ns.tprint(`✅ Wrote ${DEFAULTS_FILE} and ${STATES_FILE}`);
+    ns.tprint(`✅ Wrote ${DEFAULTS_FILES[0]} and ${STATES_FILES[0]}`);
     ns.tprint(`📌 Windows: ${ids.join(", ")}`);
 }

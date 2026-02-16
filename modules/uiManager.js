@@ -14,9 +14,40 @@ let nsReference = null;  // Store NS reference for file I/O
 const UI_PREFS_KEY = "angelUiWindowPrefs";
 const WINDOW_DEFAULTS_KEY = "angelWindowDefaults";
 const STYLE_TAG_ID = "angel-ui-styles";
+const FILES = {
+    uiPrefs: ["/angel/angel_uiprefs.json", "angel_uiprefs.json"],
+    states: ["/angel/angel_windowstates.json", "angel_windowstates.json"],
+    defaults: ["/angel/angel_windowdefaults.json", "angel_windowdefaults.json"],
+};
 let windowPrefsCache = null;
 let windowDefaultsCache = null;
 const sessionVisibility = new Map();
+
+function readFirstAvailableFile(paths) {
+    if (!nsReference) return null;
+    for (const path of paths) {
+        try {
+            const content = nsReference.read(path);
+            if (content && content.trim().length > 0) {
+                return content;
+            }
+        } catch (e) {
+            // try next path
+        }
+    }
+    return null;
+}
+
+function writePrimaryAndLegacy(paths, content) {
+    if (!nsReference) return;
+    for (const path of paths) {
+        try {
+            nsReference.write(path, content, "w");
+        } catch (e) {
+            // ignore write failures per path
+        }
+    }
+}
 
 function toPixelNumber(value) {
     if (typeof value === "number" && Number.isFinite(value)) {
@@ -46,13 +77,7 @@ function buildWindowState(container, minimized) {
 function saveWindowPrefs(prefs) {
     try {
         localStorage.setItem(UI_PREFS_KEY, JSON.stringify(prefs || {}));
-        if (nsReference) {
-            try {
-                nsReference.write("angel_uiprefs.json", JSON.stringify(prefs || {}), "w");
-            } catch (e) {
-                // ignore file write failures
-            }
-        }
+        writePrimaryAndLegacy(FILES.uiPrefs, JSON.stringify(prefs || {}));
     } catch (e) {
         // ignore
     }
@@ -60,15 +85,9 @@ function saveWindowPrefs(prefs) {
 
 function loadWindowPrefs() {
     try {
-        if (nsReference) {
-            try {
-                const fileContent = nsReference.read("angel_uiprefs.json");
-                if (fileContent) {
-                    return JSON.parse(fileContent) || {};
-                }
-            } catch (e) {
-                // fall through
-            }
+        const fileContent = readFirstAvailableFile(FILES.uiPrefs);
+        if (fileContent) {
+            return JSON.parse(fileContent) || {};
         }
         return JSON.parse(localStorage.getItem(UI_PREFS_KEY) || "{}");
     } catch (e) {
@@ -119,15 +138,9 @@ function saveWindowState(id, state) {
         const allStates = JSON.parse(localStorage.getItem("angelWindowStates") || "{}");
         allStates[id] = state;
         localStorage.setItem("angelWindowStates", JSON.stringify(allStates));
-        
+
         // Also save to file for persistence across game resets
-        if (nsReference) {
-            try {
-                nsReference.write("angel_windowstates.json", JSON.stringify(allStates), "w");
-            } catch (e) {
-                // Silently fail if file write not available
-            }
-        }
+        writePrimaryAndLegacy(FILES.states, JSON.stringify(allStates));
     } catch (e) {
         // Silently fail if localStorage not available
     }
@@ -136,18 +149,12 @@ function saveWindowState(id, state) {
 function loadWindowState(id) {
     try {
         // Try file first (survives game resets)
-        if (nsReference) {
-            try {
-                const fileContent = nsReference.read("angel_windowstates.json");
-                if (fileContent) {
-                    const allStates = JSON.parse(fileContent);
-                    return allStates[id] || null;
-                }
-            } catch (e) {
-                // Fall through to localStorage
-            }
+        const fileContent = readFirstAvailableFile(FILES.states);
+        if (fileContent) {
+            const allStates = JSON.parse(fileContent);
+            return allStates[id] || null;
         }
-        
+
         // Fall back to localStorage
         const allStates = JSON.parse(localStorage.getItem("angelWindowStates") || "{}");
         return allStates[id] || null;
@@ -160,13 +167,7 @@ function saveWindowDefaults(defaults) {
     try {
         const safeDefaults = defaults || {};
         localStorage.setItem(WINDOW_DEFAULTS_KEY, JSON.stringify(safeDefaults));
-        if (nsReference) {
-            try {
-                nsReference.write("angel_windowdefaults.json", JSON.stringify(safeDefaults), "w");
-            } catch (e) {
-                // ignore file write failures
-            }
-        }
+        writePrimaryAndLegacy(FILES.defaults, JSON.stringify(safeDefaults));
     } catch (e) {
         // ignore
     }
@@ -174,15 +175,9 @@ function saveWindowDefaults(defaults) {
 
 function loadWindowDefaults() {
     try {
-        if (nsReference) {
-            try {
-                const fileContent = nsReference.read("angel_windowdefaults.json");
-                if (fileContent) {
-                    return JSON.parse(fileContent) || {};
-                }
-            } catch (e) {
-                // fall through
-            }
+        const fileContent = readFirstAvailableFile(FILES.defaults);
+        if (fileContent) {
+            return JSON.parse(fileContent) || {};
         }
         return JSON.parse(localStorage.getItem(WINDOW_DEFAULTS_KEY) || "{}");
     } catch (e) {
@@ -223,7 +218,7 @@ function checkDom() {
 }
 
 // Styles to inject - pure string, no DOM yet
-const CSS_STYLES = `.angel-window{position:fixed;background:#1e1e1e;color:#e0e0e0;border:1px solid #404040;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.5);font-family:'Courier New',monospace;font-size:12px;z-index:10000;display:flex;flex-direction:column;min-width:280px;min-height:36px;transition:height 0.2s ease;overflow:hidden}.angel-window-header{background:linear-gradient(135deg,#2c3e50,#34495e);color:#ecf0f1;padding:7px 10px;cursor:move;user-select:none;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #404040;border-radius:8px 8px 0 0;font-weight:bold;flex-shrink:0}.angel-window-header-title{flex:1}.angel-window-header-buttons{display:flex;gap:6px}.angel-window-btn{background:#34495e;color:#ecf0f1;border:none;width:22px;height:22px;border-radius:4px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:background .2s}.angel-window-btn:hover{background:#3d5a73}.angel-window-content{flex:1 1 auto;min-height:0;overflow:auto;padding:6px 8px;scrollbar-width:thin;scrollbar-color:#404040 #1e1e1e}.angel-window-content::-webkit-scrollbar{width:8px}.angel-window-content::-webkit-scrollbar-track{background:#1e1e1e}.angel-window-content::-webkit-scrollbar-thumb{background:#404040;border-radius:4px}.angel-window-content::-webkit-scrollbar-thumb:hover{background:#555}.angel-window-resize{position:absolute;width:16px;height:16px;bottom:0;right:0;cursor:se-resize;background:linear-gradient(135deg,transparent 50%,#404040 50%);border-radius:0 0 8px 0}.angel-log-line{white-space:pre-wrap;word-break:break-word;margin:2px 0;line-height:1.25}.angel-log-info{color:#3498db}.angel-log-success{color:#2ecc71}.angel-log-warn{color:#f39c12}.angel-log-error{color:#e74c3c}.angel-log-debug{color:#95a5a6}`;
+const CSS_STYLES = `.angel-window{position:fixed;background:#1e1e1e;color:#e0e0e0;border:1px solid #404040;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.5);font-family:'Courier New',monospace;font-size:12px;z-index:10000;display:flex;flex-direction:column;min-width:280px;min-height:36px;transition:height 0.2s ease;overflow:hidden}.angel-window-header{background:linear-gradient(135deg,#2c3e50,#34495e);color:#ecf0f1;padding:7px 10px;cursor:move;user-select:none;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #404040;border-radius:8px 8px 0 0;font-weight:bold;flex-shrink:0}.angel-window-header-title{flex:1}.angel-window-header-buttons{display:flex;gap:6px}.angel-window-btn{background:#34495e;color:#ecf0f1;border:none;width:22px;height:22px;border-radius:4px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:background .2s}.angel-window-btn:hover{background:#3d5a73}.angel-window-content{flex:1 1 auto;min-height:0;overflow:auto;padding:6px 8px;scrollbar-width:thin;scrollbar-color:#404040 #1e1e1e;box-sizing:border-box}.angel-window-content,.angel-window-content *{box-sizing:border-box}.angel-window-content *{max-width:100%;overflow-wrap:anywhere;word-break:break-word}.angel-window-content table{width:100%;table-layout:fixed}.angel-window-content pre{white-space:pre-wrap}.angel-window-content::-webkit-scrollbar{width:8px}.angel-window-content::-webkit-scrollbar-track{background:#1e1e1e}.angel-window-content::-webkit-scrollbar-thumb{background:#404040;border-radius:4px}.angel-window-content::-webkit-scrollbar-thumb:hover{background:#555}.angel-window-resize{position:absolute;width:16px;height:16px;bottom:0;right:0;cursor:se-resize;background:linear-gradient(135deg,transparent 50%,#404040 50%);border-radius:0 0 8px 0}.angel-log-line{white-space:pre-wrap;word-break:break-word;margin:2px 0;line-height:1.25}.angel-log-info{color:#3498db}.angel-log-success{color:#2ecc71}.angel-log-warn{color:#f39c12}.angel-log-error{color:#e74c3c}.angel-log-debug{color:#95a5a6}`;
 
 let stylesInjected = false;
 

@@ -22,6 +22,8 @@ export async function main(ns) {
         "/angel/start.js",
         "/angel/status.js",
         "/angel/windowLayoutSnapshot.js",
+        "/angel/angel_windowdefaults.json",
+        "/angel/angel_windowstates.json",
         "/angel/modules/hacking.js",
         "/angel/modules/servers.js",
         "/angel/modules/factions.js",

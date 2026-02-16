@@ -187,8 +187,10 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
             if (minimizedState.isMinimized) {
                 // Save original height before minimizing
                 minimizedState.originalHeight = container.style.height || (height + "px");
-                // Collapse to just header + 1px border
-                container.style.height = "40px";
+                // Collapse to just header (about 32px)
+                container.style.height = "32px";
+                container.style.minHeight = "32px";
+                container.style.maxHeight = "32px";
                 container.style.overflow = "hidden";
                 content.style.display = "none";
                 resize.style.display = "none";
@@ -196,6 +198,8 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
             } else {
                 // Restore
                 container.style.height = minimizedState.originalHeight;
+                container.style.minHeight = "";
+                container.style.maxHeight = "";
                 container.style.overflow = "";
                 content.style.display = "block";
                 resize.style.display = "block";
@@ -310,7 +314,9 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
         // Restore minimized state if it was saved that way
         if (savedState && savedState.minimized) {
             minimizedState.isMinimized = true;
-            container.style.height = "40px";
+            container.style.height = "32px";
+            container.style.minHeight = "32px";
+            container.style.maxHeight = "32px";
             container.style.overflow = "hidden";
             content.style.display = "none";
             resize.style.display = "none";

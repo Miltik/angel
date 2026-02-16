@@ -135,7 +135,7 @@ async function ensureModulesRunning(ns) {
     
     // Programs module
     if (config.orchestrator.enablePrograms) {
-        await ensureModuleRunning(ns, SCRIPTS.programs, "Programs & Backdoor");
+        await ensureModuleRunning(ns, SCRIPTS.programs, "Programs");
         await ns.sleep(1500); // Stagger startup
     }
     

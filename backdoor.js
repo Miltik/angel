@@ -24,10 +24,12 @@ export async function main(ns) {
     
     // Filter to servers we can backdoor
     const hackableServers = allServers.filter(server => {
-        // Skip home - can't backdoor home server
+        // Skip home and purchased servers - can't backdoor own servers
         if (server === "home") return false;
         
         const srv = ns.getServer(server);
+        if (srv.purchasedByPlayer) return false; // Skip player-owned servers
+        
         // Can backdoor if: rooted AND has backdoor capability AND not already backdoored
         return srv.hasAdminRights && srv.backdoorInstalled === false;
     });

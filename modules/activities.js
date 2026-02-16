@@ -354,19 +354,14 @@ function getMissingCrimeFactions(player) {
  */
 function hasAnyViableFactionWork(ns) {
     const player = ns.getPlayer();
-    const owned = ns.singularity.getOwnedAugmentations(true);
 
     for (const faction of player.factions) {
         if (faction === "NiteSec") {
             continue;
         }
-        const augments = ns.singularity.getAugmentationsFromFaction(faction);
-        
-        // Check if ANY augment in this faction is unowned
-        for (const aug of augments) {
-            if (!owned.includes(aug)) {
-                return true;  // Found at least one unowned augment
-            }
+        const summary = getFactionOpportunitySummary(ns, faction);
+        if (summary.grindableCount > 0) {
+            return true;
         }
     }
 
@@ -466,15 +461,12 @@ async function doTraining(ns, ui) {
  */
 async function doFactionWork(ns, ui) {
     const player = ns.getPlayer();
-    const owned = ns.singularity.getOwnedAugmentations(true);
 
-    // Filter to factions with actual unowned augments
+    // Filter to factions with actual rep-needed augment opportunities (excluding NiteSec)
     const factions = player.factions.filter(f => {
-        if (f === "NiteSec") {
-            return false;
-        }
-        const augments = ns.singularity.getAugmentationsFromFaction(f);
-        return augments.some(aug => !owned.includes(aug));  // Must have unowned augs
+        if (f === "NiteSec") return false;
+        const summary = getFactionOpportunitySummary(ns, f);
+        return summary.grindableCount > 0;
     });
 
     if (factions.length === 0) {
@@ -482,19 +474,30 @@ async function doFactionWork(ns, ui) {
         return;
     }
 
-    // Find faction with most rep needed
+    // Find faction with best opportunity: most grindable augs, then highest total value
     let bestFaction = null;
-    let mostNeeded = 0;
+    let bestSummary = null;
 
     for (const faction of factions) {
-        const repNeeded = getRepNeeded(ns, faction);
-        if (repNeeded > mostNeeded) {
-            mostNeeded = repNeeded;
+        const summary = getFactionOpportunitySummary(ns, faction);
+        if (!bestSummary) {
+            bestSummary = summary;
+            bestFaction = faction;
+            continue;
+        }
+
+        const isBetter =
+            summary.grindableCount > bestSummary.grindableCount ||
+            (summary.grindableCount === bestSummary.grindableCount && summary.grindableValue > bestSummary.grindableValue) ||
+            (summary.grindableCount === bestSummary.grindableCount && summary.grindableValue === bestSummary.grindableValue && summary.maxRepNeeded > bestSummary.maxRepNeeded);
+
+        if (isBetter) {
+            bestSummary = summary;
             bestFaction = faction;
         }
     }
 
-    if (!bestFaction || mostNeeded <= 0) {
+    if (!bestFaction || !bestSummary || bestSummary.grindableCount <= 0) {
         await doCrime(ns, ui);
         return;
     }
@@ -534,7 +537,7 @@ async function doFactionWork(ns, ui) {
     // Only log if faction/work type changed or periodic heartbeat
     const factionKey = `${bestFaction}-${selectedWorkType}`;
     if (factionKey !== lastState.lastFaction || lastState.loopCount - lastState.lastActivityChange > 12) {
-        ui.log(`🤝 Working for ${bestFaction} (${selectedWorkType}) | Rep needed: ${Math.floor(mostNeeded)}`, "info");
+        ui.log(`🤝 Working for ${bestFaction} (${selectedWorkType}) | Augs: ${bestSummary.grindableCount} | Value: ${formatMoney(bestSummary.grindableValue)} | Rep needed: ${Math.floor(bestSummary.maxRepNeeded)}`, "info");
         lastState.lastFaction = factionKey;
         lastState.lastActivityChange = lastState.loopCount;
     }
@@ -680,6 +683,34 @@ function getRepNeeded(ns, faction) {
     }
 
     return maxRepNeeded;
+}
+
+function getFactionOpportunitySummary(ns, faction) {
+    const currentRep = ns.singularity.getFactionRep(faction);
+    const augments = ns.singularity.getAugmentationsFromFaction(faction);
+    const owned = new Set(ns.singularity.getOwnedAugmentations(true));
+
+    let grindableCount = 0;
+    let grindableValue = 0;
+    let maxRepNeeded = 0;
+
+    for (const aug of augments) {
+        if (owned.has(aug)) continue;
+
+        const repReq = ns.singularity.getAugmentationRepReq(aug);
+        const price = ns.singularity.getAugmentationPrice(aug);
+        const repNeeded = Math.max(0, repReq - currentRep);
+
+        if (repNeeded > 0) {
+            grindableCount++;
+            grindableValue += price;
+            if (repNeeded > maxRepNeeded) {
+                maxRepNeeded = repNeeded;
+            }
+        }
+    }
+
+    return { grindableCount, grindableValue, maxRepNeeded };
 }
 
 /**

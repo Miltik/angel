@@ -76,7 +76,12 @@ function render(ui) {
 
 function bindHandlers(ui) {
     ui.contentEl.addEventListener("click", (event) => {
-        const target = event.target;
+        const rawTarget = event.target;
+        if (!rawTarget) return;
+
+        const target = typeof rawTarget.closest === "function"
+            ? rawTarget.closest("[data-action]")
+            : rawTarget;
         if (!target || typeof target.getAttribute !== "function") return;
 
         const action = target.getAttribute("data-action");
@@ -86,6 +91,7 @@ function bindHandlers(ui) {
             for (const w of WINDOW_OPTIONS) {
                 setWindowVisibility(w.id, true);
             }
+            render(ui);
             return;
         }
 
@@ -94,6 +100,7 @@ function bindHandlers(ui) {
                 if (w.id === "dashboard" || w.id === "ui-launcher") continue;
                 setWindowVisibility(w.id, false);
             }
+            render(ui);
             return;
         }
 
@@ -101,6 +108,7 @@ function bindHandlers(ui) {
             const id = target.getAttribute("data-id");
             if (!id) return;
             setWindowVisibility(id, !getWindowVisibility(id));
+            render(ui);
         }
     });
 }

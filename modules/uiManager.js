@@ -12,6 +12,7 @@
 const WINDOWS = new Map();
 let nsReference = null;  // Store NS reference for file I/O
 const UI_PREFS_KEY = "angelUiWindowPrefs";
+let windowPrefsCache = null;
 
 function saveWindowPrefs(prefs) {
     try {
@@ -46,12 +47,19 @@ function loadWindowPrefs() {
     }
 }
 
+function getWindowPrefs() {
+    if (!windowPrefsCache) {
+        windowPrefsCache = loadWindowPrefs() || {};
+    }
+    return windowPrefsCache;
+}
+
 function getDefaultVisibility(id) {
     return id === "dashboard" || id === "ui-launcher";
 }
 
 function getPreferredVisibility(id) {
-    const prefs = loadWindowPrefs();
+    const prefs = getWindowPrefs();
     if (Object.prototype.hasOwnProperty.call(prefs, id)) {
         return Boolean(prefs[id]);
     }
@@ -59,8 +67,9 @@ function getPreferredVisibility(id) {
 }
 
 function persistVisibility(id, visible) {
-    const prefs = loadWindowPrefs();
+    const prefs = getWindowPrefs();
     prefs[id] = Boolean(visible);
+    windowPrefsCache = prefs;
     saveWindowPrefs(prefs);
 }
 

@@ -2,6 +2,10 @@
 
 A modular orchestrator for Bitburner that automates core game mechanics. Designed for SF1 (Source-File 1) and SF4 (Source-File 4) gameplay.
 
+## 📝 Recent Update
+
+- **2026-02-16**: Fixed Hacknet post-reset behavior so nodes/upgrades are bought in early game. Added adaptive bootstrap budgeting (`bootstrapNodeTarget`, `bootstrapSpendRatio`) plus scaled reserve controls (`reserveScale`, `minReserveMoney`) in `config.js`.
+
 ## 🚀 Quick Start
 
 ### Method 1: GitHub Sync (Recommended)

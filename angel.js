@@ -241,12 +241,6 @@ async function ensureModulesRunning(ns) {
         await ns.sleep(1500);
     }
     
-        // Milestone coordinator module (skipped when dashboard is active; dashboard includes coordinator mode)
-        if (config.orchestrator.enableMilestones && !config.orchestrator.enableDashboard) {
-            await ensureModuleRunning(ns, SCRIPTS.milestones, "Milestones");
-            await ns.sleep(1500);
-        }
-
     // Training module (university/gym)
     if (config.orchestrator.enableTraining) {
         await ensureModuleRunning(ns, SCRIPTS.training, "Training");
@@ -404,7 +398,6 @@ export function stopAll(ns) {
         SCRIPTS.serverMgmt,
         SCRIPTS.factions,
         SCRIPTS.augments,
-            SCRIPTS.milestones,
         SCRIPTS.programs,
         SCRIPTS.activities,
         SCRIPTS.training,
@@ -445,7 +438,6 @@ export function getSystemHealth(ns) {
         { name: "Servers", script: SCRIPTS.serverMgmt, enabled: config.orchestrator.enableServerMgmt },
         { name: "Factions", script: SCRIPTS.factions, enabled: config.orchestrator.enableFactions },
         { name: "Augments", script: SCRIPTS.augments, enabled: config.orchestrator.enableAugments },
-            { name: "Milestones", script: SCRIPTS.milestones, enabled: config.orchestrator.enableMilestones && !config.orchestrator.enableDashboard },
         { name: "Programs", script: SCRIPTS.programs, enabled: config.orchestrator.enablePrograms },
         { name: "Activities", script: SCRIPTS.activities, enabled: config.orchestrator.enableActivities },
         { name: "Training", script: SCRIPTS.training, enabled: config.orchestrator.enableTraining },

@@ -61,9 +61,7 @@ export async function main(ns) {
  * Update and display dashboard metrics
  */
 async function updateDashboard(ns, ui) {
-    if (config.orchestrator?.enableMilestones === false) {
-        await runCoordinatorFromDashboard(ns, ui);
-    }
+    await runCoordinatorFromDashboard(ns, ui);
 
     initializeResetMonitor(ns);
 
@@ -82,9 +80,7 @@ async function updateDashboard(ns, ui) {
     lastXp = hacking;
     
     // Get current phase and progress
-    const currentPhase = config.orchestrator?.enableMilestones === false
-        ? coordinatorState.currentPhase
-        : readGamePhase(ns);
+    const currentPhase = coordinatorState.currentPhase;
     const phaseProgress = getPhaseProgress(ns, currentPhase);
     const nextPhase = currentPhase < 4 ? currentPhase + 1 : 4;
     

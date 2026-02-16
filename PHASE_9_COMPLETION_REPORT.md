@@ -1,5 +1,7 @@
 # ANGEL Ecosystem Overhaul - Phase 9 Completion Report
 
+> Note (2026-02-16): Legacy `modules/milestones.js` was removed after coordinator/reset responsibilities were consolidated into `modules/dashboard.js`.
+
 ## Summary
 **Status:** ✅ COMPLETE - Full 8-phase overhaul executed successfully
 **Total Commits:** 8 major phases

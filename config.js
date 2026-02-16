@@ -152,7 +152,6 @@ export const config = {
         enableGang: true,
         enableBladeburner: true,
         enableHacknet: true,
-        enableMilestones: false,    // Coordinator merged into dashboard
         enableDashboard: true,     // Real-time monitoring
         enableNetworkMap: true,    // Network visualization
         enableContracts: true,     // Coding contracts solver
@@ -306,14 +305,6 @@ export const config = {
         ],
     },
 
-    // Milestone coordinator settings
-    milestones: {
-        mode: "balanced",
-        loopDelay: 5000,
-        notifyDaemon: true,
-        notifyInterval: 300000,
-    },
-
     // Sleeve automation settings (if sleeves unlocked)
     sleeves: {
         mode: "balanced", // balanced | training | crime | faction
@@ -465,7 +456,6 @@ export const SCRIPTS = {
     gang: "/angel/modules/gang.js",
     bladeburner: "/angel/modules/bladeburner.js",
     hacknet: "/angel/modules/hacknet.js",
-    milestones: "/angel/modules/milestones.js",
     dashboard: "/angel/modules/dashboard.js",
     networkMap: "/angel/networkMap.js",
     contracts: "/angel/modules/contracts.js",

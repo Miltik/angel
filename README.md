@@ -4,7 +4,7 @@ A modular orchestrator for Bitburner that automates core game mechanics. Designe
 
 ## 📝 Recent Update
 
-- **2026-02-16**: Merged phase/activity coordinator + reset monitor output into `modules/dashboard.js`. `modules/milestones.js` now acts as a legacy fallback only.
+- **2026-02-16**: Merged phase/activity coordinator + reset monitor output into `modules/dashboard.js` and removed legacy `modules/milestones.js`.
 - **2026-02-16**: Fixed Hacknet post-reset behavior so nodes/upgrades are bought in early game. Added adaptive bootstrap budgeting (`bootstrapNodeTarget`, `bootstrapSpendRatio`) plus scaled reserve controls (`reserveScale`, `minReserveMoney`) in `config.js`.
 
 ## 🚀 Quick Start

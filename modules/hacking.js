@@ -20,7 +20,7 @@ export async function main(ns) {
         } catch (e) {
             ui.log(`Hacking loop error: ${e}`, "error");
         }
-        await ns.sleep(200); // batchDelay
+        await ns.sleep(2000); // Update UI every 2 seconds to reduce visual noise
     }
 }
 

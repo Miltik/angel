@@ -11,6 +11,26 @@
 
 const WINDOWS = new Map();
 
+// Window state persistence
+function saveWindowState(id, state) {
+    try {
+        const allStates = JSON.parse(localStorage.getItem("angelWindowStates") || "{}");
+        allStates[id] = state;
+        localStorage.setItem("angelWindowStates", JSON.stringify(allStates));
+    } catch (e) {
+        // Silently fail if localStorage not available
+    }
+}
+
+function loadWindowState(id) {
+    try {
+        const allStates = JSON.parse(localStorage.getItem("angelWindowStates") || "{}");
+        return allStates[id] || null;
+    } catch (e) {
+        return null;
+    }
+}
+
 // Check if DOM is available early
 let htmlElement = null;
 let bodyElement = null;
@@ -83,6 +103,15 @@ export function createWindow(id, title, width = 600, height = 400) {
         container.style.left = (50 + WINDOWS.size * 20) + "px";
         container.style.top = (50 + WINDOWS.size * 20) + "px";
 
+        // Load saved state if available
+        const savedState = loadWindowState(id);
+        if (savedState) {
+            container.style.left = savedState.left + "px";
+            container.style.top = savedState.top + "px";
+            container.style.width = savedState.width + "px";
+            container.style.height = savedState.height + "px";
+        }
+
         // Header
         const header = document.createElement("div");
         header.className = "angel-window-header";
@@ -138,6 +167,13 @@ export function createWindow(id, title, width = 600, height = 400) {
             document.onmouseup = () => {
                 document.onmouseup = null;
                 document.onmousemove = null;
+                // Save window state after drag
+                saveWindowState(id, {
+                    left: container.style.left,
+                    top: container.style.top,
+                    width: container.style.width,
+                    height: container.style.height
+                });
             };
             document.onmousemove = (e) => {
                 dragState.pos1 = dragState.pos3 - e.clientX;
@@ -161,6 +197,13 @@ export function createWindow(id, title, width = 600, height = 400) {
                 resizeState.isResizing = false;
                 document.onmouseup = null;
                 document.onmousemove = null;
+                // Save window state after resize
+                saveWindowState(id, {
+                    left: container.style.left,
+                    top: container.style.top,
+                    width: container.style.width,
+                    height: container.style.height
+                });
             };
             document.onmousemove = (e) => {
                 if (!resizeState.isResizing) return;

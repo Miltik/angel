@@ -27,6 +27,9 @@ let lastMoney = 0;
 let lastXp = 0;
 let lastMoneySources = null;
 let lastMoneySourceUpdate = 0;
+let augmentQueueState = {
+    noQueueSince: 0,
+};
 let coordinatorState = {
     currentPhase: 0,
     resetPending: false,
@@ -71,16 +74,16 @@ async function updateDashboard(ns, ui) {
     const now = Date.now();
     const player = ns.getPlayer();
     const money = player.money + ns.getServerMoneyAvailable("home");
-    const hacking = player.skills.hacking;
+    const hackingXp = getHackingExp(player);
     
     // Calculate rates
     const timeDiff = (now - lastUpdate) / 1000; // seconds
     const moneyRate = timeDiff > 0 ? (money - lastMoney) / timeDiff : 0;
-    const xpRate = timeDiff > 0 ? (hacking - lastXp) / timeDiff : 0;
+    const xpRate = timeDiff > 0 ? Math.max(0, (hackingXp - lastXp) / timeDiff) : 0;
     
     lastUpdate = now;
     lastMoney = money;
-    lastXp = hacking;
+    lastXp = hackingXp;
     
     // Get current phase and progress
     const currentPhase = coordinatorState.currentPhase;
@@ -872,24 +875,53 @@ function displayAugmentationStatus(ui, ns, player) {
     
     // Get queued augmentations
     let queuedCount = 0;
+    let queuedCost = 0;
     try {
-        // This is a workaround - check if singularity is available
-        const purchased = ns.singularity.getOwnedAugmentations(true); // pending vs installed
-        const installed = ns.singularity.getOwnedAugmentations(false); // all
+        const purchased = ns.singularity.getOwnedAugmentations(true);  // installed + queued
+        const installed = ns.singularity.getOwnedAugmentations(false); // installed only
         
         // Safety check - ensure we have arrays
         if (Array.isArray(purchased) && Array.isArray(installed)) {
-            queuedCount = installed.length - purchased.length;
+            queuedCount = Math.max(0, purchased.length - installed.length);
+            if (queuedCount > 0) {
+                const queued = purchased.filter(aug => !installed.includes(aug));
+                for (const aug of queued) {
+                    queuedCost += ns.singularity.getAugmentationPrice(aug);
+                }
+            }
         }
     } catch (e) {
         // Singularity not available or error getting augs
     }
-    
-    const queuedText = queuedCount > 0 ? `QUEUED: ${queuedCount}` : "No queue";
+
+    const now = Date.now();
+    if (queuedCount <= 0) {
+        if (!augmentQueueState.noQueueSince) {
+            augmentQueueState.noQueueSince = now;
+        }
+    } else {
+        augmentQueueState.noQueueSince = 0;
+    }
+
+    const queuedText = queuedCount > 0 ? `Queued ${queuedCount} (${formatMoney(queuedCost)})` : "No queue";
     const resetThreshold = config.augmentations?.minQueuedAugs || 7;
     const status = queuedCount >= resetThreshold ? "🔴 READY FOR RESET" : "⏳ Building queue";
     
     ui.log(`🧬 AUGMENTS: Installed ${ownedCount} | ${queuedText} | ${status} (threshold: ${resetThreshold})`, "info");
+
+    const noQueueWarnMinutes = Number(config.augmentations?.noQueueWarnMinutes ?? 20);
+    const noQueueCashThreshold = Number(config.augmentations?.noQueueWarnCash ?? 1000000000);
+    const money = player.money + ns.getServerMoneyAvailable("home");
+    if (queuedCount <= 0 && augmentQueueState.noQueueSince > 0 && money >= noQueueCashThreshold) {
+        const elapsedMin = (now - augmentQueueState.noQueueSince) / 60000;
+        if (elapsedMin >= noQueueWarnMinutes) {
+            ui.log(`   ⚠️ Queue stalled ${Math.floor(elapsedMin)}m with ${formatMoney(money)} cash — prioritize faction rep unlocks`, "warn");
+        }
+    }
+}
+
+function getHackingExp(player) {
+    return Number(player?.exp?.hacking ?? player?.hacking_exp ?? player?.skills?.hacking ?? 0);
 }
 
 /**

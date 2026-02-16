@@ -42,32 +42,25 @@ let lastState = {
 };
 
 /**
- * Read current game phase from orchestrator, with validation
- * CRIME MODULE: Hardcoded to determine phase locally, ignore port 7 for early game
+ * Read current game phase from player progress (aligned with config thresholds)
  */
 function readGamePhase(ns) {
     const player = ns.getPlayer();
     const money = ns.getServerMoneyAvailable("home") + player.money;
     const hack = player.skills.hacking;
-    
-    // CRIME MODULE PHASE LOGIC (overrides port 7):
-    // P0: Bootstrap - money < $10M
-    if (money < 10000000) {
-        return 0;
-    }
-    
-    // P1: Early - money $10M-$100M OR hacking < 200
-    if (money < 100000000 || hack < 200) {
-        return 1;
-    }
-    
-    // P2: Mid - money $100M-$500M
-    if (money < 500000000) {
-        return 2;
-    }
-    
-    // P3+: Late - money > $500M (hacking focused, crime module idles)
-    return 3;
+    const minCombat = Math.min(player.skills.strength, player.skills.defense, player.skills.dexterity, player.skills.agility);
+    const thresholds = config.gamePhases?.thresholds || {};
+
+    const p01 = thresholds.phase0to1 || { hackLevel: 75, money: 10000000 };
+    const p12 = thresholds.phase1to2 || { hackLevel: 200, money: 100000000 };
+    const p23 = thresholds.phase2to3 || { hackLevel: 500, money: 500000000 };
+    const p34 = thresholds.phase3to4 || { hackLevel: 800, stats: 70 };
+
+    if (hack >= p34.hackLevel && minCombat >= p34.stats) return 4;
+    if (hack >= p23.hackLevel && money >= p23.money) return 3;
+    if (hack >= p12.hackLevel && money >= p12.money) return 2;
+    if (hack >= p01.hackLevel && money >= p01.money) return 1;
+    return 0;
 }
 
 export async function main(ns) {
@@ -288,9 +281,11 @@ function chooseActivity(ns, gamePhase) {
     const money = ns.getServerMoneyAvailable("home");
     const targets = config.training?.targetStats || { strength: 60, defense: 60, dexterity: 60, agility: 60 };
     const missingCrimeFactions = getMissingCrimeFactions(player);
+    const lateCrimeMoneyCap = config.activities?.lateCrimeMoneyCap ?? 100000000;
+    const forceCrimeUnlockUntilPhase = config.activities?.forceCrimeFactionUnlockUntilPhase ?? 2;
 
     // Force crime grind until crime factions are unlocked
-    if (missingCrimeFactions.length > 0) {
+    if (missingCrimeFactions.length > 0 && gamePhase <= forceCrimeUnlockUntilPhase) {
         return "crime";
     }
 
@@ -322,6 +317,13 @@ function chooseActivity(ns, gamePhase) {
         const companyThreshold = config.company?.onlyWhenMoneyBelow || 200000000;
         if (money < companyThreshold) return "company";
         return "crime";
+    }
+
+    // Late-game focus: rep + hacking progression, avoid crime unless cash-starved
+    if (gamePhase >= 3) {
+        if (needsTraining) return "training";
+        if (money < lateCrimeMoneyCap) return "crime";
+        return "none";
     }
 
     // Phase 2+: Training if needed, otherwise crime for stats/money

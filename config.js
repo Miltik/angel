@@ -114,7 +114,7 @@ export const config = {
         // Phase 4: Late Game (Daemon Prep)
         phase4: {
             name: "Late Game",
-            hackingTarget: 1000,
+            hackingTarget: 2500,
             primaryActivity: "daemonPrep",              // Focus: finish daemon requirements
             secondaryActivities: ["bladeburner", "augments"],
             priorities: {
@@ -194,9 +194,15 @@ export const config = {
             phase0: { ram: 128, cores: 2 },
             phase1: { ram: 256, cores: 4 },
             phase2: { ram: 512, cores: 6 },
-            phase3: { ram: 1024, cores: 8 },
-            phase4: { ram: 4096, cores: 8 },
+            phase3: { ram: 2048, cores: 8 },
+            phase4: { ram: 8192, cores: 12 },
         },
+    },
+
+    // Activity behavior tuning
+    activities: {
+        forceCrimeFactionUnlockUntilPhase: 2, // Only force crime-faction unlock path up to phase 2
+        lateCrimeMoneyCap: 100000000,         // In phase 3+, only fall back to crime when below this cash
     },
 
     // Faction settings (for SF4)
@@ -241,6 +247,8 @@ export const config = {
             phase3: { minQueuedAugs: 12, minQueuedCost: 25000000000, minQueuedFloor: 9, minRunMinutes: 45, stallMinutes: 15, highValueCost: 90000000000 },
             phase4: { minQueuedAugs: 14, minQueuedCost: 40000000000, minQueuedFloor: 10, minRunMinutes: 60, stallMinutes: 20, highValueCost: 150000000000 },
         },
+        noQueueWarnMinutes: 20,           // Dashboard warning when queue remains empty too long
+        noQueueWarnCash: 1000000000,      // Only warn when queue is empty and cash is above this value
         daemonResetPolicy: {
             preventResetWhenDaemonReady: true,      // Hold reset once daemon run conditions are ready
             resetImmediatelyOnQueuedRedPill: true,  // If Red Pill is queued, reset now to install it
@@ -308,7 +316,7 @@ export const config = {
         university: "Rothman University",
         course: "Algorithms",
         gym: "Powerhouse Gym",
-        targetHacking: 800,
+        targetHacking: 2500,
         targetStats: {
             strength: 50,
             defense: 50,

@@ -70,7 +70,9 @@ export async function main(ns) {
 
             // Show phase every 12 loops (~60 seconds)
             if (loopCount % 12 === 1) {
-                ui.log(`--- Phase: ${gamePhase} ---`, "info");
+                const player = ns.getPlayer();
+                const money = ns.getServerMoneyAvailable("home") + player.money;
+                ui.log(`--- Phase: ${gamePhase} (Money: $${(money / 1e9).toFixed(2)}B) ---`, "info");
             }
 
             // Faction management: ALWAYS ACTIVE (all phases)
@@ -79,10 +81,12 @@ export async function main(ns) {
             // Activity work: PHASES 0-2 (active), PHASES 3+ (filler only)
             if (gamePhase <= 2) {
                 // P0-2: Active crime/training/faction/company
+                ui.log(`[Loop ${loopCount}] Phase ${gamePhase} - calling processActivity`, "debug");
                 await processActivity(ns, gamePhase, ui);
             } else if (gamePhase >= 3) {
                 // P3+: Crime only as filler when activity lock is free
                 // This allows padding stats during idle moments without blocking other activities
+                ui.log(`[Loop ${loopCount}] Phase ${gamePhase} - calling processFillerCrime`, "debug");
                 await processFillerCrime(ns, gamePhase, ui);
             }
 
@@ -128,6 +132,12 @@ async function manageFactions(ns, ui) {
     // Show pending invitations
     if (invitations.length > 0) {
         ui.log(`Pending invitations: ${invitations.join(", ")}`, "warn");
+    }
+
+    // Check current work to see if faction work is happening
+    const currentWork = ns.singularity.getCurrentWork();
+    if (currentWork && currentWork.type === "FACTION") {
+        ui.log(`[Passthrough] Faction work ongoing: ${currentWork.factionName} (${currentWork.workType})`, "debug");
     }
 }
 
@@ -183,12 +193,13 @@ async function processFillerCrime(ns, gamePhase, ui) {
     // Check if already working on something
     const currentWork = ns.singularity.getCurrentWork();
     if (currentWork) {
+        ui.log(`[P${gamePhase}] Filler skipped: Already working on ${currentWork.type}`, "debug");
         return; // Already working on something, skip
     }
 
     // Try to acquire activity lock (only if free - don't wait)
     if (!claimLock(ns, ACTIVITY_OWNER, ACTIVITY_LOCK_TTL)) {
-        ui.log(`[P${gamePhase}] Filler: Lock held`, "debug");
+        ui.log(`[P${gamePhase}] Filler skipped: Lock held`, "debug");
         // Lock held by another module (faction work, etc), skip
         return;
     }

@@ -282,7 +282,7 @@ function assignRole(ns, member, allMembers, info, gangPhase, taskPool, globalPha
     // This is the KEY NEW FEATURE - adapts to current wanted level
     const optimalReducers = getOptimalWantedReducers(memberCount, info.wantedPenalty);
     const currentReducers = allMembers.filter(m2 => {
-        const mInfo = ns.gang.getMemberInformation(m2);
+        const mInfo = ns.gang.getMemberInformation(m2.name);
         const task = mInfo.task || "Unassigned";
         return task === (isHacking ? "Vigilante Justice" : "Vigilante Justice");
     }).length;

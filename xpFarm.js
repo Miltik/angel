@@ -26,7 +26,21 @@ let lastState = {
 export async function main(ns) {
     ns.disableLog("ALL");
     
-    const ui = createWindow("xpfarm", "⚡ XP Farm", 600, 400, ns);
+    // Version check
+    ns.tprint("⚡ XP Farm v2.0 (DOM UI) - Loading...");
+    
+    let ui;
+    try {
+        ui = createWindow("xpfarm", "⚡ XP Farm", 600, 400, ns);
+        ns.tprint("✅ DOM UI initialized successfully");
+    } catch (error) {
+        ns.tprint(`❌ DOM UI failed: ${error.message}`);
+        ns.tprint("Falling back to tail window...");
+        ns.ui.openTail();
+        ui = {
+            log: (msg) => ns.print(msg),
+        };
+    }
     
     const flags = ns.flags([
         ["target", ""],

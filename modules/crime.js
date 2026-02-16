@@ -93,7 +93,7 @@ export async function main(ns) {
  * FACTION MANAGEMENT: Always active
  * Tracks faction rep, handles invitations, displays status
  */
-async function manageFactions(ns) {
+async function manageFactions(ns, ui) {
     const player = ns.getPlayer();
     const currentFactions = player.factions;
     const invitations = ns.singularity.checkFactionInvitations();
@@ -104,7 +104,7 @@ async function manageFactions(ns) {
         for (const faction of invitations) {
             if (priorityFactions.includes(faction)) {
                 ns.singularity.joinFaction(faction);
-                log(ns, `🎭 Joined faction: ${faction}`, "SUCCESS");
+                ui.log(`Joined faction: ${faction}`, "success");
             }
         }
     }
@@ -117,12 +117,12 @@ async function manageFactions(ns) {
             const repNeeded = getRepNeeded(ns, faction);
             statusLines.push(`${faction}:${Math.floor(rep)}/${Math.floor(repNeeded)}`);
         }
-        log(ns, `🎭 Factions: ${statusLines.join(" | ")}`, "DEBUG");
+        ui.log(`Factions: ${statusLines.join(" | ")}`, "debug");
     }
 
     // Show pending invitations
     if (invitations.length > 0) {
-        log(ns, `🎭 Pending invitations: ${invitations.join(", ")}`, "WARN");
+        ui.log(`Pending invitations: ${invitations.join(", ")}`, "warn");
     }
 }
 
@@ -130,7 +130,7 @@ async function manageFactions(ns) {
  * ACTIVITY PROCESSING: Phases 0-2 only
  * Chooses and executes best activity (crime, training, faction, company)
  */
-async function processActivity(ns, gamePhase) {
+async function processActivity(ns, gamePhase, ui) {
     // Check if already working on something
     const currentWork = ns.singularity.getCurrentWork();
     if (currentWork) {
@@ -150,19 +150,19 @@ async function processActivity(ns, gamePhase) {
     }
 
     try {
-        log(ns, `🎭 [P${gamePhase}] Starting: ${activity}`, "INFO");
+        ui.log(`[P${gamePhase}] Starting: ${activity}`, "info");
 
         if (activity === "crime") {
-            await doCrime(ns);
+            await doCrime(ns, ui);
         } else if (activity === "training") {
-            await doTraining(ns);
+            await doTraining(ns, ui);
         } else if (activity === "faction") {
-            await doFactionWork(ns);
+            await doFactionWork(ns, ui);
         } else if (activity === "company") {
-            await doCompanyWork(ns);
+            await doCompanyWork(ns, ui);
         }
     } catch (err) {
-        log(ns, `🎭 Error during ${activity}: ${err}`, "ERROR");
+        ui.log(`Error during ${activity}: ${err}`, "error");
     }
 
     releaseLock(ns, ACTIVITY_OWNER);
@@ -172,7 +172,7 @@ async function processActivity(ns, gamePhase) {
  * FILLER CRIME: Phases 3+ only
  * Do brief crimes when activity lock is free (statpadding only)
  */
-async function processFillerCrime(ns, gamePhase) {
+async function processFillerCrime(ns, gamePhase, ui) {
     // Check if already working on something
     const currentWork = ns.singularity.getCurrentWork();
     if (currentWork) {
@@ -187,9 +187,9 @@ async function processFillerCrime(ns, gamePhase) {
 
     try {
         // Do a quick crime for stat padding
-        await doCrime(ns);
+        await doCrime(ns, ui);
     } catch (err) {
-        log(ns, `🎭 Error during filler crime: ${err}`, "ERROR");
+        ui.log(`Error during filler crime: ${err}`, "error");
     }
 
     releaseLock(ns, ACTIVITY_OWNER);
@@ -276,24 +276,24 @@ function hasAnyViableFactionWork(ns) {
 /**
  * Commit a crime and wait for completion
  */
-async function doCrime(ns) {
+async function doCrime(ns, ui) {
     const crime = selectCrime(ns);
     if (!crime) {
-        log(ns, `🎭 Crime: No suitable crime found`, "WARN");
+        ui.log(`Crime: No suitable crime found`, "warn");
         await ns.sleep(5000);
         return;
     }
 
     const stats = ns.singularity.getCrimeStats(crime);
     const duration = ns.singularity.commitCrime(crime, config.crime?.focus || "maximum");
-    log(ns, `🎭 Crime: ${crime} | Duration: ${(duration / 1000).toFixed(1)}s | %: ${(ns.singularity.getCrimeChance(crime) * 100).toFixed(0)}%`, "INFO");
+    ui.log(`Crime: ${crime} | Duration: ${(duration / 1000).toFixed(1)}s | %: ${(ns.singularity.getCrimeChance(crime) * 100).toFixed(0)}%`, "info");
     await ns.sleep(duration + 500);
 }
 
 /**
  * Train stats or hacking
  */
-async function doTraining(ns) {
+async function doTraining(ns, ui) {
     const targets = config.training?.targetStats || { strength: 60, defense: 60, dexterity: 60, agility: 60 };
     const player = ns.getPlayer();
 
@@ -318,8 +318,8 @@ async function doTraining(ns) {
     }
 
     if (!target) {
-        log(ns, `🎭 Training: All stats maxed - doing crime instead`, "DEBUG");
-        await doCrime(ns);
+        ui.log(`Training: All stats maxed - doing crime instead`, "debug");
+        await doCrime(ns, ui);
         return;
     }
 
@@ -335,14 +335,14 @@ async function doTraining(ns) {
             config.training?.course || "Algorithms",
             config.training?.focus || "maximum"
         );
-        log(ns, `🎭 Training: Hacking at ${config.training?.university || "University"}`, "INFO");
+        ui.log(`Training: Hacking at ${config.training?.university || "University"}`, "info");
     } else {
         ns.singularity.gymWorkout(
             config.training?.gym || "Powerhouse Gym",
             target.stat,
             config.training?.focus || "maximum"
         );
-        log(ns, `🎭 Training: ${target.stat} at gym`, "INFO");
+        ui.log(`Training: ${target.stat} at gym`, "info");
     }
 
     await ns.sleep(180000);
@@ -351,7 +351,7 @@ async function doTraining(ns) {
 /**
  * Work for a faction
  */
-async function doFactionWork(ns) {
+async function doFactionWork(ns, ui) {
     const player = ns.getPlayer();
     const owned = ns.singularity.getOwnedAugmentations(true);
 
@@ -365,8 +365,8 @@ async function doFactionWork(ns) {
     });
 
     if (factions.length === 0) {
-        log(ns, `🎭 Faction: No valid factions - doing crime instead`, "DEBUG");
-        await doCrime(ns);
+        ui.log(`Faction: No valid factions - doing crime instead`, "debug");
+        await doCrime(ns, ui);
         return;
     }
 
@@ -383,8 +383,8 @@ async function doFactionWork(ns) {
     }
 
     if (!bestFaction || mostNeeded <= 0) {
-        log(ns, `🎭 Faction: All factions satisfied - doing crime instead`, "DEBUG");
-        await doCrime(ns);
+        ui.log(`Faction: All factions satisfied - doing crime instead`, "debug");
+        await doCrime(ns, ui);
         return;
     }
 
@@ -397,7 +397,7 @@ async function doFactionWork(ns) {
 
     const workType = config.factions?.workType || "Hacking Contracts";
     ns.singularity.workForFaction(bestFaction, workType);
-    log(ns, `🎭 Faction: Working for ${bestFaction} (${workType}) | Rep needed: ${Math.floor(mostNeeded)}`, "INFO");
+    ui.log(`Faction: Working for ${bestFaction} (${workType}) | Rep needed: ${Math.floor(mostNeeded)}`, "info");
 
     await ns.sleep(180000);
 }
@@ -405,14 +405,14 @@ async function doFactionWork(ns) {
 /**
  * Work for a company
  */
-async function doCompanyWork(ns) {
+async function doCompanyWork(ns, ui) {
     const player = ns.getPlayer();
     const money = ns.getServerMoneyAvailable("home");
     const threshold = config.company?.onlyWhenMoneyBelow || 200000000;
 
     if (money >= threshold) {
-        log(ns, `🎭 Company: Money above threshold (${formatMoney(money)}/${formatMoney(threshold)}) - doing crime instead`, "DEBUG");
-        await doCrime(ns);
+        ui.log(`Company: Money above threshold (${formatMoney(money)}/${formatMoney(threshold)}) - doing crime instead`, "debug");
+        await doCrime(ns, ui);
         return;
     }
 
@@ -437,7 +437,7 @@ async function doCompanyWork(ns) {
         try {
             const success = ns.singularity.workForCompany(company, config.company?.focus || "maximum");
             if (success) {
-                log(ns, `🎭 Company: Working for ${company} | Money: ${formatMoney(money)}/${formatMoney(threshold)}`, "INFO");
+                ui.log(`Company: Working for ${company} | Money: ${formatMoney(money)}/${formatMoney(threshold)}`, "info");
                 placed = true;
                 break;
             }
@@ -445,8 +445,8 @@ async function doCompanyWork(ns) {
     }
 
     if (!placed) {
-        log(ns, `🎭 Company: No positions available - doing crime instead`, "WARN");
-        await doCrime(ns);
+        ui.log(`Company: No positions available - doing crime instead`, "warn");
+        await doCrime(ns, ui);
         return;
     }
 

@@ -18,6 +18,9 @@ import { formatMoney } from "/angel/utils.js";
 import { createWindow } from "/angel/modules/uiManager.js";
 
 const PHASE_PORT = 7;
+const XP_FARM_SCRIPT = "/angel/xpFarm.js";
+const XP_FARM_WORKER = "/angel/workers/weaken.js";
+const XP_FARM_MARKER = "__angel_xpfarm__";
 let lastUpdate = 0;
 let lastMoney = 0;
 let lastXp = 0;
@@ -88,6 +91,7 @@ async function updateDashboard(ns, ui) {
         
         // Hacking Status
         displayHackingStatus(ui, player, ns);
+        displayXPFarmStatus(ui, ns);
         ui.log("", "info");
         
         // Current Activity (what player is doing right now)
@@ -651,6 +655,56 @@ function displayHackingStatus(ui, player, ns) {
     ui.log(`⚔️  HACKING: ${player.skills.hacking.toString().padStart(4)} (${(player.skills.hacking / 1000).toFixed(1)}k/1k)`, "info");
     ui.log(`🖥️  NETWORK: ${serverCount} rooted | ${purchasedServers} purchased`, "info");
     ui.log(`💾 RAM: ${ramBar} ${(usedRam / 1024).toFixed(1)}TB / ${(totalRam / 1024).toFixed(1)}TB`, "info");
+}
+
+function displayXPFarmStatus(ui, ns) {
+    let mode = "inactive";
+    try {
+        const homeProcesses = ns.ps("home");
+        const xpProcess = homeProcesses.find(p => p.filename === XP_FARM_SCRIPT);
+        if (!xpProcess) {
+            ui.log("⚡ XP FARM: Inactive", "info");
+            return;
+        }
+
+        mode = parseXPFarmMode(xpProcess.args || []);
+
+        const rooted = scanAll(ns).filter(server => ns.hasRootAccess(server));
+        let totalThreads = 0;
+        let activeServers = 0;
+        let target = "-";
+
+        for (const server of rooted) {
+            const processes = ns.ps(server).filter(proc => proc.filename === XP_FARM_WORKER);
+            let serverHasXpFarmWorker = false;
+            for (const proc of processes) {
+                const args = proc.args || [];
+                const marked = args.some(arg => String(arg) === XP_FARM_MARKER);
+                if (!marked) continue;
+                totalThreads += proc.threads || 0;
+                serverHasXpFarmWorker = true;
+                if (target === "-" && args.length > 0) {
+                    target = String(args[0]);
+                }
+            }
+            if (serverHasXpFarmWorker) {
+                activeServers++;
+            }
+        }
+
+        ui.log(`⚡ XP FARM: ${mode} | Threads: ${totalThreads} | Servers: ${activeServers} | Target: ${target}`, "info");
+    } catch (e) {
+        ui.log(`⚡ XP FARM: ${mode}`, "info");
+    }
+}
+
+function parseXPFarmMode(args) {
+    for (let i = 0; i < args.length; i++) {
+        if (String(args[i]) === "--mode" && i + 1 < args.length) {
+            return String(args[i + 1]);
+        }
+    }
+    return "spare-home";
 }
 
 /**

@@ -11,6 +11,58 @@
 
 const WINDOWS = new Map();
 let nsReference = null;  // Store NS reference for file I/O
+const UI_PREFS_KEY = "angelUiWindowPrefs";
+
+function saveWindowPrefs(prefs) {
+    try {
+        localStorage.setItem(UI_PREFS_KEY, JSON.stringify(prefs || {}));
+        if (nsReference) {
+            try {
+                nsReference.write("angel_uiprefs.json", JSON.stringify(prefs || {}), "w");
+            } catch (e) {
+                // ignore file write failures
+            }
+        }
+    } catch (e) {
+        // ignore
+    }
+}
+
+function loadWindowPrefs() {
+    try {
+        if (nsReference) {
+            try {
+                const fileContent = nsReference.read("angel_uiprefs.json");
+                if (fileContent) {
+                    return JSON.parse(fileContent) || {};
+                }
+            } catch (e) {
+                // fall through
+            }
+        }
+        return JSON.parse(localStorage.getItem(UI_PREFS_KEY) || "{}");
+    } catch (e) {
+        return {};
+    }
+}
+
+function getDefaultVisibility(id) {
+    return id === "dashboard" || id === "ui-launcher";
+}
+
+function getPreferredVisibility(id) {
+    const prefs = loadWindowPrefs();
+    if (Object.prototype.hasOwnProperty.call(prefs, id)) {
+        return Boolean(prefs[id]);
+    }
+    return getDefaultVisibility(id);
+}
+
+function persistVisibility(id, visible) {
+    const prefs = loadWindowPrefs();
+    prefs[id] = Boolean(visible);
+    saveWindowPrefs(prefs);
+}
 
 // Window state persistence (localStorage + file backup)
 function saveWindowState(id, state) {
@@ -111,7 +163,12 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
     }
     
     if (WINDOWS.has(id)) {
-        return WINDOWS.get(id);
+        const existing = WINDOWS.get(id);
+        const preferredVisible = getPreferredVisibility(id);
+        if (!existing.isMock && existing.element) {
+            existing.element.style.display = preferredVisible ? "flex" : "none";
+        }
+        return existing;
     }
 
     if (!checkDom()) {
@@ -176,6 +233,7 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
         container.appendChild(header);
         container.appendChild(content);
         container.appendChild(resize);
+        container.style.display = getPreferredVisibility(id) ? "flex" : "none";
         document.body.appendChild(container);
 
         // Setup event handlers
@@ -217,8 +275,8 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
         };
         
         closeBtn.onclick = () => {
-            container.remove();
-            WINDOWS.delete(id);
+            container.style.display = "none";
+            persistVisibility(id, false);
         };
 
         // Make draggable
@@ -303,9 +361,17 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
             toggle() {
                 content.style.display = content.style.display === "none" ? "block" : "none";
             },
+            show() {
+                container.style.display = "flex";
+                persistVisibility(id, true);
+            },
+            hide() {
+                container.style.display = "none";
+                persistVisibility(id, false);
+            },
             close() {
-                container.remove();
-                WINDOWS.delete(id);
+                container.style.display = "none";
+                persistVisibility(id, false);
             },
         };
 
@@ -330,6 +396,24 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
         WINDOWS.set(id, mock);
         return mock;
     }
+}
+
+export function setWindowVisibility(id, visible) {
+    persistVisibility(id, visible);
+    const windowApi = WINDOWS.get(id);
+    if (windowApi && !windowApi.isMock && windowApi.element) {
+        windowApi.element.style.display = visible ? "flex" : "none";
+    }
+}
+
+export function getWindowVisibility(id) {
+    return getPreferredVisibility(id);
+}
+
+export function toggleWindowVisibility(id) {
+    const next = !getPreferredVisibility(id);
+    setWindowVisibility(id, next);
+    return next;
 }
 
 export function getWindow(id) {

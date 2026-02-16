@@ -51,6 +51,7 @@ export async function main(ns) {
         "modules/bladeburner.js",
         "modules/hacknet.js",
         "modules/dashboard.js",          // New: Real-time monitoring
+        "modules/uiLauncher.js",         // New: Clickable window visibility launcher
         "modules/contracts.js",          // New: Coding contracts solver
         "modules/formulas.js",           // New: Formulas.exe farming
         "modules/backdoorRunner.js",     // New: Full backdoor runner (launched by backdoor.js)

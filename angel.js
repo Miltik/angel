@@ -363,6 +363,15 @@ async function ensureModulesRunning(ns) {
         });
         await ns.sleep(1500);
     }
+
+    // UI Launcher module - optional, non-blocking
+    if (config.orchestrator.enableUILauncher) {
+        await ensureModuleRunning(ns, SCRIPTS.uiLauncher, "UI Launcher", [], {
+            deferIfInsufficientRam: true,
+            lowRamLogIntervalMs: 45000,
+        });
+        await ns.sleep(1000);
+    }
     
     // Coding Contracts solver - low RAM
     if (config.orchestrator.enableContracts) {
@@ -568,6 +577,7 @@ export function stopAll(ns) {
         SCRIPTS.gang,
         SCRIPTS.bladeburner,
         SCRIPTS.sleeves,
+        SCRIPTS.uiLauncher,
         SCRIPTS.xpFarm,
         SCRIPTS.backdoor,
         "/angel/modules/backdoorRunner.js",
@@ -608,6 +618,7 @@ export function getSystemHealth(ns) {
         { name: "Gang", script: SCRIPTS.gang, enabled: config.orchestrator.enableGang },
         { name: "Bladeburner", script: SCRIPTS.bladeburner, enabled: config.orchestrator.enableBladeburner },
         { name: "Sleeves", script: SCRIPTS.sleeves, enabled: config.orchestrator.enableSleeves },
+        { name: "UI Launcher", script: SCRIPTS.uiLauncher, enabled: config.orchestrator.enableUILauncher },
         { name: "XP Farm", script: SCRIPTS.xpFarm, enabled: config.orchestrator.enableXPFarm },
         { name: "Backdoor", script: SCRIPTS.backdoor, enabled: config.orchestrator.enableBackdoorAuto },
     ];

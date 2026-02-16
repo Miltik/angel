@@ -153,6 +153,7 @@ export const config = {
         enableBladeburner: true,
         enableHacknet: true,
         enableDashboard: true,     // Real-time monitoring
+        enableUILauncher: true,    // Clickable DOM window launcher/toggles
         enableNetworkMap: true,    // Network visualization
         enableContracts: true,     // Coding contracts solver
         enableFormulas: true,      // Formulas.exe farming
@@ -502,6 +503,7 @@ export const SCRIPTS = {
     bladeburner: "/angel/modules/bladeburner.js",
     hacknet: "/angel/modules/hacknet.js",
     dashboard: "/angel/modules/dashboard.js",
+    uiLauncher: "/angel/modules/uiLauncher.js",
     networkMap: "/angel/networkMap.js",
     contracts: "/angel/modules/contracts.js",
     formulas: "/angel/modules/formulas.js",

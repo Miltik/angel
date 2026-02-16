@@ -35,6 +35,7 @@ export async function main(ns) {
         "start.js",
         "status.js",
         "networkMap.js",
+        "backdoor.js",
         
         // Modules
         "modules/hacking.js",

@@ -1,11 +1,13 @@
 /**
- * Milestones/Game Orchestrator Module
- * Central coordinator that:
+ * Legacy Milestones Coordinator Module
+ * Fallback coordinator that:
  * - Detects game phase based on player progress
  * - Broadcasts current phase to all modules
  * - Coordinates activity priorities
  * - Tracks progress toward daemon
- * - Triggers reset when augments reach threshold
+ *
+ * Primary coordination now runs in dashboard.js when
+ * orchestrator.enableDashboard=true and enableMilestones=false.
  * 
  * @param {NS} ns
  */
@@ -17,9 +19,9 @@ const PHASE_PORT = 7;
 export async function main(ns) {
     ns.disableLog("ALL");
     
-    const ui = createWindow("milestones", "🎯 Milestones & Orchestrator", 700, 500, ns);
+    const ui = createWindow("milestones", "🎯 Milestones (Legacy Fallback)", 700, 500, ns);
     ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
-    ui.log("🎯 Game orchestrator initialized", "success");
+    ui.log("🎯 Legacy milestones coordinator initialized", "success");
     ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
 
     let lastNotify = 0;
@@ -69,7 +71,7 @@ export async function main(ns) {
                 }
             }
         } catch (e) {
-            ui.log(`❌ Orchestrator error: ${e}`, "error");
+            ui.log(`❌ Legacy coordinator error: ${e}`, "error");
         }
 
         await ns.sleep(config.milestones.loopDelay);
@@ -259,7 +261,7 @@ function logStatusToDashboard(ui, ns, phase, activity) {
     const trainingTargets = config.training?.targetStats || { strength: 60, defense: 60, dexterity: 60, agility: 60 };
     
     ui.log("═════════════════════════════════", "info");
-    ui.log("     GAME ORCHESTRATOR STATUS", "info");
+    ui.log("   LEGACY COORDINATOR STATUS", "info");
     ui.log("═════════════════════════════════", "info");
     
     const phaseEmoji = ["🌱", "📈", "🎯", "👾", "👑"][phase] || "❓";

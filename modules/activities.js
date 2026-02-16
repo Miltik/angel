@@ -171,25 +171,38 @@ async function processActivity(ns, gamePhase, ui) {
     // Check if already working on something
     const currentWork = ns.singularity.getCurrentWork();
     if (currentWork) {
+        const shouldForceFaction = config.factions?.workForFactionRep !== false && hasAnyViableFactionWork(ns);
+        const isLowerPriorityWork = currentWork.type === "CRIME" ||
+                                    currentWork.type === "COMPANY" ||
+                                    currentWork.type === "UNIVERSITY" ||
+                                    currentWork.type === "GYM" ||
+                                    currentWork.type === "CLASS";
+
+        // Preempt lower-priority work when faction rep is available/needed
+        if (shouldForceFaction && isLowerPriorityWork) {
+            ns.singularity.stopAction();
+            ui.log(`🔁 Switching from ${currentWork.type} to faction rep grind`, "info");
+        } else {
         // Display what's in progress (only on change or periodically)
-        const activityKey = `${currentWork.type}-${currentWork.crimeType || currentWork.factionName || currentWork.companyName || ""}`;
-        const shouldLog = activityKey !== lastState.currentActivity || lastState.loopCount % 12 === 0;
+            const activityKey = `${currentWork.type}-${currentWork.crimeType || currentWork.factionName || currentWork.companyName || ""}`;
+            const shouldLog = activityKey !== lastState.currentActivity || lastState.loopCount % 12 === 0;
         
-        if (shouldLog) {
-            if (currentWork.type === "CRIME") {
-                const crime = currentWork.crimeType;
-                const chance = ns.singularity.getCrimeChance(crime);
-                ui.log(`🔪 Crime in progress: ${crime} (${(chance * 100).toFixed(1)}% success)`, "info");
-            } else if (currentWork.type === "FACTION") {
-                ui.log(`🤝 Faction work: ${currentWork.factionName} (${currentWork.workType})`, "info");
-            } else if (currentWork.type === "COMPANY") {
-                ui.log(`💼 Company work: ${currentWork.companyName}`, "info");
-            } else if (currentWork.type === "UNIVERSITY" || currentWork.type === "GYM") {
-                ui.log(`📚 Training: ${currentWork.type}`, "info");
+            if (shouldLog) {
+                if (currentWork.type === "CRIME") {
+                    const crime = currentWork.crimeType;
+                    const chance = ns.singularity.getCrimeChance(crime);
+                    ui.log(`🔪 Crime in progress: ${crime} (${(chance * 100).toFixed(1)}% success)`, "info");
+                } else if (currentWork.type === "FACTION") {
+                    ui.log(`🤝 Faction work: ${currentWork.factionName} (${currentWork.workType})`, "info");
+                } else if (currentWork.type === "COMPANY") {
+                    ui.log(`💼 Company work: ${currentWork.companyName}`, "info");
+                } else if (currentWork.type === "UNIVERSITY" || currentWork.type === "GYM" || currentWork.type === "CLASS") {
+                    ui.log(`📚 Training: ${currentWork.type}`, "info");
+                }
+                lastState.currentActivity = activityKey;
             }
-            lastState.currentActivity = activityKey;
+            return;
         }
-        return;
     }
 
     // Determine best activity for this phase
@@ -251,7 +264,7 @@ function chooseActivity(ns, gamePhase) {
         player.skills.agility < targets.agility;
 
     // Check if any faction actually has viable work (not just gang-only like Nitesec)
-    const hasViableFactionWork = hasAnyViableFactionWork(ns);
+    const hasViableFactionWork = config.factions?.workForFactionRep !== false && hasAnyViableFactionWork(ns);
 
     // ALWAYS prioritize faction work if we have augments that need rep (all phases)
     if (hasViableFactionWork) {
@@ -446,13 +459,36 @@ async function doFactionWork(ns, ui) {
         return;
     }
 
-    const workType = config.factions?.workType || "Hacking Contracts";
-    
-    // Only log if faction changed
-    if (bestFaction !== lastState.lastFaction || lastState.loopCount - lastState.lastActivityChange > 12) {
-        ns.singularity.workForFaction(bestFaction, workType);
-        ui.log(`🤝 Working for ${bestFaction} (${workType}) | Rep needed: ${Math.floor(mostNeeded)}`, "info");
-        lastState.lastFaction = bestFaction;
+    const configuredWorkType = config.factions?.workType || "Hacking Contracts";
+    const workTypes = [configuredWorkType, "Hacking Contracts", "Field Work", "Security Work"];
+    let started = false;
+    let selectedWorkType = configuredWorkType;
+
+    for (const workType of [...new Set(workTypes)]) {
+        try {
+            if (ns.singularity.workForFaction(bestFaction, workType, config.factions?.focus || false)) {
+                started = true;
+                selectedWorkType = workType;
+                break;
+            }
+        } catch (e) {
+            // Try next work type
+        }
+    }
+
+    if (!started) {
+        if (lastState.loopCount % 12 === 0) {
+            ui.log(`⚠️ Could not start faction work for ${bestFaction} (all work types unavailable)`, "warn");
+        }
+        await doCrime(ns, ui);
+        return;
+    }
+
+    // Only log if faction/work type changed or periodic heartbeat
+    const factionKey = `${bestFaction}-${selectedWorkType}`;
+    if (factionKey !== lastState.lastFaction || lastState.loopCount - lastState.lastActivityChange > 12) {
+        ui.log(`🤝 Working for ${bestFaction} (${selectedWorkType}) | Rep needed: ${Math.floor(mostNeeded)}`, "info");
+        lastState.lastFaction = factionKey;
         lastState.lastActivityChange = lastState.loopCount;
     }
 

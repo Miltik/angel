@@ -152,7 +152,7 @@ function selectTargetByPhase(ns, targets, phase) {
 
 /**
  * Calculate target score based on profitability (money/time ratio)
- * Considers: money, security, growth potential
+ * Considers: money, security, growth potential, AND prep state
  * Higher score = better target
  */
 function calculateProfitabilityScore(ns, server) {
@@ -160,6 +160,8 @@ function calculateProfitabilityScore(ns, server) {
     if (maxMoney <= 0) return 0;
     
     const minSecurity = ns.getServerMinSecurityLevel(server);
+    const currentSecurity = ns.getServerSecurityLevel(server);
+    const currentMoney = ns.getServerMoneyAvailable(server);
     const growthRate = ns.getServerGrowth(server);
     const requiredHacking = ns.getServerRequiredHackingLevel(server);
     const player = ns.getPlayer();
@@ -178,6 +180,31 @@ function calculateProfitabilityScore(ns, server) {
         score *= 0.4; // Diminishing returns on trivial servers
     } else if (requiredHacking < player.skills.hacking * 0.5) {
         score *= 0.7; // Still less efficient than challenging targets
+    }
+    
+    // CRITICAL: Heavy penalty for unprepped servers
+    // Security penalty: exponentially worse as security increases
+    const securityDelta = currentSecurity - minSecurity;
+    if (securityDelta > 5) {
+        // For every point above +5 security, multiply score by 0.7 (stacks exponentially)
+        const securityPenalty = Math.pow(0.7, securityDelta - 5);
+        score *= securityPenalty;
+    }
+    
+    // Money penalty: if server is below 75% money, reduce score
+    const moneyPercent = currentMoney / maxMoney;
+    if (moneyPercent < 0.75) {
+        // Below 75%, reduce score based on how low money is
+        const moneyPenalty = Math.pow(moneyPercent / 0.75, 2); // Quadratic penalty
+        score *= moneyPenalty;
+    } else {
+        // Bonus for being at or above target money
+        score *= 1.2;
+    }
+    
+    // HUGE bonus if server is already prepped and ready to hack
+    if (securityDelta <= 5 && moneyPercent >= 0.75) {
+        score *= 3.0; // Triple score for prepped servers
     }
     
     return score;

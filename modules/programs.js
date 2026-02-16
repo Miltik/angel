@@ -1,13 +1,11 @@
+import { createWindow } from "/angel/modules/uiManager.js";
+
 /** @param {NS} ns */
 export async function main(ns) {
     ns.disableLog("ALL");
-    ns.print("[Programs] Starting module");
     
-    try {
-        ns.ui.openTail();
-    } catch (e) {
-        ns.print("[Programs] Warning: tail failed");
-    }
+    const ui = createWindow("programs", "💾 Programs", 600, 350);
+    ui.log("Programs module started", "info");
     
     let loopCount = 0;
     
@@ -16,18 +14,18 @@ export async function main(ns) {
         try {
             // Ensure we're always at home
             const homeConn = await connectToHome(ns);
-            if (!homeConn) ns.print("[Programs] WARNING: Failed to connect to home!");
+            if (!homeConn) ui.log("WARNING: Failed to connect to home!", "warn");
             
-            ns.print(`[Programs] Loop ${loopCount}`);
+            ui.log(`Loop ${loopCount}`, "debug");
             
             // Buy TOR and Programs
-            const allDone = await phaseBuyPrograms(ns);
+            const allDone = await phaseBuyPrograms(ns, ui);
             if (allDone) {
-                ns.print("[Programs] Program acquisition complete. Idle mode.");
+                ui.log("Program acquisition complete. Idle mode.", "success");
             }
             
         } catch (e) {
-            ns.print(`[Programs] Error: ${e}`);
+            ui.log(`Error: ${e}`, "error");
             await connectToHome(ns);
         }
         
@@ -46,24 +44,21 @@ async function connectToHome(ns) {
         // Verify we actually connected to home
         const current = ns.singularity.getCurrentServer ? ns.singularity.getCurrentServer() : "home";
         if (current !== "home") {
-            ns.print(`[Programs] Connection failed! Still at: ${current}`);
             return false;
         }
         return true;
     } catch (e) {
-        ns.print(`[Programs] Connect home error: ${e}`);
         return false;
     }
 }
 
-async function phaseBuyPrograms(ns) {
-    ns.print("[Programs] Phase: Buying programs");
+async function phaseBuyPrograms(ns, ui) {
     
     try {
         // Buy TOR if needed (autoBuyTor default: true)
         if (!hasTor(ns)) {
             const money = ns.getServerMoneyAvailable("home");
-            ns.print(`[Programs] TOR not available. Money: $${money.toLocaleString()}`);
+            ui.log(`TOR not available. Money: $${money.toLocaleString()}`, "info");
             
             if (money >= 200000) {
                 try {
@@ -72,15 +67,15 @@ async function phaseBuyPrograms(ns) {
                     
                     // Verify TOR was actually purchased
                     if (hasTor(ns)) {
-                        ns.print("[Programs] Purchased TOR successfully");
+                        ui.log("Purchased TOR successfully", "success");
                     } else {
-                        ns.print("[Programs] TOR purchase completed but verification failed");
+                        ui.log("TOR purchase completed but verification failed", "warn");
                     }
                 } catch (e) {
-                    ns.print(`[Programs] TOR purchase failed: ${e}`);
+                    ui.log(`TOR purchase failed: ${e}`, "error");
                 }
             } else {
-                ns.print(`[Programs] Need $${(200000 - money).toLocaleString()} more for TOR`);
+                ui.log(`Need $${(200000 - money).toLocaleString()} more for TOR`, "info");
             }
             return false; // Still need TOR, wait for next loop
         }
@@ -100,7 +95,7 @@ async function phaseBuyPrograms(ns) {
             
             for (const prog of programs) {
                 if (ns.fileExists(prog, "home")) {
-                    ns.print(`[Programs] Already have ${prog}`);
+                    ui.log(`Already have ${prog}`, "debug");
                     continue;
                 }
                 
@@ -109,36 +104,36 @@ async function phaseBuyPrograms(ns) {
                     const money = ns.getServerMoneyAvailable("home");
                     
                     if (cost <= 0) {
-                        ns.print(`[Programs] ${prog} not available on darkweb (cost: ${cost})`);
+                        ui.log(`${prog} not available on darkweb (cost: ${cost})`, "warn");
                         continue;
                     }
 
                     if (money >= cost) {
                         const purchased = ns.singularity.purchaseProgram(prog);
                         if (purchased) {
-                            ns.print(`[Programs] Bought ${prog} for $${cost.toLocaleString()}`);
+                            ui.log(`Bought ${prog} for $${cost.toLocaleString()}`, "success");
                         } else {
-                            ns.print(`[Programs] Failed to buy ${prog} (cost: $${cost.toLocaleString()})`);
+                            ui.log(`Failed to buy ${prog} (cost: $${cost.toLocaleString()})`, "warn");
                         }
                         await ns.sleep(500);
                         return false; // Keep buying more
                     } else {
-                        ns.print(`[Programs] Need $${(cost - money).toLocaleString()} for ${prog}`);
+                        ui.log(`Need $${(cost - money).toLocaleString()} for ${prog}`, "info");
                         return false; // Still need money
                     }
                 } catch (e) {
-                    ns.print(`[Programs] Error buying ${prog}: ${e}`);
+                    ui.log(`Error buying ${prog}: ${e}`, "error");
                 }
             }
             
-            ns.print("[Programs] All programs acquired!");
+            ui.log("All programs acquired!", "success");
             return true; // All programs done
         }
         
         return false; // Still need TOR
         
     } catch (e) {
-        ns.print(`[Programs] Phase error: ${e}`);
+        ui.log(`Phase error: ${e}`, "error");
         return false;
     }
 }

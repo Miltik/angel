@@ -1,28 +1,29 @@
 import { config } from "/angel/config.js";
-import { formatMoney, log } from "/angel/utils.js";
+import { formatMoney } from "/angel/utils.js";
+import { createWindow } from "/angel/modules/uiManager.js";
 
 const PHASE_PORT = 7;
 
 /** @param {NS} ns */
 export async function main(ns) {
     ns.disableLog("ALL");
-    ns.ui.openTail();
+    
+    const ui = createWindow("augments", "💊 Augmentations", 700, 500);
+    ui.log("Augmentation module started - Phase-aware cascading", "info");
     
     // Check if we have SF4 (Singularity access)
     if (!hasSingularityAccess(ns)) {
-        log(ns, "💊 Singularity access not available (need SF4) - waiting...", "INFO");
+        ui.log("Singularity access not available (need SF4) - waiting...", "warn");
         while (true) {
             await ns.sleep(60000);
         }
     }
     
-    log(ns, "💊 Augmentation module started - Phase-aware cascading", "INFO");
-    
     while (true) {
         try {
-            await augmentLoop(ns);
+            await augmentLoop(ns, ui);
         } catch (e) {
-            log(ns, `💊 Augmentation error: ${e}`, "ERROR");
+            ui.log(`Augmentation error: ${e}`, "error");
         }
         await ns.sleep(60000); // Check every minute
     }
@@ -184,8 +185,9 @@ function getPriorityAugmentsInline(ns, available) {
 /**
  * Main augmentation loop - phase-aware cascading
  * @param {NS} ns
+ * @param {object} ui - UI window API
  */
-async function augmentLoop(ns) {
+async function augmentLoop(ns, ui) {
     const phase = readGamePhase(ns);
     const strategy = getAugmentStrategy(phase);
     const money = ns.getServerMoneyAvailable("home");
@@ -197,10 +199,10 @@ async function augmentLoop(ns) {
     const queuedCount = ownedCount - installedCount;
     
     // Display status
-    log(ns, `💊 [Phase ${phase}] Money: ${formatMoney(money)} | Strategy: ${strategy.strategy} | Queued: ${queuedCount}`, "INFO");
+    ui.log(`[Phase ${phase}] Money: ${formatMoney(money)} | Strategy: ${strategy.strategy} | Queued: ${queuedCount}`, "info");
     
     if (available.length === 0) {
-        log(ns, `💊 No augmentations available yet`, "INFO");
+        ui.log(`No augmentations available yet`, "info");
         return;
     }
     
@@ -209,14 +211,14 @@ async function augmentLoop(ns) {
     
     // Strategy: buyAll (phases 3-4)
     if (strategy.buyAll) {
-        await buyAllAvailable(ns, available, money);
+        await buyAllAvailable(ns, available, money, ui);
         return;
     }
     
     // Strategy: Priority focus (phases 0-2)
     const priority = getPriorityAugmentsInline(ns, available);
     if (priority.length > 0) {
-        await buyPriorityAugments(ns, priority, money, strategy);
+        await buyPriorityAugments(ns, priority, money, strategy, ui);
         return;
     }
     
@@ -224,7 +226,7 @@ async function augmentLoop(ns) {
     if (available.length > 0 && money < available[0].price) {
         const nextAug = available[0];
         const needed = nextAug.price - money;
-        log(ns, `💊 Next: ${nextAug.name} - Need ${formatMoney(needed)} more`, "INFO");
+        ui.log(`Next: ${nextAug.name} - Need ${formatMoney(needed)} more`, "info");
     }
 }
 
@@ -233,8 +235,9 @@ async function augmentLoop(ns) {
  * @param {NS} ns
  * @param {Array} available
  * @param {number} initialMoney
+ * @param {object} ui - UI window API
  */
-async function buyAllAvailable(ns, available, initialMoney) {
+async function buyAllAvailable(ns, available, initialMoney, ui) {
     let money = initialMoney;
     let purchased = 0;
     
@@ -242,7 +245,7 @@ async function buyAllAvailable(ns, available, initialMoney) {
         if (money >= aug.price) {
             const success = ns.singularity.purchaseAugmentation(aug.faction, aug.name);
             if (success) {
-                log(ns, `💊 Purchased: ${aug.name} (${aug.faction}) for ${formatMoney(aug.price)}`, "SUCCESS");
+                ui.log(`Purchased: ${aug.name} (${aug.faction}) for ${formatMoney(aug.price)}`, "success");
                 money = ns.getServerMoneyAvailable("home");
                 purchased++;
             }
@@ -250,7 +253,7 @@ async function buyAllAvailable(ns, available, initialMoney) {
     }
     
     if (purchased > 0) {
-        log(ns, `💊 Batch purchased ${purchased} augmentations`, "SUCCESS");
+        ui.log(`Batch purchased ${purchased} augmentations`, "success");
     }
 }
 
@@ -260,8 +263,9 @@ async function buyAllAvailable(ns, available, initialMoney) {
  * @param {Array} priority
  * @param {number} initialMoney
  * @param {object} strategy
+ * @param {object} ui - UI window API
  */
-async function buyPriorityAugments(ns, priority, initialMoney, strategy) {
+async function buyPriorityAugments(ns, priority, initialMoney, strategy, ui) {
     let money = initialMoney;
     let purchased = 0;
     const spendThreshold = initialMoney * strategy.threshold;
@@ -270,7 +274,7 @@ async function buyPriorityAugments(ns, priority, initialMoney, strategy) {
         if (money >= aug.price && money <= spendThreshold) {
             const success = ns.singularity.purchaseAugmentation(aug.faction, aug.name);
             if (success) {
-                log(ns, `💊 Purchased priority: ${aug.name} for ${formatMoney(aug.price)}`, "SUCCESS");
+                ui.log(`Purchased priority: ${aug.name} for ${formatMoney(aug.price)}`, "success");
                 money = ns.getServerMoneyAvailable("home");
                 purchased++;
             }
@@ -278,11 +282,11 @@ async function buyPriorityAugments(ns, priority, initialMoney, strategy) {
     }
     
     if (purchased > 0) {
-        log(ns, `💊 Batch purchased ${purchased} priority augmentations`, "SUCCESS");
+        ui.log(`Batch purchased ${purchased} priority augmentations`, "success");
     } else if (priority.length > 0 && money < priority[0].price) {
         const nextAug = priority[0];
         const needed = nextAug.price - money;
-        log(ns, `💊 Next priority: ${nextAug.name} - Need ${formatMoney(needed)} more`, "INFO");
+        ui.log(`Next priority: ${nextAug.name} - Need ${formatMoney(needed)} more`, "info");
     }
 }
 
@@ -305,7 +309,6 @@ export function buyAllAffordable(ns) {
         if (money >= aug.price) {
             const success = ns.singularity.purchaseAugmentation(aug.faction, aug.name);
             if (success) {
-                log(ns, `Purchased: ${aug.name} from ${aug.faction}`, "SUCCESS");
                 money = ns.getServerMoneyAvailable("home");
                 purchased++;
             }
@@ -332,7 +335,6 @@ export function buyPriority(ns) {
         if (money >= aug.price) {
             const success = ns.singularity.purchaseAugmentation(aug.faction, aug.name);
             if (success) {
-                log(ns, `Purchased priority: ${aug.name}`, "SUCCESS");
                 money = ns.getServerMoneyAvailable("home");
                 purchased++;
             }
@@ -403,7 +405,7 @@ export function installAugmentations(ns) {
     if (shouldInstallAugments(ns)) {
         const queued = ns.singularity.getOwnedAugmentations(false).length - 
                       ns.singularity.getOwnedAugmentations(true).length;
-        log(ns, `💊 Installing ${queued} queued augmentations and resetting...`, "INFO");
+
         ns.singularity.installAugmentations("/angel/angel.js");
     }
 }

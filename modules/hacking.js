@@ -1,21 +1,24 @@
+import { createWindow } from "/angel/modules/uiManager.js";
+
 /** @param {NS} ns */
 export async function main(ns) {
     ns.disableLog("ALL");
-    ns.ui.openTail();
     
-    ns.print("🖥 Hacking module started - Phase-aware dynamic targeting");
-    ns.print("Waiting for other modules to initialize...");
+    // Create DOM window for output
+    const ui = createWindow("hacking", "🖥 Hacking Module", 700, 500);
+    ui.log("Phase-aware dynamic targeting initialized");
+    ui.log("Waiting for other modules to initialize...", "info");
     
     // Wait 5 seconds to let other modules start up first
     await ns.sleep(5000);
     
-    ns.print("🖥 Beginning hacking operations");
+    ui.log("Beginning hacking operations", "success");
     
     while (true) {
         try {
-            await hackingLoop(ns);
+            await hackingLoop(ns, ui);
         } catch (e) {
-            ns.print(`🖥 Hacking loop error: ${e}`);
+            ui.log(`Hacking loop error: ${e}`, "error");
         }
         await ns.sleep(200); // batchDelay
     }
@@ -24,15 +27,16 @@ export async function main(ns) {
 /**
  * Main hacking loop - phase-aware
  * @param {NS} ns
+ * @param {object} ui - UI window API
  */
-async function hackingLoop(ns) {
+async function hackingLoop(ns, ui) {
     // Read current game phase from orchestrator
     const currentPhase = readGamePhase(ns);
     
     // Get best target based on phase
     const targets = getHackableServersInline(ns);
     if (targets.length === 0) {
-        ns.print("🖥 No hackable targets found");
+        ui.log("No hackable targets found", "warn");
         await ns.sleep(5000);
         return;
     }
@@ -40,16 +44,16 @@ async function hackingLoop(ns) {
     const target = selectTargetByPhase(ns, targets, currentPhase);
     const targetInfo = analyzeTarget(ns, target);
     
-    ns.print(`🖥 Target: ${target} | Money: ${formatMoneyInline(targetInfo.currentMoney)}/${formatMoneyInline(targetInfo.maxMoney)} | Security: ${targetInfo.currentSecurity.toFixed(2)}/${targetInfo.minSecurity}`);
+    ui.log(`Target: ${target} | Money: ${formatMoneyInline(targetInfo.currentMoney)}/${formatMoneyInline(targetInfo.maxMoney)} | Security: ${targetInfo.currentSecurity.toFixed(2)}/${targetInfo.minSecurity}`);
     
     // Prepare target (weaken to min security, grow to max money)
     if (!isTargetPrepped(ns, target)) {
-        await prepTarget(ns, target);
+        await prepTarget(ns, target, ui);
         return;
     }
     
     // Execute hack/grow/weaken cycle
-    await executeHackCycle(ns, target);
+    await executeHackCycle(ns, target, ui);
 }
 
 /**
@@ -196,20 +200,21 @@ function isTargetPrepped(ns, target) {
  * Prepare target (weaken + grow)
  * @param {NS} ns
  * @param {string} target
+ * @param {object} ui - UI window API
  */
-async function prepTarget(ns, target) {
-    ns.print(`Prepping target: ${target}`);
+async function prepTarget(ns, target, ui) {
+    ui.log(`Prepping target: ${target}`, "info");
     
     const info = analyzeTarget(ns, target);
     
     // Weaken if security is too high (using 5 as threshold, from config)
     if (info.currentSecurity > info.minSecurity + 5) {
-        await distributeWeaken(ns, target);
+        await distributeWeaken(ns, target, ui);
     }
     
     // Grow if money is too low (using 0.75 as threshold, from config)
     if (info.currentMoney < info.maxMoney * 0.75) {
-        await distributeGrow(ns, target);
+        await distributeGrow(ns, target, ui);
     }
 }
 
@@ -217,41 +222,45 @@ async function prepTarget(ns, target) {
  * Execute a hack cycle
  * @param {NS} ns
  * @param {string} target
+ * @param {object} ui - UI window API
  */
-async function executeHackCycle(ns, target) {
+async function executeHackCycle(ns, target, ui) {
     // Simple strategy: hack a bit, then grow/weaken to recover
-    await distributeHack(ns, target);
+    await distributeHack(ns, target, ui);
     await ns.sleep(100);
-    await distributeGrow(ns, target);
+    await distributeGrow(ns, target, ui);
     await ns.sleep(100);
-    await distributeWeaken(ns, target);
+    await distributeWeaken(ns, target, ui);
 }
 
 /**
  * Distribute hack operations across available servers
  * @param {NS} ns
  * @param {string} target
+ * @param {object} ui - UI window API
  */
-async function distributeHack(ns, target) {
-    await distributeOperation(ns, target, "hack");
+async function distributeHack(ns, target, ui) {
+    await distributeOperation(ns, target, "hack", ui);
 }
 
 /**
  * Distribute grow operations across available servers
  * @param {NS} ns
  * @param {string} target
+ * @param {object} ui - UI window API
  */
-async function distributeGrow(ns, target) {
-    await distributeOperation(ns, target, "grow");
+async function distributeGrow(ns, target, ui) {
+    await distributeOperation(ns, target, "grow", ui);
 }
 
 /**
  * Distribute weaken operations across available servers
  * @param {NS} ns
  * @param {string} target
+ * @param {object} ui - UI window API
  */
-async function distributeWeaken(ns, target) {
-    await distributeOperation(ns, target, "weaken");
+async function distributeWeaken(ns, target, ui) {
+    await distributeOperation(ns, target, "weaken", ui);
 }
 
 /**
@@ -259,8 +268,9 @@ async function distributeWeaken(ns, target) {
  * @param {NS} ns
  * @param {string} target
  * @param {string} script
+ * @param {object} ui - UI window API
  */
-async function distributeOperation(ns, target, script) {
+async function distributeOperation(ns, target, script, ui) {
     const servers = getRootedServersInline(ns);
     
     // Determine script path
@@ -273,7 +283,7 @@ async function distributeOperation(ns, target, script) {
     const scriptRam = ns.getScriptRam(scriptPath);
     
     if (scriptRam === 0) {
-        ns.print(`Script ${scriptPath} not found`);
+        ui.log(`Script ${scriptPath} not found`, "error");
         return;
     }
     
@@ -282,7 +292,7 @@ async function distributeOperation(ns, target, script) {
     const usageLimit = totalAvailable * 0.60; // Only use 60% of total available
     
     if (usageLimit < scriptRam) {
-        ns.print(`Not enough available RAM for operation (need ${scriptRam.toFixed(2)}GB, limit is ${usageLimit.toFixed(2)}GB)`);
+        ui.log(`Not enough available RAM for operation (need ${scriptRam.toFixed(2)}GB, limit is ${usageLimit.toFixed(2)}GB)`, "warn");
         return;
     }
     
@@ -294,7 +304,7 @@ async function distributeOperation(ns, target, script) {
         try {
             await ns.scp(scriptPath, server, "home");
         } catch (e) {
-            ns.print(`Failed to deploy to ${server}: ${e}`);
+            ui.log(`Failed to deploy to ${server}: ${e}`, "debug");
             continue;
         }
         
@@ -311,7 +321,7 @@ async function distributeOperation(ns, target, script) {
     }
     
     if (totalThreads > 0) {
-        ns.print(`Launched ${script} on ${target} with ${totalThreads} threads (${usedRam.toFixed(2)}GB)`);
+        ui.log(`Launched ${script} on ${target} with ${totalThreads} threads (${usedRam.toFixed(2)}GB)`, "success");
     }
 }
 

@@ -8,36 +8,38 @@
  * @param {NS} ns
  */
 import { config } from "/angel/config.js";
-import { formatMoney, log } from "/angel/utils.js";
+import { formatMoney } from "/angel/utils.js";
+import { createWindow } from "/angel/modules/uiManager.js";
 
 const PHASE_PORT = 7;
 
 export async function main(ns) {
     ns.disableLog("ALL");
-    ns.ui.openTail();
-    log(ns, "👾 Gang module started - Phase-aware respect maximization with clash timing", "INFO");
+    
+    const ui = createWindow("gang", "👾 Gang Management", 700, 450);
+    ui.log("Gang module started - Phase-aware respect maximization with clash timing", "info");
 
     while (true) {
         try {
             if (!ns.gang.inGang()) {
-                log(ns, "👾 Not in a gang yet - idle", "INFO");
+                ui.log("Not in a gang yet - idle", "info");
                 await ns.sleep(60000);
                 continue;
             }
 
-            recruitMembers(ns);
+            recruitMembers(ns, ui);
             const summary = assignTasks(ns);
             
             // NEW: Manage territory clashes  
-            manageTerritoryclashes(ns);
+            manageTerritoryclashes(ns, ui);
             
-            printStatus(ns, summary);
+            printStatus(ns, summary, ui);
             await ns.sleep(30000);
         } catch (e) {
-            log(ns, `👾 Error: ${e}`, "ERROR");
+            ui.log(`Error: ${e}`, "error");
             await ns.sleep(5000);
         }
-    }
+    }}
 }
 
 /**

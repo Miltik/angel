@@ -10,13 +10,15 @@
  * @param {NS} ns
  */
 import { config, PORTS } from "/angel/config.js";
+import { createWindow } from "/angel/modules/uiManager.js";
 
 const PHASE_PORT = 7;
 
 export async function main(ns) {
     ns.disableLog("ALL");
-    ns.ui.openTail();
-    ns.print("[Orchest] Game Orchestrator started - Coordinating toward w0r1d_d43m0n");
+    
+    const ui = createWindow("milestones", "📚 Milestones & Orchestrator", 700, 500);
+    ui.log("Game Orchestrator started - Coordinating toward w0r1d_d43m0n", "info");
 
     let lastNotify = 0;
     let currentPhase = 0;

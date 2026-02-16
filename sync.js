@@ -39,6 +39,7 @@ export async function main(ns) {
         "xpFarm.js",
         
         // Modules
+        "modules/uiManager.js",          // New: DOM UI framework
         "modules/hacking.js",
         "modules/servers.js",
         "modules/augments.js",

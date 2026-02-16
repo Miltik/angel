@@ -1,21 +1,22 @@
 import { config } from "/angel/config.js";
-import { formatMoney, formatRam, log } from "/angel/utils.js";
+import { formatMoney, formatRam } from "/angel/utils.js";
 import { rootAll } from "/angel/scanner.js";
+import { createWindow } from "/angel/modules/uiManager.js";
 
 const PHASE_PORT = 7;
 
 /** @param {NS} ns */
 export async function main(ns) {
     ns.disableLog("ALL");
-    ns.ui.openTail();
     
-    log(ns, "🖥 Server management module started - Phase-aware scaling", "INFO");
+    const ui = createWindow("servers", "🖥 Server Management", 700, 400);
+    ui.log("Server management module started - Phase-aware scaling", "info");
     
     while (true) {
         try {
-            await serverLoop(ns);
+            await serverLoop(ns, ui);
         } catch (e) {
-            log(ns, `Server management error: ${e}`, "ERROR");
+            ui.log(`Server management error: ${e}`, "error");
         }
         await ns.sleep(15000); // Check every 15 seconds
     }
@@ -24,8 +25,9 @@ export async function main(ns) {
 /**
  * Main server management loop
  * @param {NS} ns
+ * @param {object} ui - UI window API
  */
-async function serverLoop(ns) {
+async function serverLoop(ns, ui) {
     const phase = readGamePhase(ns);
     const phaseConfig = getPhaseConfig(phase);
     const ownedServers = ns.getPurchasedServers();
@@ -33,20 +35,20 @@ async function serverLoop(ns) {
     
     // Display server status
     if (ownedServers.length > 0) {
-        log(ns, `🖥 [Phase ${phase}] Servers: ${stats.count}/${config.servers.maxServers} | RAM: ${formatRam(stats.totalRam)} | Range: ${formatRam(stats.minRam)}-${formatRam(stats.maxRam)}`, "INFO");
+        ui.log(`[Phase ${phase}] Servers: ${stats.count}/${config.servers.maxServers} | RAM: ${formatRam(stats.totalRam)} | Range: ${formatRam(stats.minRam)}-${formatRam(stats.maxRam)}`, "info");
     } else {
-        log(ns, `🖥 [Phase ${phase}] No servers yet. Target: ${formatRam(getTargetRamForPhase(phase))} per server`, "INFO");
+        ui.log(`[Phase ${phase}] No servers yet. Target: ${formatRam(getTargetRamForPhase(phase))} per server`, "info");
     }
     
     // Try to root new servers
     const newlyRooted = rootAll(ns);
     if (newlyRooted > 0) {
-        log(ns, `🖥 Rooted ${newlyRooted} new servers`, "SUCCESS");
+        ui.log(`Rooted ${newlyRooted} new servers`, "success");
     }
     
     // Buy/upgrade servers if enabled
     if (config.servers.autoBuyServers) {
-        await manageServerPurchases(ns, phase, phaseConfig);
+        await manageServerPurchases(ns, phase, phaseConfig, ui);
     }
 }
 
@@ -101,8 +103,9 @@ function getPurchaseStrategy(phase) {
  * @param {NS} ns
  * @param {number} phase
  * @param {object} phaseConfig
+ * @param {object} ui - UI window API
  */
-async function manageServerPurchases(ns, phase, phaseConfig) {
+async function manageServerPurchases(ns, phase, phaseConfig, ui) {
     const money = ns.getServerMoneyAvailable("home");
     const ownedServers = ns.getPurchasedServers();
     const strategy = getPurchaseStrategy(phase);
@@ -110,10 +113,10 @@ async function manageServerPurchases(ns, phase, phaseConfig) {
     // Decide: buy new server or upgrade existing?
     if (ownedServers.length < config.servers.maxServers) {
         // Buy new servers until we hit max
-        await buyNewServer(ns, money, strategy);
+        await buyNewServer(ns, money, strategy, ui);
     } else {
         // All server slots filled - upgrade to next tier
-        await upgradeServerCascade(ns, money, strategy);
+        await upgradeServerCascade(ns, money, strategy, ui);
     }
 }
 
@@ -122,8 +125,9 @@ async function manageServerPurchases(ns, phase, phaseConfig) {
  * @param {NS} ns
  * @param {number} availableMoney
  * @param {object} strategy
+ * @param {object} ui - UI window API
  */
-async function buyNewServer(ns, availableMoney, strategy) {
+async function buyNewServer(ns, availableMoney, strategy, ui) {
     const ownedServers = ns.getPurchasedServers();
     if (ownedServers.length >= config.servers.maxServers) {
         return;
@@ -151,7 +155,7 @@ async function buyNewServer(ns, availableMoney, strategy) {
         // Can't afford even 2GB server
         const minCost = ns.getPurchasedServerCost(2);
         const needed = minCost - availableMoney;
-        log(ns, `🖥 Need ${formatMoney(needed)} more to buy 2GB server`, "INFO");
+        ui.log(`Need ${formatMoney(needed)} more to buy 2GB server`, "info");
         return;
     }
     
@@ -161,7 +165,7 @@ async function buyNewServer(ns, availableMoney, strategy) {
     
     if (hostname) {
         const status = affordableRam === strategy.targetRam ? "Purchased" : "Purchased (partial)";
-        log(ns, `🖥 ${status} ${hostname}: ${formatRam(affordableRam)} for ${formatMoney(cost)}`, "SUCCESS");
+        ui.log(`${status} ${hostname}: ${formatRam(affordableRam)} for ${formatMoney(cost)}`, "success");
     }
 }
 
@@ -171,8 +175,9 @@ async function buyNewServer(ns, availableMoney, strategy) {
  * @param {NS} ns
  * @param {number} availableMoney
  * @param {object} strategy
+ * @param {object} ui - UI window API
  */
-async function upgradeServerCascade(ns, availableMoney, strategy) {
+async function upgradeServerCascade(ns, availableMoney, strategy, ui) {
     const ownedServers = ns.getPurchasedServers();
     
     // Sort by RAM to find bottlenecks
@@ -188,7 +193,7 @@ async function upgradeServerCascade(ns, availableMoney, strategy) {
         // Try to push toward max
         const maxRamServer = serversByRam[serversByRam.length - 1];
         if (maxRamServer.ram >= config.servers.maxServerRam) {
-            log(ns, `🖥 All servers at maximum RAM (${formatRam(config.servers.maxServerRam)})`, "INFO");
+            ui.log(`All servers at maximum RAM (${formatRam(config.servers.maxServerRam)})`, "info");
             return;
         }
     }
@@ -207,7 +212,7 @@ async function upgradeServerCascade(ns, availableMoney, strategy) {
         const hostname = ns.purchaseServer(targetServer.name, nextRamLevel);
         
         if (hostname) {
-            log(ns, `🖥 Upgraded ${targetServer.name} from ${formatRam(currentRam)} to ${formatRam(nextRamLevel)} for ${formatMoney(upgradeCost)}`, "SUCCESS");
+            ui.log(`Upgraded ${targetServer.name} from ${formatRam(currentRam)} to ${formatRam(nextRamLevel)} for ${formatMoney(upgradeCost)}`, "success");
         }
     }
 }

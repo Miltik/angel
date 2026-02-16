@@ -11,7 +11,8 @@
  * @param {NS} ns
  */
 import { config, PORTS } from "/angel/config.js";
-import { formatMoney, log } from "/angel/utils.js";
+import { formatMoney } from "/angel/utils.js";
+import { createWindow } from "/angel/modules/uiManager.js";
 
 const PHASE_PORT = 7;
 const ACTIVITY_OWNER = "activity";
@@ -48,17 +49,18 @@ function readGamePhase(ns) {
 
 export async function main(ns) {
     ns.disableLog("ALL");
-    ns.ui.openTail();
-    log(ns, "🎭 Activity + Faction module started (P0-2 active, P3+ filler, all-phase factions)", "INFO");
+    
+    const ui = createWindow("crime", "🎭 Activity & Factions", 700, 450);
+    ui.log("Activity + Faction module started (P0-2 active, P3+ filler, all-phase factions)", "info");
 
     if (!hasSingularityAccess(ns)) {
-        log(ns, "🎭 Singularity access not available - need SF4", "WARN");
+        ui.log("Singularity access not available - need SF4", "warn");
         while (true) {
             await ns.sleep(60000);
         }
     }
 
-    log(ns, "🎭 Singularity access confirmed", "SUCCESS");
+    ui.log("Singularity access confirmed", "success");
 
     let loopCount = 0;
     while (true) {
@@ -67,21 +69,21 @@ export async function main(ns) {
             loopCount++;
 
             // Faction management: ALWAYS ACTIVE (all phases)
-            await manageFactions(ns);
+            await manageFactions(ns, ui);
 
             // Activity work: PHASES 0-2 (active), PHASES 3+ (filler only)
             if (gamePhase <= 2) {
                 // P0-2: Active crime/training/faction/company
-                await processActivity(ns, gamePhase);
+                await processActivity(ns, gamePhase, ui);
             } else if (gamePhase >= 3) {
                 // P3+: Crime only as filler when activity lock is free
                 // This allows padding stats during idle moments without blocking other activities
-                await processFillerCrime(ns, gamePhase);
+                await processFillerCrime(ns, gamePhase, ui);
             }
 
             await ns.sleep(5000);
         } catch (e) {
-            log(ns, `🎭 Loop error: ${e}`, "ERROR");
+            ui.log(`Loop error: ${e}`, "error");
             await ns.sleep(5000);
         }
     }

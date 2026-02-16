@@ -5,7 +5,8 @@
  * @param {NS} ns
  */
 import { config } from "/angel/config.js";
-import { formatMoney, log } from "/angel/utils.js";
+import { formatMoney } from "/angel/utils.js";
+import { createWindow } from "/angel/modules/uiManager.js";
 
 const PHASE_PORT = 7;
 
@@ -28,39 +29,41 @@ function getPhaseConfig(phase) {
 
 export async function main(ns) {
     ns.disableLog("ALL");
-    ns.ui.openTail();
-    log(ns, "📈 Stock market module started - Phase-gated (P3+)", "INFO");
+    
+    // Create DOM window for output
+    const ui = createWindow("stocks", "📈 Stock Market", 700, 500);
+    ui.log("Stock market module initialized - Phase-gated (P3+)", "info");
 
     // Wait for phase 3+ when capital is available
     while (true) {
         const gamePhase = readGamePhase(ns);
         if (gamePhase >= 3) break;
-        log(ns, `📈 Waiting for phase 3+ to begin trading (currently P${gamePhase})`, "INFO");
+        ui.log(`Waiting for phase 3+ to begin trading (currently P${gamePhase})`, "info");
         await ns.sleep(60000);
     }
 
     if (!hasStockAccess(ns)) {
-        log(ns, "📈 Stock API not available yet - idle", "WARN");
+        ui.log("Stock API not available yet - idle", "warn");
         while (true) {
             await ns.sleep(60000);
         }
     }
 
-    log(ns, "📈 Stock trading active", "SUCCESS");
+    ui.log("Stock trading active", "success");
 
     while (true) {
         try {
             const gamePhase = readGamePhase(ns);
             if (gamePhase < 3) {
-                log(ns, "📈 Phase dropped below 3 - pausing", "WARN");
+                ui.log("Phase dropped below 3 - pausing", "warn");
                 await ns.sleep(60000);
                 continue;
             }
 
-            await processStocks(ns, gamePhase);
+            await processStocks(ns, gamePhase, ui);
             await ns.sleep(60000);
         } catch (e) {
-            log(ns, `📈 Error: ${e}`, "ERROR");
+            ui.log(`Error: ${e}`, "error");
             await ns.sleep(5000);
         }
     }
@@ -78,7 +81,7 @@ function hasStockAccess(ns) {
  * Process stock trading with phase-aware spending and aggressive tactics
  * Late game: More aggressive with lower buy thresholds and profit-taking
  */
-async function processStocks(ns, gamePhase) {
+async function processStocks(ns, gamePhase, ui) {
     const phaseConfig = getPhaseConfig(gamePhase);
     const symbols = ns.stock.getSymbols();
     const money = ns.getServerMoneyAvailable("home");
@@ -113,7 +116,7 @@ async function processStocks(ns, gamePhase) {
         
         if (shares > 0 && profitRatio >= profitThreshold) {
             ns.stock.sellStock(sym, shares);
-            log(ns, `📈 PROFIT: Sold ${shares} ${sym} | Gain: +${(profitRatio * 100).toFixed(1)}% (${formatMoney(totalProfit)})`, "SUCCESS");
+            ui.log(`PROFIT: Sold ${shares} ${sym} | Gain: +${(profitRatio * 100).toFixed(1)}% (${formatMoney(totalProfit)})`, "success");
             sold++;
             profits += totalProfit;
             continue;
@@ -122,7 +125,7 @@ async function processStocks(ns, gamePhase) {
         // STOP LOSS: Sell losers at -10% to minimize bleeding
         if (shares > 0 && profitRatio < -0.10) {
             ns.stock.sellStock(sym, shares);
-            log(ns, `📈 STOP LOSS: Sold ${shares} ${sym} | Loss: ${(profitRatio * 100).toFixed(1)}%`, "WARN");
+            ui.log(`STOP LOSS: Sold ${shares} ${sym} | Loss: ${(profitRatio * 100).toFixed(1)}%`, "warn");
             sold++;
             continue;
         }
@@ -130,7 +133,7 @@ async function processStocks(ns, gamePhase) {
         // SELL: Forecast turned poor (< 50%)
         if (shares > 0 && forecast <= 0.50) {
             ns.stock.sellStock(sym, shares);
-            log(ns, `📈 SOLD: ${shares} ${sym} | Forecast: ${(forecast * 100).toFixed(1)}%`, "INFO");
+            ui.log(`SOLD: ${shares} ${sym} | Forecast: ${(forecast * 100).toFixed(1)}%`, "info");
             sold++;
             continue;
         }
@@ -158,14 +161,14 @@ async function processStocks(ns, gamePhase) {
                 ns.stock.buyStock(sym, qty);
                 const cost = qty * price;
                 invested += cost;
-                log(ns, `📈 BUY: ${qty} ${sym} | Forecast: ${(forecast * 100).toFixed(1)}% | Confidence: ${(confidence * 100).toFixed(0)}% | Cost: ${formatMoney(cost)}`, "SUCCESS");
+                ui.log(`BUY: ${qty} ${sym} | Forecast: ${(forecast * 100).toFixed(1)}% | Confidence: ${(confidence * 100).toFixed(0)}% | Cost: ${formatMoney(cost)}`, "success");
                 bought++;
             }
         }
     }
 
     if (bought > 0 || sold > 0 || profits > 0) {
-        log(ns, `📈 [P${gamePhase}] Traded: +${bought}/-${sold} | Profits: ${formatMoney(profits)} | Invested: ${formatMoney(invested)}`, "INFO");
+        ui.log(`[P${gamePhase}] Traded: +${bought}/-${sold} | Profits: ${formatMoney(profits)} | Invested: ${formatMoney(invested)}`, "info");
     }
 }
 

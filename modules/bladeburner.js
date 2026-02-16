@@ -5,7 +5,7 @@
  * @param {NS} ns
  */
 import { config } from "/angel/config.js";
-import { log } from "/angel/utils.js";
+import { createWindow } from "/angel/modules/uiManager.js";
 
 const PHASE_PORT = 7;
 
@@ -28,14 +28,15 @@ function getPhaseConfig(phase) {
 
 export async function main(ns) {
     ns.disableLog("ALL");
-    ns.ui.openTail();
-    log(ns, "⚔️  Bladeburner module started - Phase-gated (P4 only)", "INFO");
+    
+    const ui = createWindow("bladeburner", "⚔️ Bladeburner", 700, 400);
+    ui.log("Bladeburner module started - Phase-gated (P4 only)", "info");
 
     // Wait for phase 4 (very late game, close to daemon)
     while (true) {
         const gamePhase = readGamePhase(ns);
         if (gamePhase >= 4) break;
-        log(ns, `⚔️  Waiting for phase 4 (currently P${gamePhase})`, "INFO");
+        ui.log(`Waiting for phase 4 (currently P${gamePhase})`, "info");
         await ns.sleep(60000);
     }
 

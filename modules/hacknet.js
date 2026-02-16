@@ -3,28 +3,30 @@
  * @param {NS} ns
  */
 import { config } from "/angel/config.js";
+import { createWindow } from "/angel/modules/uiManager.js";
 
 export async function main(ns) {
     ns.disableLog("ALL");
-    ns.ui.openTail();
-    ns.print("[Hacknet] Module started");
+    
+    const ui = createWindow("hacknet", "🔗 Hacknet", 600, 350);
+    ui.log("Module started", "info");
 
     while (true) {
         try {
-            const bought = buyBestUpgrade(ns);
+            const bought = buyBestUpgrade(ns, ui);
             if (!bought) {
                 await ns.sleep(30000);
             } else {
                 await ns.sleep(2000);
             }
         } catch (e) {
-            ns.print(`[Hacknet] Error: ${e}`);
+            ui.log(`Error: ${e}`, "error");
             await ns.sleep(5000);
         }
     }
 }
 
-function buyBestUpgrade(ns) {
+function buyBestUpgrade(ns, ui) {
     const money = ns.getServerMoneyAvailable("home");
     const budget = Math.max(0, (money - config.hacknet.reserveMoney) * config.hacknet.maxSpendRatio);
     if (budget <= 0) return false;

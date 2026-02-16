@@ -187,10 +187,21 @@ export async function main(ns) {
         // Update the window content
         ui.update(html);
         
+        // Debug: Log state
+        if (lastState.loopCount === 1) {
+            ns.tprint("🔍 Network Map: First update complete");
+            ns.tprint(`🔍 Singularity available: ${typeof ns.singularity !== 'undefined'}`);
+        }
+        
         // Attach click handlers directly to DOM elements
         try {
             const allCards = document.querySelectorAll('.server-card');
-            allCards.forEach(card => {
+            
+            if (lastState.loopCount === 1) {
+                ns.tprint(`🔍 Found ${allCards.length} server cards in DOM`);
+            }
+            
+            allCards.forEach((card, index) => {
                 const serverName = card.getAttribute('data-server');
                 if (!serverName) return;
                 
@@ -200,7 +211,14 @@ export async function main(ns) {
                 
                 // Attach new listener
                 newCard.addEventListener('click', async () => {
+                    ns.tprint(`🖱️ Clicked on ${serverName}`);
                     try {
+                        if (!ns.singularity) {
+                            ns.tprint(`❌ Singularity API not available! You need Source-File 4 (Singularity)`);
+                            return;
+                        }
+                        
+                        ns.tprint(`🔗 Attempting to connect to ${serverName}...`);
                         const success = await ns.singularity.connect(serverName);
                         if (success) {
                             ns.tprint(`✅ Connected to ${serverName}`);
@@ -211,9 +229,14 @@ export async function main(ns) {
                         ns.tprint(`⚠️ Connect error: ${err.message}`);
                     }
                 });
+                
+                // Debug: Log first few cards
+                if (lastState.loopCount === 1 && index < 3) {
+                    ns.tprint(`🔍 Attached listener to card ${index}: ${serverName}`);
+                }
             });
         } catch (err) {
-            // Silent fail if DOM manipulation doesn't work
+            ns.tprint(`❌ Error attaching listeners: ${err.message}`);
         }
         
         lastState.totalServers = total;

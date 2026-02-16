@@ -29,8 +29,6 @@ let lastMoneySources = null;
 let lastMoneySourceUpdate = 0;
 let coordinatorState = {
     currentPhase: 0,
-    phaseStableCount: 0,
-    lastNotify: 0,
     resetPending: false,
 };
 
@@ -42,10 +40,8 @@ export async function main(ns) {
     ui.log("📊 Comprehensive dashboard monitoring initialized", "success");
     ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
     
-    let loopCount = 0;
     while (true) {
         try {
-            loopCount++;
             await updateDashboard(ns, ui);
             
             // Update every 2 seconds for real-time monitoring
@@ -920,15 +916,6 @@ function getPhaseProgress(ns, currentPhase) {
 }
 
 /**
- * Read game phase from orchestrator
- */
-function readGamePhase(ns) {
-    const phasePortData = ns.peek(PHASE_PORT);
-    if (phasePortData === "NULL PORT DATA") return 0;
-    return parseInt(phasePortData) || 0;
-}
-
-/**
  * Count rooted servers
  */
 function countRootedServers(ns) {
@@ -1029,12 +1016,9 @@ function hasStockAccess(ns) {
 }
 
 async function runCoordinatorFromDashboard(ns, ui) {
-    const newPhase = calculateGamePhaseWithHysteresis(ns, coordinatorState.currentPhase, coordinatorState.phaseStableCount);
+    const newPhase = calculateGamePhaseWithHysteresis(ns, coordinatorState.currentPhase);
     if (newPhase !== coordinatorState.currentPhase) {
         coordinatorState.currentPhase = newPhase;
-        coordinatorState.phaseStableCount = 0;
-    } else {
-        coordinatorState.phaseStableCount++;
     }
 
     ns.clearPort(PHASE_PORT);

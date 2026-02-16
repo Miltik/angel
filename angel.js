@@ -19,6 +19,11 @@ let backdoorState = {
     lastEligibleCount: 0,
 };
 
+let startupState = {
+    coreReady: false,
+    lastBlockedLog: 0,
+};
+
 export async function main(ns) {
     ns.disableLog("ALL");
     ns.clearLog();
@@ -94,7 +99,18 @@ async function orchestrate(ns) {
     displayStatus(ns);
     
     // Check if modules are running, start if needed
-    await ensureModulesRunning(ns);
+    const coreReady = await ensureModulesRunning(ns);
+
+    if (!coreReady) {
+        const now = Date.now();
+        if (now - startupState.lastBlockedLog > 15000) {
+            log(ns, "Core startup still pending; deferring optional backdoor automation until critical modules are running", "WARN");
+            startupState.lastBlockedLog = now;
+        }
+        return;
+    }
+
+    startupState.coreReady = true;
 
     // Opportunistic backdoor automation
     await maybeRunBackdoor(ns);
@@ -215,17 +231,35 @@ function displayStatus(ns) {
  * @param {NS} ns
  */
 async function ensureModulesRunning(ns) {
+    let coreReady = true;
+
+    const startupReclaimOrder = [
+        SCRIPTS.xpFarm,
+        SCRIPTS.hacking,
+        SCRIPTS.networkMap,
+        SCRIPTS.dashboard,
+        SCRIPTS.contracts,
+        SCRIPTS.formulas,
+        SCRIPTS.backdoor,
+        "/angel/modules/backdoorRunner.js",
+    ];
+
     // Start non-hacking modules first to ensure they have RAM
     
     // Programs module
     if (config.orchestrator.enablePrograms) {
-        await ensureModuleRunning(ns, SCRIPTS.programs, "Programs");
+        const started = await ensureModuleRunning(ns, SCRIPTS.programs, "Programs", [], {
+            reclaimOnLowRam: true,
+            reclaimOrder: startupReclaimOrder,
+        });
+        coreReady = coreReady && started;
         await ns.sleep(1500); // Stagger startup
     }
     
     // Server management module
     if (config.orchestrator.enableServerMgmt) {
-        await ensureModuleRunning(ns, SCRIPTS.serverMgmt, "Server Management");
+        const started = await ensureModuleRunning(ns, SCRIPTS.serverMgmt, "Server Management");
+        coreReady = coreReady && started;
         await ns.sleep(1500);
     }
     
@@ -237,7 +271,8 @@ async function ensureModulesRunning(ns) {
     
     // Augmentation module (if SF4 available)
     if (config.orchestrator.enableAugments) {
-        await ensureModuleRunning(ns, SCRIPTS.augments, "Augmentations");
+        const started = await ensureModuleRunning(ns, SCRIPTS.augments, "Augmentations");
+        coreReady = coreReady && started;
         await ns.sleep(1500);
     }
     
@@ -255,13 +290,15 @@ async function ensureModulesRunning(ns) {
 
     // Activities module (unified: crime, training, faction, company)
     if (config.orchestrator.enableActivities) {
-        await ensureModuleRunning(ns, SCRIPTS.activities, "Activities");
+        const started = await ensureModuleRunning(ns, SCRIPTS.activities, "Activities");
+        coreReady = coreReady && started;
         await ns.sleep(1500);
     }
 
     // Hacknet module
     if (config.orchestrator.enableHacknet) {
-        await ensureModuleRunning(ns, SCRIPTS.hacknet, "Hacknet");
+        const started = await ensureModuleRunning(ns, SCRIPTS.hacknet, "Hacknet");
+        coreReady = coreReady && started;
         await ns.sleep(1500);
     }
 
@@ -291,8 +328,13 @@ async function ensureModulesRunning(ns) {
     
     // Dashboard module - monitoring (low RAM)
     if (config.orchestrator.enableDashboard) {
-        await ensureModuleRunning(ns, SCRIPTS.dashboard, "Dashboard");
+        const started = await ensureModuleRunning(ns, SCRIPTS.dashboard, "Dashboard");
+        coreReady = coreReady && started;
         await ns.sleep(1500);
+    }
+
+    if (!coreReady) {
+        return false;
     }
     
     // Coding Contracts solver - low RAM
@@ -347,6 +389,8 @@ async function ensureModulesRunning(ns) {
 
         await ensureModuleRunning(ns, SCRIPTS.xpFarm, "XP Farm", xpArgs);
     }
+
+    return true;
 }
 
 /**
@@ -355,25 +399,48 @@ async function ensureModulesRunning(ns) {
  * @param {string} script
  * @param {string} name
  */
-async function ensureModuleRunning(ns, script, name, args = []) {
+async function ensureModuleRunning(ns, script, name, args = [], options = {}) {
     // Check if script exists
     if (!ns.fileExists(script, "home")) {
         log(ns, `Module ${name} not found at ${script}`, "WARN");
         return;
     }
     
+    const reclaimOnLowRam = Boolean(options?.reclaimOnLowRam);
+    const reclaimOrder = Array.isArray(options?.reclaimOrder) ? options.reclaimOrder : [];
+
     // Check if already running
     if (ns.isRunning(script, "home")) {
-        return;
+        return true;
     }
     
     // Check RAM requirements
     const scriptRam = ns.getScriptRam(script, "home");
-    const availableRam = ns.getServerMaxRam("home") - ns.getServerUsedRam("home");
+    let availableRam = ns.getServerMaxRam("home") - ns.getServerUsedRam("home");
+
+    if (scriptRam > availableRam && reclaimOnLowRam && reclaimOrder.length > 0) {
+        const reclaimed = [];
+        for (const reclaimScript of reclaimOrder) {
+            if (availableRam >= scriptRam) break;
+            if (reclaimScript === script) continue;
+            if (!ns.isRunning(reclaimScript, "home")) continue;
+
+            const killed = ns.kill(reclaimScript, "home");
+            if (killed) {
+                reclaimed.push(reclaimScript);
+                await ns.sleep(50);
+                availableRam = ns.getServerMaxRam("home") - ns.getServerUsedRam("home");
+            }
+        }
+
+        if (reclaimed.length > 0) {
+            log(ns, `Reclaimed RAM for ${name}: stopped ${reclaimed.join(", ")}`, "WARN");
+        }
+    }
     
     if (scriptRam > availableRam) {
         log(ns, `Failed to start ${name} module: needs ${scriptRam.toFixed(2)}GB, have ${availableRam.toFixed(2)}GB`, "WARN");
-        return;
+        return false;
     }
     
     // Try to start it
@@ -381,8 +448,10 @@ async function ensureModuleRunning(ns, script, name, args = []) {
     
     if (pid === 0) {
         log(ns, `Failed to start ${name} module: exec returned 0 (check for errors in module)`, "WARN");
+        return false;
     } else {
         log(ns, `Started ${name} module (PID: ${pid})`, "INFO");
+        return true;
     }
 }
 

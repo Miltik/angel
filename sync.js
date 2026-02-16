@@ -57,6 +57,7 @@ export async function main(ns) {
         
         // Tools
         "snapshot.js",                   // New: System state capture
+        "angel-ram.js",                  // New: RAM calculator
         
         // Workers
         "workers/hack.js",

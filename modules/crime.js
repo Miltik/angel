@@ -3,8 +3,10 @@
  * Unified singularity automation: crime, training, faction, company work
  * + Faction reputation management and augment tracking
  * 
- * Phase-aware: Intelligent activity selection (P0-2)
- * Always-on: Faction invitations and rep tracking
+ * Phase-aware dual-mode operation:
+ * - P0-2: Active activity selection (crime/training/faction/company)
+ * - P3+: Filler crime when lock is free (statpadding between other activities)
+ * - Always: Faction tracking and auto-join
  * 
  * @param {NS} ns
  */
@@ -27,31 +29,27 @@ function readGamePhase(ns) {
     // CRIME MODULE PHASE LOGIC (overrides port 7):
     // P0: Bootstrap - money < $10M
     if (money < 10000000) {
-        ns.print(`[PHASE LOCAL] P0 (bootstrap: $${formatMoney(money)})`);
         return 0;
     }
     
     // P1: Early - money $10M-$100M OR hacking < 200
     if (money < 100000000 || hack < 200) {
-        ns.print(`[PHASE LOCAL] P1 (early: $${formatMoney(money)}, hack ${hack})`);
         return 1;
     }
     
     // P2: Mid - money $100M-$500M
     if (money < 500000000) {
-        ns.print(`[PHASE LOCAL] P2 (mid: $${formatMoney(money)})`);
         return 2;
     }
     
     // P3+: Late - money > $500M (hacking focused, crime module idles)
-    ns.print(`[PHASE LOCAL] P3+ (late: $${formatMoney(money)})`);
     return 3;
 }
 
 export async function main(ns) {
     ns.disableLog("ALL");
     ns.ui.openTail();
-    log(ns, "🎭 Activity + Faction module started (P0-2 activity, all-phase factions)", "INFO");
+    log(ns, "🎭 Activity + Faction module started (P0-2 active, P3+ filler, all-phase factions)", "INFO");
 
     if (!hasSingularityAccess(ns)) {
         log(ns, "🎭 Singularity access not available - need SF4", "WARN");
@@ -68,29 +66,22 @@ export async function main(ns) {
             const gamePhase = readGamePhase(ns);
             loopCount++;
 
-            // ALWAYS log every iteration for DEBUG
-            ns.print(`[LOOP ${loopCount}] Phase: ${gamePhase}, Checking activity...`);
-
             // Faction management: ALWAYS ACTIVE (all phases)
             await manageFactions(ns);
-            ns.print(`[LOOP ${loopCount}] After manageFactions`);
 
-            // Activity work: ONLY PHASES 0-2
+            // Activity work: PHASES 0-2 (active), PHASES 3+ (filler only)
             if (gamePhase <= 2) {
-                ns.print(`[LOOP ${loopCount}] Phase <= 2, calling processActivity`);
+                // P0-2: Active crime/training/faction/company
                 await processActivity(ns, gamePhase);
-                ns.print(`[LOOP ${loopCount}] After processActivity`);
-            } else {
-                // Phases 3+: Activity module sleeps (hacking focus)
-                ns.print(`[LOOP ${loopCount}] Phase ${gamePhase} > 2, sleeping (hacking phase)`);
-                await ns.sleep(30000);
+            } else if (gamePhase >= 3) {
+                // P3+: Crime only as filler when activity lock is free
+                // This allows padding stats during idle moments without blocking other activities
+                await processFillerCrime(ns, gamePhase);
             }
 
-            ns.print(`[LOOP ${loopCount}] End of iteration, sleeping 5s`);
             await ns.sleep(5000);
         } catch (e) {
             log(ns, `🎭 Loop error: ${e}`, "ERROR");
-            ns.print(`[LOOP ERROR] ${e}`);
             await ns.sleep(5000);
         }
     }
@@ -141,22 +132,18 @@ async function processActivity(ns, gamePhase) {
     // Check if already working on something
     const currentWork = ns.singularity.getCurrentWork();
     if (currentWork) {
-        log(ns, `🎭 [P${gamePhase}] Current work: ${currentWork.type} (${currentWork.taskName || currentWork.factionName || ""})`, "DEBUG");
         return;
     }
 
     // Determine best activity for this phase
     const activity = chooseActivity(ns, gamePhase);
-    log(ns, `🎭 [P${gamePhase}] Activity chosen: ${activity}`, "INFO");
 
     if (activity === "none") {
-        log(ns, `🎭 [P${gamePhase}] No activity needed`, "DEBUG");
         return;
     }
 
     // Try to acquire activity lock (prevent conflicts)
     if (!claimLock(ns, ACTIVITY_OWNER, ACTIVITY_LOCK_TTL)) {
-        log(ns, `🎭 [P${gamePhase}] Lock held by another module, skipping`, "DEBUG");
         return;
     }
 
@@ -174,6 +161,33 @@ async function processActivity(ns, gamePhase) {
         }
     } catch (err) {
         log(ns, `🎭 Error during ${activity}: ${err}`, "ERROR");
+    }
+
+    releaseLock(ns, ACTIVITY_OWNER);
+}
+
+/**
+ * FILLER CRIME: Phases 3+ only
+ * Do brief crimes when activity lock is free (statpadding only)
+ */
+async function processFillerCrime(ns, gamePhase) {
+    // Check if already working on something
+    const currentWork = ns.singularity.getCurrentWork();
+    if (currentWork) {
+        return; // Already working on something, skip
+    }
+
+    // Try to acquire activity lock (only if free - don't wait)
+    if (!claimLock(ns, ACTIVITY_OWNER, ACTIVITY_LOCK_TTL)) {
+        // Lock held by another module (faction work, etc), skip
+        return;
+    }
+
+    try {
+        // Do a quick crime for stat padding
+        await doCrime(ns);
+    } catch (err) {
+        log(ns, `🎭 Error during filler crime: ${err}`, "ERROR");
     }
 
     releaseLock(ns, ACTIVITY_OWNER);

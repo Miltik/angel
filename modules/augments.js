@@ -4,26 +4,39 @@ import { createWindow } from "/angel/modules/uiManager.js";
 
 const PHASE_PORT = 7;
 
+// State tracking
+let lastState = {
+    phase: null,
+    availableCount: 0,
+    queuedCount: 0,
+    loopCount: 0,
+    lastPurchaseLoop: -10
+};
+
 /** @param {NS} ns */
 export async function main(ns) {
     ns.disableLog("ALL");
     
     const ui = createWindow("augments", "🧬 Augmentations", 700, 500, ns);
-    ui.log("Augmentation module started - Phase-aware cascading", "info");
+    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
+    ui.log("🧬 Augmentation automation initialized", "success");
+    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
     
     // Check if we have SF4 (Singularity access)
     if (!hasSingularityAccess(ns)) {
-        ui.log("Singularity access not available (need SF4) - waiting...", "warn");
+        ui.log("⚠️  Singularity access not available (need SF4) - waiting...", "warn");
         while (true) {
             await ns.sleep(60000);
         }
     }
     
+    ui.log("✅ Singularity access confirmed", "success");
+    
     while (true) {
         try {
             await augmentLoop(ns, ui);
         } catch (e) {
-            ui.log(`Augmentation error: ${e}`, "error");
+            ui.log(`❌ Augmentation error: ${e}`, "error");
         }
         await ns.sleep(60000); // Check every minute
     }
@@ -198,11 +211,27 @@ async function augmentLoop(ns, ui) {
     const installedCount = ns.singularity.getOwnedAugmentations(true).length;
     const queuedCount = ownedCount - installedCount;
     
-    // Display status
-    ui.log(`[Phase ${phase}] Money: ${formatMoney(money)} | Strategy: ${strategy.strategy} | Queued: ${queuedCount}`, "info");
+    lastState.loopCount++;
+    
+    // Log status only on changes or every 5 loops (5 minutes)
+    const statusChanged = phase !== lastState.phase || 
+                         available.length !== lastState.availableCount ||
+                         queuedCount !== lastState.queuedCount;
+    
+    if (statusChanged || lastState.loopCount % 5 === 0) {
+        ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
+        ui.log(`🧬 Phase ${phase} | 💰 ${formatMoney(money)} | 📋 Strategy: ${strategy.strategy}`, "info");
+        ui.log(`📦 Available: ${available.length} | 🎯 Queued: ${queuedCount}`, "info");
+    }
+    
+    lastState.phase = phase;
+    lastState.availableCount = available.length;
+    lastState.queuedCount = queuedCount;
     
     if (available.length === 0) {
-        ui.log(`No augmentations available yet`, "info");
+        if (statusChanged || lastState.loopCount % 10 === 0) {
+            ui.log(`⏰ No augmentations available yet - waiting for faction rep`, "info");
+        }
         return;
     }
     
@@ -245,15 +274,24 @@ async function buyAllAvailable(ns, available, initialMoney, ui) {
         if (money >= aug.price) {
             const success = ns.singularity.purchaseAugmentation(aug.faction, aug.name);
             if (success) {
-                ui.log(`Purchased: ${aug.name} (${aug.faction}) for ${formatMoney(aug.price)}`, "success");
+                ui.log(`✅ Purchased ${aug.name} (${aug.faction}) for ${formatMoney(aug.price)}`, "success");
                 money = ns.getServerMoneyAvailable("home");
                 purchased++;
+                lastState.lastPurchaseLoop = lastState.loopCount;
             }
         }
     }
     
     if (purchased > 0) {
-        ui.log(`Batch purchased ${purchased} augmentations`, "success");
+        ui.log(`🎉 Batch purchased ${purchased} augmentations`, "success");
+    } else if (lastState.loopCount - lastState.lastPurchaseLoop > 5) {
+        // No purchases in last 5 minutes, show next target
+        const affordable = available.filter(a => money >= a.price);
+        if (affordable.length === 0 && available.length > 0) {
+            const nextAug = available[0];
+            const needed = nextAug.price - money;
+            ui.log(`🎯 Next: ${nextAug.name} - Need ${formatMoney(needed)} more`, "info");
+        }
     }
 }
 
@@ -271,22 +309,26 @@ async function buyPriorityAugments(ns, priority, initialMoney, strategy, ui) {
     const spendThreshold = initialMoney * strategy.threshold;
     
     for (const aug of priority) {
-        if (money >= aug.price && money <= spendThreshold) {
+        if (money >= aug.price && aug.price <= spendThreshold) {
             const success = ns.singularity.purchaseAugmentation(aug.faction, aug.name);
             if (success) {
-                ui.log(`Purchased priority: ${aug.name} for ${formatMoney(aug.price)}`, "success");
+                ui.log(`✅ Priority purchased: ${aug.name} for ${formatMoney(aug.price)}`, "success");
                 money = ns.getServerMoneyAvailable("home");
                 purchased++;
+                lastState.lastPurchaseLoop = lastState.loopCount;
             }
         }
     }
     
     if (purchased > 0) {
-        ui.log(`Batch purchased ${purchased} priority augmentations`, "success");
-    } else if (priority.length > 0 && money < priority[0].price) {
-        const nextAug = priority[0];
-        const needed = nextAug.price - money;
-        ui.log(`Next priority: ${nextAug.name} - Need ${formatMoney(needed)} more`, "info");
+        ui.log(`🎉 Batch purchased ${purchased} priority augmentations`, "success");
+    } else if (lastState.loopCount - lastState.lastPurchaseLoop > 5) {
+        // No purchases in last 5 minutes, show next target
+        if (priority.length > 0 && money < priority[0].price) {
+            const nextAug = priority[0];
+            const needed = nextAug.price - money;
+            ui.log(`🎯 Next priority: ${nextAug.name} - Need ${formatMoney(needed)} more`, "info");
+        }
     }
 }
 

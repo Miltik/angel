@@ -26,7 +26,9 @@ export async function main(ns) {
     ns.disableLog("ALL");
     
     const ui = createWindow("dashboard", "📊 Dashboard", 900, 600, ns);
-    ui.log("Dashboard monitoring started - Real-time metrics", "info");
+    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
+    ui.log("📊 Dashboard monitoring initialized", "success");
+    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
     
     let loopCount = 0;
     while (true) {
@@ -37,7 +39,7 @@ export async function main(ns) {
             // Update every 30 seconds for dashboard
             await ns.sleep(30000);
         } catch (e) {
-            ui.log(`Error: ${e}`, "error");
+            ui.log(`❌ Error: ${e}`, "error");
             await ns.sleep(5000);
         }
     }

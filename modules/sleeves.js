@@ -6,9 +6,15 @@
  */
 import { config } from "/angel/config.js";
 import { createWindow } from "/angel/modules/uiManager.js";
-import { log } from "/angel/utils.js";
 
 const PHASE_PORT = 7;
+
+// State tracking
+let lastState = {
+    phase: null,
+    summary: null,
+    loopCount: 0
+};
 
 /**
  * Read current game phase from orchestrator
@@ -23,30 +29,38 @@ export async function main(ns) {
     ns.disableLog("ALL");
     
     const ui = createWindow("sleeves", "👨‍👨‍👧‍👦 Sleeves", 700, 400, ns);
-    ui.log("Sleeve module started - Phase-gated activation (P3+)", "info");
+    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    ui.log("👨‍👨‍👧‍👦 Sleeve automation initialized (P3+ gated)", "success");
+    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
     // Wait for phase 3+ (when sleeves are needed for delegation work)
     while (true) {
         const gamePhase = readGamePhase(ns);
         if (gamePhase >= 3) break;
-        ui.log(`Waiting for phase 3+ (currently P${gamePhase})`, "info");
+        if (lastState.loopCount % 4 === 0) {
+            ui.log(`⏰ Waiting for phase 3+ (currently P${gamePhase})`, "info");
+        }
+        lastState.loopCount++;
         await ns.sleep(60000);
     }
 
     if (!hasSleeves(ns)) {
-        ui.log("No sleeves unlocked yet - idle", "warn");
+        ui.log("⚠️  No sleeves unlocked - entering idle mode", "warn");
         while (true) {
             await ns.sleep(60000);
         }
     }
 
-    log(ns, "🧬 Sleeves active - starting automation", "SUCCESS");
+    ui.log("✅ Sleeves active - starting automation", "success");
 
     while (true) {
         try {
             const gamePhase = readGamePhase(ns);
             if (gamePhase < 3) {
-                log(ns, "🧬 Phase dropped below 3 - pausing", "WARN");
+                if (lastState.phase !== "paused") {
+                    ui.log("⏸️ Phase dropped below 3 - pausing automation", "warn");
+                    lastState.phase = "paused";
+                }
                 await ns.sleep(60000);
                 continue;
             }
@@ -59,10 +73,11 @@ export async function main(ns) {
                 summary[status]++;
             }
             
-            printStatus(ns, count, summary, gamePhase);
+            lastState.loopCount++;
+            printStatus(ui, count, summary, gamePhase, lastState);
             await ns.sleep(30000);
         } catch (e) {
-            log(ns, `🧬 Error: ${e}`, "ERROR");
+            ui.log(`❌ Error: ${e}`, "error");
             await ns.sleep(5000);
         }
     }
@@ -166,8 +181,21 @@ function tryFactionWork(ns, i) {
 }
 
 /**
- * Display sleeve status
+ * Display sleeve status (only on changes or periodically)
  */
-function printStatus(ns, count, summary, gamePhase) {
-    log(ns, `🧬 [P${gamePhase}] Sleeves: ${count} | Trained: ${summary.trained} | Working: ${summary.working} | Recovering: ${summary.recovering}`, "INFO");
+function printStatus(ui, count, summary, gamePhase, lastState) {
+    const summaryStr = `${summary.trained}-${summary.working}-${summary.recovering}`;
+    
+    // Log if status changed, phase changed, or every 10 loops (5 minutes)
+    if (summaryStr !== lastState.summary || 
+        gamePhase !== lastState.phase || 
+        lastState.loopCount % 10 === 0) {
+        
+        ui.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, "info");
+        ui.log(`👨‍👨‍👧‍👦 Phase ${gamePhase} | ${count} Sleeves Active`, "info");
+        ui.log(`📚 Training: ${summary.trained} | 💼 Working: ${summary.working} | 🏥 Recovering: ${summary.recovering}`, "info");
+        
+        lastState.summary = summaryStr;
+        lastState.phase = gamePhase;
+    }
 }

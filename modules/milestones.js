@@ -18,7 +18,9 @@ export async function main(ns) {
     ns.disableLog("ALL");
     
     const ui = createWindow("milestones", "🎯 Milestones & Orchestrator", 700, 500, ns);
-    ui.log("Game Orchestrator started - Coordinating toward w0r1d_d43m0n", "info");
+    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
+    ui.log("🎯 Game orchestrator initialized", "success");
+    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
 
     let lastNotify = 0;
     let currentPhase = 0;
@@ -30,7 +32,8 @@ export async function main(ns) {
             // Calculate current game phase with hysteresis to prevent oscillation
             const newPhase = calculateGamePhaseWithHysteresis(ns, currentPhase, phaseStableCount);
             if (newPhase !== currentPhase) {
-                ns.print(`[Orchest] ⚡ PHASE TRANSITION: ${getPhaseInfo(currentPhase).name} → ${getPhaseInfo(newPhase).name}`);
+                ui.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`, "info");
+                ui.log(`⚡ PHASE TRANSITION: ${getPhaseInfo(currentPhase).name} → ${getPhaseInfo(newPhase).name}`, "success");
                 currentPhase = newPhase;
                 phaseStableCount = 0;
             } else {
@@ -68,19 +71,19 @@ export async function main(ns) {
                 if (now - lastNotify >= config.milestones.notifyInterval) {
                     const daemon = getDaemonStatus(ns);
                     if (daemon.ready) {
-                        ui.log(`✅ DAEMON READY: w0r1d_d43m0n requirements met (manual kill only)`, "success");
+                        ui.log(`✅ DAEMON READY: w0r1d_d43m0n requirements met`, "success");
                     } else {
                         const missing = [];
                         if (daemon.hackLevel < daemon.requiredLevel) missing.push(`Hacking +${daemon.requiredLevel - daemon.hackLevel}`);
                         if (!daemon.rooted) missing.push("Root w0r1d_d43m0n");
                         if (!daemon.programsOk) missing.push("Get all 5 programs");
-                        ui.log(`Status: ${missing.join(", ")}`, "info");
+                        ui.log(`🎯 Status: ${missing.join(", ")}`, "info");
                     }
                     lastNotify = now;
                 }
             }
         } catch (e) {
-            ui.log(`Orchestrator error: ${e}`, "error");
+            ui.log(`❌ Orchestrator error: ${e}`, "error");
         }
 
         await ns.sleep(config.milestones.loopDelay);

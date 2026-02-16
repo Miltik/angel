@@ -1,27 +1,36 @@
 import { createWindow } from "/angel/modules/uiManager.js";
 
+// State tracking to avoid log spam
+let lastState = {
+    hasTor: false,
+    ownedPrograms: [],
+    lastLoggedStatus: null,
+    loopCount: 0
+};
+
 /** @param {NS} ns */
 export async function main(ns) {
     ns.disableLog("ALL");
     
     const ui = createWindow("programs", "💾 Programs & Backdoors", 600, 350, ns);
-    ui.log("Programs module started", "info");
-    
-    let loopCount = 0;
+    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    ui.log("💾 Programs & Backdoors module initialized", "success");
+    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     
     while (true) {
-        loopCount++;
+        lastState.loopCount++;
         try {
             // Ensure we're always at home
             const homeConn = await connectToHome(ns);
-            if (!homeConn) ui.log("WARNING: Failed to connect to home!", "warn");
-            
-            ui.log(`Loop ${loopCount}`, "debug");
+            if (!homeConn && lastState.loopCount % 10 === 0) {
+                ui.log("⚠️  Failed to connect to home", "warn");
+            }
             
             // Buy TOR and Programs
             const allDone = await phaseBuyPrograms(ns, ui);
-            if (allDone) {
-                ui.log("Program acquisition complete. Idle mode.", "success");
+            if (allDone && lastState.lastLoggedStatus !== "complete") {
+                ui.log("✅ All programs acquired - entering idle mode", "success");
+                lastState.lastLoggedStatus = "complete";
             }
             
         } catch (e) {
@@ -56,9 +65,18 @@ async function phaseBuyPrograms(ns, ui) {
     
     try {
         // Buy TOR if needed (autoBuyTor default: true)
-        if (!hasTor(ns)) {
+        const currentHasTor = hasTor(ns);
+        if (!currentHasTor) {
             const money = ns.getServerMoneyAvailable("home");
-            ui.log(`TOR not available. Money: $${money.toLocaleString()}`, "info");
+            
+            // Only log TOR status change or periodically
+            if (!lastState.hasTor || lastState.loopCount % 10 === 0) {
+                if (money >= 200000) {
+                    ui.log("🎯 TOR available for purchase ($200k)", "info");
+                } else {
+                    ui.log(`💰 Saving for TOR: $${(money / 1000).toFixed(0)}k / $200k`, "debug");
+                }
+            }
             
             if (money >= 200000) {
                 try {
@@ -67,21 +85,22 @@ async function phaseBuyPrograms(ns, ui) {
                     
                     // Verify TOR was actually purchased
                     if (hasTor(ns)) {
-                        ui.log("Purchased TOR successfully", "success");
+                        ui.log("✅ Purchased TOR successfully", "success");
+                        lastState.hasTor = true;
                     } else {
-                        ui.log("TOR purchase completed but verification failed", "warn");
+                        ui.log("⚠️  TOR purchase verification failed", "warn");
                     }
                 } catch (e) {
-                    ui.log(`TOR purchase failed: ${e}`, "error");
+                    ui.log(`❌ TOR purchase failed: ${e}`, "error");
                 }
-            } else {
-                ui.log(`Need $${(200000 - money).toLocaleString()} more for TOR`, "info");
             }
+            lastState.hasTor = false;
             return false; // Still need TOR, wait for next loop
         }
         
         // Buy programs (autoBuyPrograms default: true, preferBuying default: true)
         if (hasTor(ns)) {
+            lastState.hasTor = true;
             const programs = [
                 "BruteSSH.exe",
                 "FTPCrack.exe",
@@ -93,41 +112,64 @@ async function phaseBuyPrograms(ns, ui) {
                 "ServerProfiler.exe",
             ];
             
+            let ownedCount = 0;
+            let nextTarget = null;
+            
             for (const prog of programs) {
                 if (ns.fileExists(prog, "home")) {
-                    ui.log(`Already have ${prog}`, "debug");
+                    ownedCount++;
+                    // Only log when program list changes
+                    if (!lastState.ownedPrograms.includes(prog)) {
+                        lastState.ownedPrograms.push(prog);
+                    }
                     continue;
                 }
+                
+                if (!nextTarget) nextTarget = prog;
                 
                 try {
                     const cost = ns.singularity.getDarkwebProgramCost(prog);
                     const money = ns.getServerMoneyAvailable("home");
                     
                     if (cost <= 0) {
-                        ui.log(`${prog} not available on darkweb (cost: ${cost})`, "warn");
+                        if (lastState.loopCount % 20 === 0) {
+                            ui.log(`⚠️  ${prog} not available on darkweb`, "warn");
+                        }
                         continue;
                     }
 
                     if (money >= cost) {
                         const purchased = ns.singularity.purchaseProgram(prog);
                         if (purchased) {
-                            ui.log(`Bought ${prog} for $${cost.toLocaleString()}`, "success");
+                            ui.log(`✅ Purchased ${prog} for $${(cost / 1000000).toFixed(2)}M`, "success");
+                            lastState.ownedPrograms.push(prog);
+                            ownedCount++;
                         } else {
-                            ui.log(`Failed to buy ${prog} (cost: $${cost.toLocaleString()})`, "warn");
+                            ui.log(`❌ Failed to purchase ${prog}`, "warn");
                         }
                         await ns.sleep(500);
                         return false; // Keep buying more
                     } else {
-                        ui.log(`Need $${(cost - money).toLocaleString()} for ${prog}`, "info");
+                        // Only log save progress periodically
+                        if (lastState.loopCount % 10 === 0) {
+                            ui.log(`💰 Saving for ${prog}: $${(money / 1000000).toFixed(2)}M / $${(cost / 1000000).toFixed(2)}M`, "info");
+                        }
                         return false; // Still need money
                     }
                 } catch (e) {
-                    ui.log(`Error buying ${prog}: ${e}`, "error");
+                    ui.log(`❌ Error buying ${prog}: ${e}`, "error");
                 }
             }
             
-            ui.log("All programs acquired!", "success");
-            return true; // All programs done
+            // Log completion status periodically
+            if (ownedCount === programs.length && lastState.lastLoggedStatus !== "all_programs") {
+                ui.log(`✅ All ${programs.length} programs acquired!`, "success");
+                lastState.lastLoggedStatus = "all_programs";
+            } else if (lastState.loopCount % 10 === 0 && ownedCount < programs.length) {
+                ui.log(`📦 Programs: ${ownedCount}/${programs.length} | Next: ${nextTarget}`, "info");
+            }
+            
+            return ownedCount === programs.length; // All programs done
         }
         
         return false; // Still need TOR

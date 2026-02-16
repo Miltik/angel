@@ -10,6 +10,15 @@ import { createWindow } from "/angel/modules/uiManager.js";
 
 const PHASE_PORT = 7;
 
+// State tracking
+let lastState = {
+    phase: null,
+    bought: 0,
+    sold: 0,
+    totalProfits: 0,
+    loopCount: 0
+};
+
 /**
  * Read current game phase from orchestrator
  */
@@ -32,38 +41,47 @@ export async function main(ns) {
     
     // Create DOM window for output
     const ui = createWindow("stocks", "📈 Stock Market", 700, 500, ns);
-    ui.log("Stock market module initialized - Phase-gated (P3+)", "info");
+    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
+    ui.log("📈 Stock market automation initialized (P3+ gated)", "success");
+    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
 
     // Wait for phase 3+ when capital is available
     while (true) {
         const gamePhase = readGamePhase(ns);
         if (gamePhase >= 3) break;
-        ui.log(`Waiting for phase 3+ to begin trading (currently P${gamePhase})`, "info");
+        if (lastState.loopCount % 4 === 0) {
+            ui.log(`⏰ Waiting for phase 3+ (currently P${gamePhase})`, "info");
+        }
+        lastState.loopCount++;
         await ns.sleep(60000);
     }
 
     if (!hasStockAccess(ns)) {
-        ui.log("Stock API not available yet - idle", "warn");
+        ui.log("⚠️  Stock API not available yet - entering idle mode", "warn");
         while (true) {
             await ns.sleep(60000);
         }
     }
 
-    ui.log("Stock trading active", "success");
+    ui.log("✅ Stock trading active", "success");
 
     while (true) {
         try {
             const gamePhase = readGamePhase(ns);
             if (gamePhase < 3) {
-                ui.log("Phase dropped below 3 - pausing", "warn");
+                if (lastState.phase !== "paused") {
+                    ui.log("⏸️ Phase dropped below 3 - pausing trading", "warn");
+                    lastState.phase = "paused";
+                }
                 await ns.sleep(60000);
                 continue;
             }
 
+            lastState.loopCount++;
             await processStocks(ns, gamePhase, ui);
             await ns.sleep(60000);
         } catch (e) {
-            ui.log(`Error: ${e}`, "error");
+            ui.log(`❌ Error: ${e}`, "error");
             await ns.sleep(5000);
         }
     }
@@ -116,7 +134,7 @@ async function processStocks(ns, gamePhase, ui) {
         
         if (shares > 0 && profitRatio >= profitThreshold) {
             ns.stock.sellStock(sym, shares);
-            ui.log(`PROFIT: Sold ${shares} ${sym} | Gain: +${(profitRatio * 100).toFixed(1)}% (${formatMoney(totalProfit)})`, "success");
+            ui.log(`💰 PROFIT: Sold ${shares} ${sym} | +${(profitRatio * 100).toFixed(1)}% (${formatMoney(totalProfit)})`, "success");
             sold++;
             profits += totalProfit;
             continue;
@@ -125,7 +143,7 @@ async function processStocks(ns, gamePhase, ui) {
         // STOP LOSS: Sell losers at -10% to minimize bleeding
         if (shares > 0 && profitRatio < -0.10) {
             ns.stock.sellStock(sym, shares);
-            ui.log(`STOP LOSS: Sold ${shares} ${sym} | Loss: ${(profitRatio * 100).toFixed(1)}%`, "warn");
+            ui.log(`🔻 STOP LOSS: Sold ${shares} ${sym} | ${(profitRatio * 100).toFixed(1)}%`, "warn");
             sold++;
             continue;
         }
@@ -133,7 +151,7 @@ async function processStocks(ns, gamePhase, ui) {
         // SELL: Forecast turned poor (< 50%)
         if (shares > 0 && forecast <= 0.50) {
             ns.stock.sellStock(sym, shares);
-            ui.log(`SOLD: ${shares} ${sym} | Forecast: ${(forecast * 100).toFixed(1)}%`, "info");
+            ui.log(`📉 SOLD: ${shares} ${sym} | Forecast: ${(forecast * 100).toFixed(1)}%`, "info");
             sold++;
             continue;
         }
@@ -161,14 +179,29 @@ async function processStocks(ns, gamePhase, ui) {
                 ns.stock.buyStock(sym, qty);
                 const cost = qty * price;
                 invested += cost;
-                ui.log(`BUY: ${qty} ${sym} | Forecast: ${(forecast * 100).toFixed(1)}% | Confidence: ${(confidence * 100).toFixed(0)}% | Cost: ${formatMoney(cost)}`, "success");
+                ui.log(`📈 BUY: ${qty} ${sym} | Forecast: ${(forecast * 100).toFixed(1)}% | Confidence: ${(confidence * 100).toFixed(0)}% | ${formatMoney(cost)}`, "success");
                 bought++;
             }
         }
     }
 
-    if (bought > 0 || sold > 0 || profits > 0) {
-        ui.log(`[P${gamePhase}] Traded: +${bought}/-${sold} | Profits: ${formatMoney(profits)} | Invested: ${formatMoney(invested)}`, "info");
+    // Update state tracking
+    const hadActivity = bought > 0 || sold > 0 || profits > 0;
+    lastState.bought += bought;
+    lastState.sold += sold;
+    lastState.totalProfits += profits;
+    lastState.phase = gamePhase;
+
+    // Log summary only if there was activity OR every 10 loops (10 minutes)
+    if (hadActivity || lastState.loopCount % 10 === 0) {
+        ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
+        ui.log(`📊 Phase ${gamePhase} Summary | This cycle: +${bought}/-${sold}`, "info");
+        if (profits !== 0) {
+            ui.log(`💰 Profits this cycle: ${formatMoney(profits)} | Total: ${formatMoney(lastState.totalProfits)}`, profits > 0 ? "success" : "warn");
+        }
+        if (invested > 0) {
+            ui.log(`💵 Invested: ${formatMoney(invested)}`, "info");
+        }
     }
 }
 

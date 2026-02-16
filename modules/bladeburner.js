@@ -31,30 +31,37 @@ export async function main(ns) {
     ns.disableLog("ALL");
     
     const ui = createWindow("bladeburner", "⚔️ Bladeburner", 700, 400, ns);
-    ui.log("Bladeburner module started - Phase-gated (P4 only)", "info");
+    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
+    ui.log("⚔️ Bladeburner automation initialized (P4 gated)", "success");
+    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
+
+    let loopCount = 0;
 
     // Wait for phase 4 (very late game, close to daemon)
     while (true) {
         const gamePhase = readGamePhase(ns);
         if (gamePhase >= 4) break;
-        ui.log(`Waiting for phase 4 (currently P${gamePhase})`, "info");
+        if (loopCount % 4 === 0) {
+            ui.log(`⏰ Waiting for phase 4 (currently P${gamePhase})`, "info");
+        }
+        loopCount++;
         await ns.sleep(60000);
     }
 
     if (!ns.bladeburner.inBladeburner()) {
-        ui.log("⚔️  Not in Bladeburner yet - idle", "warn");
+        ui.log("⚠️  Not in Bladeburner yet - entering idle mode", "warn");
         while (true) {
             await ns.sleep(60000);
         }
     }
 
-    ui.log("⚔️  Bladeburner active", "success");
+    ui.log("✅ Bladeburner active - starting operations", "success");
 
     while (true) {
         try {
             const gamePhase = readGamePhase(ns);
             if (gamePhase < 4) {
-                ui.log("⚔️  Phase dropped below 4 - pausing", "warn");
+                ui.log("⏸️ Phase dropped below 4 - pausing operations", "warn");
                 await ns.sleep(60000);
                 continue;
             }
@@ -75,7 +82,7 @@ export async function main(ns) {
 
             await ns.sleep(config.bladeburner.loopDelay || 30000);
         } catch (e) {
-            ui.log(`⚔️  Error: ${e}`, "error");
+            ui.log(`❌ Error: ${e}`, "error");
             await ns.sleep(5000);
         }
     }

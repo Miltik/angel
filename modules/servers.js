@@ -5,18 +5,29 @@ import { createWindow } from "/angel/modules/uiManager.js";
 
 const PHASE_PORT = 7;
 
+// State tracking to avoid log spam
+let lastState = {
+    serverCount: 0,
+    phase: null,
+    totalRam: 0,
+    lastRootCount: 0,
+    loopCount: 0
+};
+
 /** @param {NS} ns */
 export async function main(ns) {
     ns.disableLog("ALL");
     
     const ui = createWindow("servers", "🖥️ Server Management", 700, 400, ns);
-    ui.log("Server management module started - Phase-aware scaling", "info");
+    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    ui.log("🖥️  Server management initialized", "success");
+    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     
     while (true) {
         try {
             await serverLoop(ns, ui);
         } catch (e) {
-            ui.log(`Server management error: ${e}`, "error");
+            ui.log(`❌ Server management error: ${e}`, "error");
         }
         await ns.sleep(15000); // Check every 15 seconds
     }
@@ -33,17 +44,33 @@ async function serverLoop(ns, ui) {
     const ownedServers = ns.getPurchasedServers();
     const stats = getServerStats(ns);
     
-    // Display server status
-    if (ownedServers.length > 0) {
-        ui.log(`[Phase ${phase}] Servers: ${stats.count}/${config.servers.maxServers} | RAM: ${formatRam(stats.totalRam)} | Range: ${formatRam(stats.minRam)}-${formatRam(stats.maxRam)}`, "info");
-    } else {
-        ui.log(`[Phase ${phase}] No servers yet. Target: ${formatRam(getTargetRamForPhase(phase))} per server`, "info");
+    lastState.loopCount++;
+    
+    // Log phase change or periodically
+    if (phase !== lastState.phase) {
+        ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        ui.log(`📊 Phase ${phase} | Target RAM: ${formatRam(getTargetRamForPhase(phase))} per server`, "info");
+        lastState.phase = phase;
+    }
+    
+    // Display server status only on change or periodically
+    const statusChanged = stats.count !== lastState.serverCount || stats.totalRam !== lastState.totalRam;
+    if (ownedServers.length > 0 && (statusChanged || lastState.loopCount % 20 === 0)) {
+        ui.log(`🖥️  Servers: ${stats.count}/${config.servers.maxServers} | Total RAM: ${formatRam(stats.totalRam)}`, "info");
+        if (stats.count > 0) {
+            ui.log(`   Range: ${formatRam(stats.minRam)} - ${formatRam(stats.maxRam)}`, "debug");
+        }
+        lastState.serverCount = stats.count;
+        lastState.totalRam = stats.totalRam;
+    } else if (ownedServers.length === 0 && lastState.loopCount % 10 === 0) {
+        ui.log(`🎯 No servers yet | Target: ${formatRam(getTargetRamForPhase(phase))} per server`, "info");
     }
     
     // Try to root new servers
     const newlyRooted = rootAll(ns);
-    if (newlyRooted > 0) {
-        ui.log(`Rooted ${newlyRooted} new servers`, "success");
+    if (newlyRooted > 0 && newlyRooted !== lastState.lastRootCount) {
+        ui.log(`✅ Rooted ${newlyRooted} new server${newlyRooted > 1 ? 's' : ''}`, "success");
+        lastState.lastRootCount = newlyRooted;
     }
     
     // Buy/upgrade servers if enabled

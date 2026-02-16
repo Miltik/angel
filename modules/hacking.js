@@ -1,24 +1,36 @@
 import { createWindow } from "/angel/modules/uiManager.js";
 
+// State tracking to avoid duplicate logs
+let lastLoggedState = {
+    target: null,
+    phase: null,
+    isPrepped: null,
+    moneyPercent: null,
+    securityDelta: null,
+    loopCount: 0
+};
+
 /** @param {NS} ns */
 export async function main(ns) {
     ns.disableLog("ALL");
     
     // Create DOM window for output
     const ui = createWindow("hacking", "⚡ Hacking Operations", 700, 500, ns);
-    ui.log("Phase-aware dynamic targeting initialized");
+    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    ui.log("⚡ Phase-aware dynamic targeting initialized", "success");
+    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     ui.log("Waiting for other modules to initialize...", "info");
     
     // Wait 5 seconds to let other modules start up first
     await ns.sleep(5000);
     
-    ui.log("Beginning hacking operations", "success");
+    ui.log("🚀 Beginning hacking operations", "success");
     
     while (true) {
         try {
             await hackingLoop(ns, ui);
         } catch (e) {
-            ui.log(`Hacking loop error: ${e}`, "error");
+            ui.log(`❌ Hacking loop error: ${e}`, "error");
         }
         await ns.sleep(2000); // Update UI every 2 seconds to reduce visual noise
     }
@@ -32,11 +44,12 @@ export async function main(ns) {
 async function hackingLoop(ns, ui) {
     // Read current game phase from orchestrator
     const currentPhase = readGamePhase(ns);
+    lastLoggedState.loopCount++;
     
     // Get best target based on phase
     const targets = getHackableServersInline(ns);
     if (targets.length === 0) {
-        ui.log("No hackable targets found", "warn");
+        ui.log("⚠️  No hackable targets found", "warn");
         await ns.sleep(5000);
         return;
     }
@@ -44,10 +57,33 @@ async function hackingLoop(ns, ui) {
     const target = selectTargetByPhase(ns, targets, currentPhase);
     const targetInfo = analyzeTarget(ns, target);
     
-    ui.log(`Target: ${target} | Money: ${formatMoneyInline(targetInfo.currentMoney)}/${formatMoneyInline(targetInfo.maxMoney)} | Security: ${targetInfo.currentSecurity.toFixed(2)}/${targetInfo.minSecurity}`);
+    // Calculate status
+    const moneyPercent = (targetInfo.currentMoney / targetInfo.maxMoney * 100).toFixed(0);
+    const securityDelta = (targetInfo.currentSecurity - targetInfo.minSecurity).toFixed(1);
+    const isPrepped = isTargetPrepped(ns, target);
+    
+    // Log on target change or phase change
+    if (target !== lastLoggedState.target || currentPhase !== lastLoggedState.phase) {
+        ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        ui.log(`🎯 Target: ${target} | Phase: ${currentPhase}`, "info");
+        ui.log(`💰 Money: ${formatMoneyInline(targetInfo.currentMoney)}/${formatMoneyInline(targetInfo.maxMoney)} (${moneyPercent}%)`, "info");
+        ui.log(`🔒 Security: ${targetInfo.currentSecurity.toFixed(2)}/${targetInfo.minSecurity} (+${securityDelta})`, "info");
+        lastLoggedState.target = target;
+        lastLoggedState.phase = currentPhase;
+    }
+    
+    // Log prep status changes or periodically
+    if (isPrepped !== lastLoggedState.isPrepped || lastLoggedState.loopCount % 30 === 0) {
+        if (!isPrepped) {
+            ui.log(`🔧 Prepping target... | Money: ${moneyPercent}% | Security: +${securityDelta}`, "debug");
+        } else {
+            ui.log(`✅ Target prepped | Executing hack cycle`, "success");
+        }
+        lastLoggedState.isPrepped = isPrepped;
+    }
     
     // Prepare target (weaken to min security, grow to max money)
-    if (!isTargetPrepped(ns, target)) {
+    if (!isPrepped) {
         await prepTarget(ns, target, ui);
         return;
     }
@@ -203,7 +239,7 @@ function isTargetPrepped(ns, target) {
  * @param {object} ui - UI window API
  */
 async function prepTarget(ns, target, ui) {
-    ui.log(`Prepping target: ${target}`, "info");
+    // Don't log here - already logged in main loop
     
     const info = analyzeTarget(ns, target);
     
@@ -283,7 +319,7 @@ async function distributeOperation(ns, target, script, ui) {
     const scriptRam = ns.getScriptRam(scriptPath);
     
     if (scriptRam === 0) {
-        ui.log(`Script ${scriptPath} not found`, "error");
+        ui.log(`❌ Script ${scriptPath} not found`, "error");
         return;
     }
     
@@ -292,7 +328,10 @@ async function distributeOperation(ns, target, script, ui) {
     const usageLimit = totalAvailable * 0.60; // Only use 60% of total available
     
     if (usageLimit < scriptRam) {
-        ui.log(`Not enough available RAM for operation (need ${scriptRam.toFixed(2)}GB, limit is ${usageLimit.toFixed(2)}GB)`, "warn");
+        // Only log RAM warnings occasionally
+        if (lastLoggedState.loopCount % 15 === 0) {
+            ui.log(`⚠️  Low RAM for ${script} (need ${scriptRam.toFixed(2)}GB, limit is ${usageLimit.toFixed(2)}GB)`, "warn");
+        }
         return;
     }
     
@@ -304,7 +343,7 @@ async function distributeOperation(ns, target, script, ui) {
         try {
             await ns.scp(scriptPath, server, "home");
         } catch (e) {
-            ui.log(`Failed to deploy to ${server}: ${e}`, "debug");
+            // Silent deployment failures
             continue;
         }
         
@@ -320,8 +359,10 @@ async function distributeOperation(ns, target, script, ui) {
         }
     }
     
-    if (totalThreads > 0) {
-        ui.log(`Launched ${script} on ${target} with ${totalThreads} threads (${usedRam.toFixed(2)}GB)`, "success");
+    // Only log every 30 loops (~60 seconds) or on significant changes
+    if (totalThreads > 0 && lastLoggedState.loopCount % 30 === 0) {
+        const emoji = script === "hack" ? "💸" : script === "grow" ? "🌱" : "🛡️";
+        ui.log(`${emoji} ${script}: ${totalThreads}t | ${usedRam.toFixed(1)}GB`, "debug");
     }
 }
 

@@ -276,6 +276,14 @@ function displayFactionStatus(ui, ns, player) {
                 ui.log(`   + ${factionInfo.length - 3} more factions`, "info");
             }
         }
+
+        const grindCandidates = getFactionGrindCandidates(ns, factions).slice(0, 2);
+        if (grindCandidates.length > 0) {
+            const candidateLine = grindCandidates
+                .map(c => `${c.name} [A:${c.grindableCount}, V:${formatMoney(c.grindableValue)}, R:${formatMoney(c.maxRepNeeded)}]`)
+                .join(" | ");
+            ui.log(`   🎯 Grind Priority: ${candidateLine}`, "info");
+        }
         
         if (invites.length > 0) {
             ui.log(`   📨 Pending Invitations: ${invites.join(", ")}`, "info");
@@ -283,6 +291,56 @@ function displayFactionStatus(ui, ns, player) {
     } catch (e) {
         // Singularity not available
     }
+}
+
+function getFactionGrindCandidates(ns, factions) {
+    const candidates = [];
+    for (const faction of factions) {
+        if (faction === "NiteSec") continue;
+
+        const summary = getFactionOpportunitySummaryDashboard(ns, faction);
+        if (summary.grindableCount <= 0) continue;
+
+        candidates.push({
+            name: faction,
+            ...summary,
+        });
+    }
+
+    candidates.sort((a, b) =>
+        b.grindableCount - a.grindableCount ||
+        b.grindableValue - a.grindableValue ||
+        b.maxRepNeeded - a.maxRepNeeded
+    );
+
+    return candidates;
+}
+
+function getFactionOpportunitySummaryDashboard(ns, faction) {
+    const currentRep = ns.singularity.getFactionRep(faction);
+    const augments = ns.singularity.getAugmentationsFromFaction(faction);
+    const owned = new Set(ns.singularity.getOwnedAugmentations(true));
+
+    let grindableCount = 0;
+    let grindableValue = 0;
+    let maxRepNeeded = 0;
+
+    for (const aug of augments) {
+        if (owned.has(aug)) continue;
+
+        const repReq = ns.singularity.getAugmentationRepReq(aug);
+        const repNeeded = Math.max(0, repReq - currentRep);
+        if (repNeeded <= 0) continue;
+
+        const price = ns.singularity.getAugmentationPrice(aug);
+        grindableCount++;
+        grindableValue += price;
+        if (repNeeded > maxRepNeeded) {
+            maxRepNeeded = repNeeded;
+        }
+    }
+
+    return { grindableCount, grindableValue, maxRepNeeded };
 }
 
 /**

@@ -28,7 +28,7 @@ export async function main(ns) {
             }
 
             recruitMembers(ns, ui);
-            const summary = assignTasks(ns);
+            const summary = assignTasks(ns, ui);
             
             // NEW: Manage territory clashes  
             manageTerritoryclashes(ns, ui);
@@ -39,7 +39,7 @@ export async function main(ns) {
             ui.log(`Error: ${e}`, "error");
             await ns.sleep(5000);
         }
-    }}
+    }
 }
 
 /**
@@ -88,15 +88,15 @@ function getRespectTarget(globalPhase) {
     }
 }
 
-function recruitMembers(ns) {
+function recruitMembers(ns, ui) {
     while (ns.gang.canRecruitMember()) {
         const name = `angel-${Date.now()}`;
         ns.gang.recruitMember(name);
-        log(ns, `👾 Recruited ${name}`, "SUCCESS");
+        ui.log(`Recruited ${name}`, "success");
     }
 }
 
-function assignTasks(ns) {
+function assignTasks(ns, ui) {
     const globalPhase = readGamePhase(ns);
     const info = ns.gang.getGangInformation();
     const members = ns.gang.getMemberNames();
@@ -107,7 +107,7 @@ function assignTasks(ns) {
         return { info, members, tasks: availableTasks, assigned: {}, phase: "no_members", globalPhase };
     }
     if (availableTasks.length === 0) {
-        log(ns, "👾 WARNING: No tasks available!", "WARN");
+        ui.log("WARNING: No tasks available!", "warn");
         return { info, members, tasks: availableTasks, assigned: {}, phase: "no_tasks", globalPhase };
     }
 
@@ -320,7 +320,7 @@ function findTask(available, candidates) {
  * Manage territory clashes - smart timing for maximum gain
  * Enables clashes when power advantage is sufficient
  */
-function manageTerritoryclashes(ns) {
+function manageTerritoryclashes(ns, ui) {
     if (!ns.gang.inGang()) return;
     
     try {
@@ -368,7 +368,7 @@ function manageTerritoryclashes(ns) {
     }
 }
 
-function printStatus(ns, summary) {
+function printStatus(ns, summary, ui) {
     const info = summary.info;
     const count = summary.members.length;
     const assigned = summary.assigned || {};
@@ -380,9 +380,9 @@ function printStatus(ns, summary) {
     const intensity = Math.round(getWarfareIntensity(globalPhase) * 100);
     const respectTarget = getRespectTarget(globalPhase);
 
-    log(ns, `👾 [Phase ${globalPhase}] Gang ${info.isHacking ? "🖥 Hacking" : "⚔ Combat"} | Members: ${count}`, "INFO");
-    log(ns, `👾 Wanted: ${info.wantedPenalty.toFixed(3)} | Respect: ${Math.floor(info.respect)} (target: ${Math.floor(respectTarget)}) | Territory: ${info.territory.toFixed(1)}%`, "INFO");
-    log(ns, `👾 ${gangPhase.toUpperCase()} | Warfare Intensity: ${intensity}% | Power: ${info.power.toFixed(2)} | $${Math.floor(info.moneyGainRate * 5)}/s`, "INFO");
+    ui.log(`[Phase ${globalPhase}] Gang ${info.isHacking ? "Hacking" : "Combat"} | Members: ${count}`, "info");
+    ui.log(`Wanted: ${info.wantedPenalty.toFixed(3)} | Respect: ${Math.floor(info.respect)} (target: ${Math.floor(respectTarget)}) | Territory: ${info.territory.toFixed(1)}%`, "info");
+    ui.log(`${gangPhase.toUpperCase()} | Warfare Intensity: ${intensity}% | Power: ${info.power.toFixed(2)} | $${Math.floor(info.moneyGainRate * 5)}/s`, "info");
     
     // Role distribution
     if (Object.keys(roles).length > 0) {
@@ -401,7 +401,7 @@ function printStatus(ns, summary) {
             })
             .join(" | ");
         
-        log(ns, `👾 Roles: ${roleDistribution}`, "DEBUG");
+        ui.log(`Roles: ${roleDistribution}`, "debug");
     }
     
     return;

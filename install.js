@@ -21,6 +21,7 @@ export async function main(ns) {
         "/angel/bootstrap.js",
         "/angel/start.js",
         "/angel/status.js",
+        "/angel/windowLayoutSnapshot.js",
         "/angel/modules/hacking.js",
         "/angel/modules/servers.js",
         "/angel/modules/factions.js",

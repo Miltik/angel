@@ -59,6 +59,7 @@ export async function main(ns) {
         
         // Tools
         "snapshot.js",                   // New: System state capture
+        "windowLayoutSnapshot.js",       // New: Capture and persist UI window layout defaults
         "angel-ram.js",                  // New: RAM calculator
         "resetMonitor.js",               // New: Reset history viewer
         

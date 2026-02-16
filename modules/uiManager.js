@@ -12,8 +12,36 @@
 const WINDOWS = new Map();
 let nsReference = null;  // Store NS reference for file I/O
 const UI_PREFS_KEY = "angelUiWindowPrefs";
+const WINDOW_DEFAULTS_KEY = "angelWindowDefaults";
+const STYLE_TAG_ID = "angel-ui-styles";
 let windowPrefsCache = null;
+let windowDefaultsCache = null;
 const sessionVisibility = new Map();
+
+function toPixelNumber(value) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+        return value;
+    }
+
+    if (typeof value === "string") {
+        const parsed = parseFloat(value);
+        if (Number.isFinite(parsed)) {
+            return parsed;
+        }
+    }
+
+    return null;
+}
+
+function buildWindowState(container, minimized) {
+    return {
+        left: container.offsetLeft,
+        top: container.offsetTop,
+        width: container.offsetWidth,
+        height: container.offsetHeight,
+        minimized: Boolean(minimized),
+    };
+}
 
 function saveWindowPrefs(prefs) {
     try {
@@ -128,6 +156,55 @@ function loadWindowState(id) {
     }
 }
 
+function saveWindowDefaults(defaults) {
+    try {
+        const safeDefaults = defaults || {};
+        localStorage.setItem(WINDOW_DEFAULTS_KEY, JSON.stringify(safeDefaults));
+        if (nsReference) {
+            try {
+                nsReference.write("angel_windowdefaults.json", JSON.stringify(safeDefaults), "w");
+            } catch (e) {
+                // ignore file write failures
+            }
+        }
+    } catch (e) {
+        // ignore
+    }
+}
+
+function loadWindowDefaults() {
+    try {
+        if (nsReference) {
+            try {
+                const fileContent = nsReference.read("angel_windowdefaults.json");
+                if (fileContent) {
+                    return JSON.parse(fileContent) || {};
+                }
+            } catch (e) {
+                // fall through
+            }
+        }
+        return JSON.parse(localStorage.getItem(WINDOW_DEFAULTS_KEY) || "{}");
+    } catch (e) {
+        return {};
+    }
+}
+
+function getWindowDefaults() {
+    if (!windowDefaultsCache) {
+        windowDefaultsCache = loadWindowDefaults() || {};
+        if (Object.keys(windowDefaultsCache).length > 0) {
+            saveWindowDefaults(windowDefaultsCache);
+        }
+    }
+    return windowDefaultsCache;
+}
+
+function getDefaultWindowState(id) {
+    const defaults = getWindowDefaults();
+    return defaults[id] || null;
+}
+
 // Check if DOM is available early
 let htmlElement = null;
 let bodyElement = null;
@@ -146,16 +223,22 @@ function checkDom() {
 }
 
 // Styles to inject - pure string, no DOM yet
-const CSS_STYLES = `.angel-window{position:fixed;background:#1e1e1e;color:#e0e0e0;border:1px solid #404040;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.5);font-family:'Courier New',monospace;font-size:12px;z-index:10000;display:flex;flex-direction:column;min-width:280px;min-height:36px;transition:height 0.2s ease}.angel-window-header{background:linear-gradient(135deg,#2c3e50,#34495e);color:#ecf0f1;padding:7px 10px;cursor:move;user-select:none;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #404040;border-radius:8px 8px 0 0;font-weight:bold;flex-shrink:0}.angel-window-header-title{flex:1}.angel-window-header-buttons{display:flex;gap:6px}.angel-window-btn{background:#34495e;color:#ecf0f1;border:none;width:22px;height:22px;border-radius:4px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:background .2s}.angel-window-btn:hover{background:#3d5a73}.angel-window-content{flex:1;overflow-y:auto;padding:6px 8px;scrollbar-width:thin;scrollbar-color:#404040 #1e1e1e}.angel-window-content::-webkit-scrollbar{width:8px}.angel-window-content::-webkit-scrollbar-track{background:#1e1e1e}.angel-window-content::-webkit-scrollbar-thumb{background:#404040;border-radius:4px}.angel-window-content::-webkit-scrollbar-thumb:hover{background:#555}.angel-window-resize{position:absolute;width:16px;height:16px;bottom:0;right:0;cursor:se-resize;background:linear-gradient(135deg,transparent 50%,#404040 50%);border-radius:0 0 8px 0}.angel-log-line{white-space:pre-wrap;word-break:break-word;margin:2px 0;line-height:1.25}.angel-log-info{color:#3498db}.angel-log-success{color:#2ecc71}.angel-log-warn{color:#f39c12}.angel-log-error{color:#e74c3c}.angel-log-debug{color:#95a5a6}`;
+const CSS_STYLES = `.angel-window{position:fixed;background:#1e1e1e;color:#e0e0e0;border:1px solid #404040;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.5);font-family:'Courier New',monospace;font-size:12px;z-index:10000;display:flex;flex-direction:column;min-width:280px;min-height:36px;transition:height 0.2s ease}.angel-window-header{background:linear-gradient(135deg,#2c3e50,#34495e);color:#ecf0f1;padding:7px 10px;cursor:move;user-select:none;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #404040;border-radius:8px 8px 0 0;font-weight:bold;flex-shrink:0}.angel-window-header-title{flex:1}.angel-window-header-buttons{display:flex;gap:6px}.angel-window-btn{background:#34495e;color:#ecf0f1;border:none;width:22px;height:22px;border-radius:4px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:background .2s}.angel-window-btn:hover{background:#3d5a73}.angel-window-content{flex:0 0 auto;overflow-y:auto;padding:6px 8px;scrollbar-width:thin;scrollbar-color:#404040 #1e1e1e}.angel-window-content::-webkit-scrollbar{width:8px}.angel-window-content::-webkit-scrollbar-track{background:#1e1e1e}.angel-window-content::-webkit-scrollbar-thumb{background:#404040;border-radius:4px}.angel-window-content::-webkit-scrollbar-thumb:hover{background:#555}.angel-window-resize{position:absolute;width:16px;height:16px;bottom:0;right:0;cursor:se-resize;background:linear-gradient(135deg,transparent 50%,#404040 50%);border-radius:0 0 8px 0}.angel-log-line{white-space:pre-wrap;word-break:break-word;margin:2px 0;line-height:1.25}.angel-log-info{color:#3498db}.angel-log-success{color:#2ecc71}.angel-log-warn{color:#f39c12}.angel-log-error{color:#e74c3c}.angel-log-debug{color:#95a5a6}`;
 
 let stylesInjected = false;
 
 function injectStyles() {
-    if (stylesInjected || !isDomAvailable) return;
+    if (!isDomAvailable) return;
     try {
-        const style = document.createElement("style");
-        style.textContent = CSS_STYLES;
-        document.head.appendChild(style);
+        let style = document.getElementById(STYLE_TAG_ID);
+        if (!style) {
+            style = document.createElement("style");
+            style.id = STYLE_TAG_ID;
+            document.head.appendChild(style);
+        }
+        if (style.textContent !== CSS_STYLES) {
+            style.textContent = CSS_STYLES;
+        }
         stylesInjected = true;
     } catch (e) {
         // Silently fail
@@ -209,21 +292,47 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
 
         const requestedWidth = width;
         const requestedHeight = height;
+        const containerId = `angel-window-${id}`;
+
+        const staleContainer = document.getElementById(containerId);
+        if (staleContainer) {
+            staleContainer.remove();
+        }
 
         // Create container
         const container = document.createElement("div");
         container.className = "angel-window";
-        container.id = `angel-window-${id}`;
-        container.style.width = width + "px";
-        container.style.height = height + "px";
+        container.id = containerId;
+        container.style.width = requestedWidth + "px";
+        container.style.height = requestedHeight + "px";
         container.style.left = (50 + WINDOWS.size * 20) + "px";
         container.style.top = (50 + WINDOWS.size * 20) + "px";
 
-        // Load saved state if available
+        const defaultState = getDefaultWindowState(id);
+        if (defaultState) {
+            const defaultLeft = toPixelNumber(defaultState.left);
+            const defaultTop = toPixelNumber(defaultState.top);
+            const defaultWidth = toPixelNumber(defaultState.width);
+            const defaultHeight = toPixelNumber(defaultState.height);
+
+            if (defaultLeft !== null) container.style.left = defaultLeft + "px";
+            if (defaultTop !== null) container.style.top = defaultTop + "px";
+            if (defaultWidth !== null) container.style.width = Math.max(280, defaultWidth) + "px";
+            if (defaultHeight !== null) container.style.height = Math.max(78, defaultHeight) + "px";
+        }
+
+        // Load saved state if available (overrides defaults)
         const savedState = loadWindowState(id);
         if (savedState) {
-            container.style.left = savedState.left + "px";
-            container.style.top = savedState.top + "px";
+            const savedLeft = toPixelNumber(savedState.left);
+            const savedTop = toPixelNumber(savedState.top);
+            const savedWidth = toPixelNumber(savedState.width);
+            const savedHeight = toPixelNumber(savedState.height);
+
+            if (savedLeft !== null) container.style.left = savedLeft + "px";
+            if (savedTop !== null) container.style.top = savedTop + "px";
+            if (savedWidth !== null) container.style.width = Math.max(280, savedWidth) + "px";
+            if (savedHeight !== null) container.style.height = Math.max(78, savedHeight) + "px";
         }
 
         // Header
@@ -266,41 +375,6 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
 
         // Setup event handlers
         let minimizedState = { isMinimized: false, originalHeight: height };
-        let autoSizeEnabled = true;
-        let autoSizeScheduled = false;
-
-        function fitToContent() {
-            if (!autoSizeEnabled || minimizedState.isMinimized || container.style.display === "none") {
-                return;
-            }
-
-            const headerHeight = header.offsetHeight || 32;
-            const horizontalPadding = 16;
-            const verticalPadding = 12;
-            const resizeHandlePad = 10;
-
-            const targetWidth = Math.max(
-                280,
-                Math.min(requestedWidth, Math.ceil((content.scrollWidth || 0) + horizontalPadding))
-            );
-
-            const targetHeight = Math.max(
-                78,
-                Math.min(requestedHeight, Math.ceil((content.scrollHeight || 0) + headerHeight + verticalPadding + resizeHandlePad))
-            );
-
-            container.style.width = `${targetWidth}px`;
-            container.style.height = `${targetHeight}px`;
-        }
-
-        function scheduleAutoSize() {
-            if (!autoSizeEnabled || autoSizeScheduled) return;
-            autoSizeScheduled = true;
-            requestAnimationFrame(() => {
-                autoSizeScheduled = false;
-                fitToContent();
-            });
-        }
         
         minimizeBtn.onclick = () => {
             minimizedState.isMinimized = !minimizedState.isMinimized;
@@ -328,13 +402,7 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
             }
             
             // Save state
-            saveWindowState(id, {
-                left: container.style.left,
-                top: container.style.top,
-                width: container.style.width,
-                height: container.style.height,
-                minimized: minimizedState.isMinimized,
-            });
+            saveWindowState(id, buildWindowState(container, minimizedState.isMinimized));
         };
         
         closeBtn.onclick = () => {
@@ -352,13 +420,7 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
                 document.onmouseup = null;
                 document.onmousemove = null;
                 // Save window state after drag
-                saveWindowState(id, {
-                    left: container.style.left,
-                    top: container.style.top,
-                    width: container.style.width,
-                    height: container.style.height,
-                    minimized: minimizedState.isMinimized,
-                });
+                saveWindowState(id, buildWindowState(container, minimizedState.isMinimized));
             };
             document.onmousemove = (e) => {
                 dragState.pos1 = dragState.pos3 - e.clientX;
@@ -382,15 +444,8 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
                 resizeState.isResizing = false;
                 document.onmouseup = null;
                 document.onmousemove = null;
-                autoSizeEnabled = false;
                 // Save window state after resize
-                saveWindowState(id, {
-                    left: container.style.left,
-                    top: container.style.top,
-                    width: container.style.width,
-                    height: container.style.height,
-                    minimized: minimizedState.isMinimized,
-                });
+                saveWindowState(id, buildWindowState(container, minimizedState.isMinimized));
             };
             document.onmousemove = (e) => {
                 if (!resizeState.isResizing) return;
@@ -413,19 +468,16 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
                 line.textContent = message;
                 content.appendChild(line);
                 content.scrollTop = content.scrollHeight;
-                scheduleAutoSize();
             },
             clear() { content.innerHTML = ""; },
             update(html) {
                 content.innerHTML = html;
-                scheduleAutoSize();
             },
             append(html) {
                 const el = document.createElement("div");
                 el.innerHTML = html;
                 content.appendChild(el);
                 content.scrollTop = content.scrollHeight;
-                scheduleAutoSize();
             },
             toggle() {
                 content.style.display = content.style.display === "none" ? "block" : "none";
@@ -433,7 +485,6 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
             show() {
                 container.style.display = "flex";
                 persistVisibility(id, true);
-                scheduleAutoSize();
             },
             hide() {
                 container.style.display = "none";
@@ -458,8 +509,6 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
             resize.style.display = "none";
             minimizeBtn.textContent = "+";
         }
-
-        scheduleAutoSize();
         
         return windowApi;
 

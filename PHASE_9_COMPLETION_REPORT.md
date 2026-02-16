@@ -20,9 +20,9 @@
   - Phase 4 (Late): H:800+, Stats 70+
 - **Impact:** Foundation for all subsequent module upgrades
 
-### Phase 2: Game Orchestrator ✅ COMPLETE
-- **File:** `modules/milestones.js` → Rewritten as central coordinator
-- **Change:** Converted milestone tracker into active orchestrator
+### Phase 2: Milestones Coordinator (Legacy Fallback) ✅ COMPLETE
+- **File:** `modules/milestones.js` → Rewritten as central coordinator (now fallback)
+- **Change:** Converted milestone tracker into active coordinator
 - **Features:**
   - Auto-detects game phase based on player progress
   - Broadcasts phase on PHASE_PORT(7) every cycle
@@ -102,7 +102,7 @@
 
 ### Core Modules (Always Running)
 - ✅ `config.js` - Configuration + game phase definitions (PHASE AWARE)
-- ✅ `milestones.js` (Orchestrator) - Central coordinator, broadcasts phase on port 7
+- ✅ `milestones.js` (Legacy Fallback) - Fallback coordinator, broadcasts phase on port 7
 - ✅ `hacking.js` - Hack/grow/weaken with phase-based targeting (PHASE AWARE)
 - ✅ `servers.js` - Server scaling with phase-appropriate RAM bands (PHASE AWARE)
 
@@ -131,12 +131,12 @@
 ## Key Architecture Decisions
 
 ### Port-Based Coordination
-- **PHASE_PORT (7):** Orchestrator broadcasts current game phase
+- **PHASE_PORT (7):** Coordinator broadcasts current game phase
 - **PORTS.ACTIVITY:** Distributed lock for singularity activity coordination
 - **PORTS.ACTIVITY_MODE:** Current desired activity (hack/crime/train/etc)
 
 ### Phase Auto-Detection
-Orchestrator automatically calculates phase based on:
+Coordinator automatically calculates phase based on:
 - **Hacking Level:** 0→75→200→500→800
 - **Money:** $0→$10M→$100M→$500M→∞
 - **Stats (Strength/Defense):** All 70+
@@ -147,7 +147,7 @@ Algorithm: Phase advances when **BOTH** hacking and money thresholds met
 All singularity modules claim/release activity locks to prevent conflicts:
 - Only one activity running at a time (crime/company/training/faction)
 - Lock TTL prevents deadlocks
-- Modules respect orchestrator's desired activity
+- Modules respect coordinator desired activity
 
 ### Phase Spending Ratios
 Each phase has defined spending priorities:
@@ -186,7 +186,7 @@ Each phase has defined spending priorities:
 
 ### Manual Validation Steps
 - [ ] Start ANGEL fresh (clear saves / new run)
-- [ ] Monitor orchestrator output (port 7 broadcasts phase every 30s)
+- [ ] Monitor coordinator output (port 7 broadcasts phase every 30s)
 - [ ] Verify phase transitions (0→1→2→3→4) as milestones hit
 - [ ] Check hacking targets change by phase (n00dles → joesguns → profitability)
 - [ ] Observe server scaling (8GB → 16GB → 64GB → 256GB → 512GB+)
@@ -212,7 +212,7 @@ grep -n "PORTS.ACTIVITY" modules/*.js
 
 ### Long-Term Validation
 - Run 30+ min to observe full phase cycle (if starting fresh)
-- Monitor daemon readiness tracker (orchestrator output)
+- Monitor daemon readiness tracker (coordinator output)
 - Confirm resource allocation matches expected spending ratios
 - Verify no hung activity locks
 - Check money growth trajectory across phases
@@ -228,7 +228,7 @@ ef0b031 - Phase 7: Crime/Training/Company phase awareness (crime/training phases
 2b437a9 - Phase 5: Augments cascade - aggressive buying in phases 3-4, buy-all override
 2bddb03 - Phase 4: Server scaling - cascade upgrades with phase-appropriate RAM bands
 [Phase 3: Hacking module upgrade with profitability scoring]
-[Phase 2: Game Orchestrator rewrite - auto-detect phase, broadcast port 7]
+[Phase 2: Milestones coordinator rewrite - auto-detect phase, broadcast port 7]
 [Phase 1: Config gamePhases definition]
 ```
 

@@ -12,7 +12,8 @@ let lastState = {
     totalServers: 0,
     rootedServers: 0,
     backdooredServers: 0,
-    loopCount: 0
+    loopCount: 0,
+    clickHandlerAttached: false,
 };
 
 /**
@@ -161,7 +162,7 @@ export async function main(ns) {
                 const statusClass = getStatusClass(info);
                 const icon = getServerIcon(serverName, factionServers, companyServers, info);
                 
-                html += `<div class="server-card ${statusClass} ${serverType}">`;
+                html += `<div class="server-card ${statusClass} ${serverType}" data-server="${serverName}">`;
                 html += `<div class="server-icon">${icon}</div>`;
                 html += `<div class="server-name">${serverName}</div>`;
                 
@@ -188,6 +189,30 @@ export async function main(ns) {
         
         // Update the window content
         ui.update(html);
+        
+        // Attach click handlers to server cards (only once)
+        if (!lastState.clickHandlerAttached && ui.contentEl) {
+            ui.contentEl.addEventListener('click', async (e) => {
+                const card = e.target.closest('.server-card');
+                if (!card) return;
+                
+                const serverName = card.getAttribute('data-server');
+                if (!serverName) return;
+                
+                try {
+                    // Connect to the server
+                    const success = await ns.singularity.connect(serverName);
+                    if (success) {
+                        ns.tprint(`✅ Connected to ${serverName}`);
+                    } else {
+                        ns.tprint(`❌ Failed to connect to ${serverName}`);
+                    }
+                } catch (err) {
+                    ns.tprint(`⚠️ Connect error: ${err.message}`);
+                }
+            });
+            lastState.clickHandlerAttached = true;
+        }
         
         lastState.totalServers = total;
         lastState.rootedServers = rooted;
@@ -241,11 +266,17 @@ function addMapStyles(ui) {
             .legend-item {
                 padding: 2px 6px;
             }
-            .depth-layer {
-                margin-bottom: 20px;
+                user-select: none;
             }
-            .depth-label {
-                font-weight: bold;
+            .server-card:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 4px 8px rgba(0, 255, 0, 0.2);
+                border-color: rgba(0, 255, 0, 0.6);
+                background: rgba(0, 255, 0, 0.08);
+            }
+            .server-card:active {
+                transform: translateY(0px);
+                box-shadow: 0 2px 4px rgba(0, 255, 0, 0.3
                 margin-bottom: 8px;
                 padding: 5px 10px;
                 background: rgba(0, 255, 0, 0.15);

@@ -203,16 +203,27 @@ export const config = {
         preBuyAugments: true,          // Queue augments before reset
         reserveMoneyForAugments: true,
         installOnThreshold: true,
-        minQueuedAugs: 7,
+        minQueuedAugs: 10,
         aggressiveQueueTarget: 3,
         aggressiveQueueSpendMultiplier: 1.5,
         queueReserveMoney: 50000000,
-        minQueuedCost: 5000000000,
-        resetMinQueuedAugsFloor: 5,    // Never reset below this queue count unless high-value override is met
-        resetMinRunMinutes: 20,        // Minimum run age before reset (unless high-value override)
-        resetStallMinutes: 8,          // Require queue progress to stall this long before resetting
+        minQueuedCost: 15000000000,
+        resetMinQueuedAugsFloor: 8,    // Never reset below this queue count unless high-value override is met
+        resetMinRunMinutes: 35,        // Minimum run age before reset (unless high-value override)
+        resetStallMinutes: 12,         // Require queue progress to stall this long before resetting
         resetRequireStall: true,       // Wait for queue growth to flatten before reset
-        resetHighValueCost: 25000000000, // Immediate reset override for very high queued value
+        resetHighValueCost: 60000000000, // Immediate reset override for very high queued value
+        resetPhaseTargets: {
+            phase0: { minQueuedAugs: 8, minQueuedCost: 8000000000, minQueuedFloor: 6, minRunMinutes: 25, stallMinutes: 8, highValueCost: 25000000000 },
+            phase1: { minQueuedAugs: 9, minQueuedCost: 12000000000, minQueuedFloor: 7, minRunMinutes: 30, stallMinutes: 10, highValueCost: 35000000000 },
+            phase2: { minQueuedAugs: 10, minQueuedCost: 15000000000, minQueuedFloor: 8, minRunMinutes: 35, stallMinutes: 12, highValueCost: 60000000000 },
+            phase3: { minQueuedAugs: 12, minQueuedCost: 25000000000, minQueuedFloor: 9, minRunMinutes: 45, stallMinutes: 15, highValueCost: 90000000000 },
+            phase4: { minQueuedAugs: 14, minQueuedCost: 40000000000, minQueuedFloor: 10, minRunMinutes: 60, stallMinutes: 20, highValueCost: 150000000000 },
+        },
+        daemonResetPolicy: {
+            preventResetWhenDaemonReady: true,      // Hold reset once daemon run conditions are ready
+            resetImmediatelyOnQueuedRedPill: true,  // If Red Pill is queued, reset now to install it
+        },
         resetScript: "/angel/start.js",
         resetCountdownSec: 10,
         augmentPriority: [

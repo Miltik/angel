@@ -1071,13 +1071,27 @@ function updateResetProgressState(queuedCount, queuedCost, now) {
 
 function shouldTriggerAdaptiveReset(ns, queuedCount, queuedCost, now) {
     const augCfg = config.augmentations || {};
-    const minQueuedAugs = augCfg.minQueuedAugs ?? 7;
-    const minQueuedCost = augCfg.minQueuedCost ?? 0;
-    const minQueuedFloor = augCfg.resetMinQueuedAugsFloor ?? Math.min(minQueuedAugs, 5);
-    const highValueCost = augCfg.resetHighValueCost ?? (minQueuedCost * 3);
-    const minRunMinutes = augCfg.resetMinRunMinutes ?? 20;
-    const stallMinutes = augCfg.resetStallMinutes ?? 8;
+    const phase = Math.max(0, Math.min(4, Number(coordinatorState.currentPhase || 0)));
+    const phaseKey = `phase${phase}`;
+    const phaseTargets = augCfg.resetPhaseTargets?.[phaseKey] || {};
+
+    const minQueuedAugs = phaseTargets.minQueuedAugs ?? augCfg.minQueuedAugs ?? 7;
+    const minQueuedCost = phaseTargets.minQueuedCost ?? augCfg.minQueuedCost ?? 0;
+    const minQueuedFloor = phaseTargets.minQueuedFloor ?? augCfg.resetMinQueuedAugsFloor ?? Math.min(minQueuedAugs, 5);
+    const highValueCost = phaseTargets.highValueCost ?? augCfg.resetHighValueCost ?? (minQueuedCost * 3);
+    const minRunMinutes = phaseTargets.minRunMinutes ?? augCfg.resetMinRunMinutes ?? 20;
+    const stallMinutes = phaseTargets.stallMinutes ?? augCfg.resetStallMinutes ?? 8;
     const requireStall = augCfg.resetRequireStall !== false;
+    const daemonPolicy = augCfg.daemonResetPolicy || {};
+
+    const daemon = getDaemonPrepStatusForReset(ns);
+    if (daemon.hasRedPillQueued && daemonPolicy.resetImmediatelyOnQueuedRedPill !== false) {
+        return { shouldReset: true, reason: "The Red Pill is queued; resetting immediately for daemon progression" };
+    }
+
+    if (daemonPolicy.preventResetWhenDaemonReady !== false && daemon.ready) {
+        return { shouldReset: false, reason: "daemon-ready state reached; holding reset to finish run" };
+    }
 
     const meetsBaseThreshold = queuedCount >= minQueuedAugs || queuedCost >= minQueuedCost;
     if (!meetsBaseThreshold) {
@@ -1110,6 +1124,39 @@ function shouldTriggerAdaptiveReset(ns, queuedCount, queuedCost, now) {
     }
 
     return { shouldReset: true, reason: `threshold met after runtime/stall checks (${queuedCount} augs, ${formatMoney(queuedCost)})` };
+}
+
+function getDaemonPrepStatusForReset(ns) {
+    try {
+        const player = ns.getPlayer();
+        const hackLevel = Number(player?.skills?.hacking || 0);
+        const daemonHost = "w0r1d_d43m0n";
+        const requiredHack = Number(ns.getServerRequiredHackingLevel(daemonHost) || 3000);
+        const rooted = ns.hasRootAccess(daemonHost);
+
+        const owned = ns.singularity.getOwnedAugmentations(true);
+        const installed = ns.singularity.getOwnedAugmentations(false);
+        const hasRedPillQueued = owned.includes("The Red Pill") && !installed.includes("The Red Pill");
+        const hasRedPillInstalled = installed.includes("The Red Pill");
+
+        return {
+            hackLevel,
+            requiredHack,
+            rooted,
+            hasRedPillQueued,
+            hasRedPillInstalled,
+            ready: hasRedPillInstalled && rooted && hackLevel >= requiredHack,
+        };
+    } catch (e) {
+        return {
+            hackLevel: 0,
+            requiredHack: 3000,
+            rooted: false,
+            hasRedPillQueued: false,
+            hasRedPillInstalled: false,
+            ready: false,
+        };
+    }
 }
 
 function calculateGamePhaseWithHysteresis(ns, currentPhase) {

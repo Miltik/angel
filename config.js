@@ -152,7 +152,7 @@ export const config = {
         enableGang: true,
         enableBladeburner: true,
         enableHacknet: true,
-        enableMilestones: true,
+        enableMilestones: false,    // Coordinator merged into dashboard
         enableDashboard: true,     // Real-time monitoring
         enableNetworkMap: true,    // Network visualization
         enableContracts: true,     // Coding contracts solver

@@ -13,9 +13,10 @@
  * 
  * @param {NS} ns
  */
-import { config } from "/angel/config.js";
+import { config, PORTS } from "/angel/config.js";
 import { formatMoney } from "/angel/utils.js";
 import { createWindow } from "/angel/modules/uiManager.js";
+import { initializeResetMonitor, getResetHistory, recordResetSnapshot } from "/angel/modules/resetMonitor.js";
 
 const PHASE_PORT = 7;
 const XP_FARM_SCRIPT = "/angel/xpFarm.js";
@@ -26,6 +27,12 @@ let lastMoney = 0;
 let lastXp = 0;
 let lastMoneySources = null;
 let lastMoneySourceUpdate = 0;
+let coordinatorState = {
+    currentPhase: 0,
+    phaseStableCount: 0,
+    lastNotify: 0,
+    resetPending: false,
+};
 
 export async function main(ns) {
     ns.disableLog("ALL");
@@ -54,6 +61,12 @@ export async function main(ns) {
  * Update and display dashboard metrics
  */
 async function updateDashboard(ns, ui) {
+    if (config.orchestrator?.enableMilestones === false) {
+        await runCoordinatorFromDashboard(ns, ui);
+    }
+
+    initializeResetMonitor(ns);
+
     const now = Date.now();
     const player = ns.getPlayer();
     const money = player.money + ns.getServerMoneyAvailable("home");
@@ -69,7 +82,9 @@ async function updateDashboard(ns, ui) {
     lastXp = hacking;
     
     // Get current phase and progress
-    const currentPhase = readGamePhase(ns);
+    const currentPhase = config.orchestrator?.enableMilestones === false
+        ? coordinatorState.currentPhase
+        : readGamePhase(ns);
     const phaseProgress = getPhaseProgress(ns, currentPhase);
     const nextPhase = currentPhase < 4 ? currentPhase + 1 : 4;
     
@@ -141,6 +156,7 @@ async function updateDashboard(ns, ui) {
         // Augmentation Status
         try {
             displayAugmentationStatus(ui, ns, player);
+            displayResetMonitorStatus(ui, ns);
             ui.log("", "info");
         } catch (e) {
             // Singularity not available
@@ -1014,4 +1030,165 @@ function hasStockAccess(ns) {
     } catch (e) {
         return false;
     }
+}
+
+async function runCoordinatorFromDashboard(ns, ui) {
+    const newPhase = calculateGamePhaseWithHysteresis(ns, coordinatorState.currentPhase, coordinatorState.phaseStableCount);
+    if (newPhase !== coordinatorState.currentPhase) {
+        coordinatorState.currentPhase = newPhase;
+        coordinatorState.phaseStableCount = 0;
+    } else {
+        coordinatorState.phaseStableCount++;
+    }
+
+    ns.clearPort(PHASE_PORT);
+    ns.writePort(PHASE_PORT, coordinatorState.currentPhase);
+
+    const activity = calculateDesiredActivityForPort(ns, coordinatorState.currentPhase);
+    ns.clearPort(PORTS.ACTIVITY_MODE);
+    ns.writePort(PORTS.ACTIVITY_MODE, activity);
+
+    if (config.augmentations?.installOnThreshold && hasSingularityAccessForReset(ns) && !coordinatorState.resetPending) {
+        const queued = getQueuedAugmentsForReset(ns);
+        const queuedCost = getQueuedCostForReset(ns, queued);
+        const queuedEnough = queued.length >= (config.augmentations?.minQueuedAugs ?? 7);
+        const costEnough = queuedCost >= (config.augmentations?.minQueuedCost ?? 0);
+
+        if (queuedEnough || costEnough) {
+            coordinatorState.resetPending = true;
+            await triggerAugResetFromDashboard(ns, ui, queued.length, queuedCost);
+        }
+    }
+}
+
+function calculateGamePhaseWithHysteresis(ns, currentPhase) {
+    const player = ns.getPlayer();
+    const hackLevel = player.skills.hacking;
+    const money = ns.getServerMoneyAvailable("home") + player.money;
+    const stats = Math.min(player.skills.strength, player.skills.defense, player.skills.dexterity, player.skills.agility);
+    const thresholds = config.gamePhases?.thresholds || {};
+
+    if (hackLevel >= (thresholds.phase3to4?.hackLevel || 800) && stats >= (thresholds.phase3to4?.stats || 70)) return 4;
+
+    const p23 = thresholds.phase2to3 || { hackLevel: 500, money: 500000000 };
+    const p12 = thresholds.phase1to2 || { hackLevel: 200, money: 100000000 };
+    const p01 = thresholds.phase0to1 || { hackLevel: 75, money: 10000000 };
+
+    if (currentPhase >= 3) {
+        if (hackLevel >= p23.hackLevel && money >= p23.money * 0.9) return 3;
+    } else if (hackLevel >= p23.hackLevel && money >= p23.money) {
+        return 3;
+    }
+
+    if (currentPhase >= 2) {
+        if (hackLevel >= p12.hackLevel && money >= p12.money * 0.9) return 2;
+    } else if (hackLevel >= p12.hackLevel && money >= p12.money) {
+        return 2;
+    }
+
+    if (currentPhase >= 1) {
+        if (hackLevel >= p01.hackLevel && money >= p01.money * 0.9) return 1;
+    } else if (hackLevel >= p01.hackLevel && money >= p01.money) {
+        return 1;
+    }
+
+    return 0;
+}
+
+function calculateDesiredActivityForPort(ns, phase) {
+    const money = ns.getServerMoneyAvailable("home");
+    if (phase === 0) {
+        return money < 10000000 ? "crime" : "none";
+    }
+    if (phase === 1 || phase === 2) {
+        return needsTrainingForPort(ns) ? "training" : "factionWork";
+    }
+    return "none";
+}
+
+function needsTrainingForPort(ns) {
+    const player = ns.getPlayer();
+    const targets = config.training?.targetStats || { strength: 50, defense: 50, dexterity: 50, agility: 50 };
+    const hackTarget = config.training?.targetHacking || 800;
+
+    return player.skills.hacking < hackTarget ||
+        player.skills.strength < targets.strength ||
+        player.skills.defense < targets.defense ||
+        player.skills.dexterity < targets.dexterity ||
+        player.skills.agility < targets.agility;
+}
+
+function hasSingularityAccessForReset(ns) {
+    try {
+        ns.singularity.getCurrentWork();
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function getQueuedAugmentsForReset(ns) {
+    const owned = ns.singularity.getOwnedAugmentations(true);
+    const installed = ns.singularity.getOwnedAugmentations(false);
+    return owned.filter((aug) => !installed.includes(aug));
+}
+
+function getQueuedCostForReset(ns, queued) {
+    let total = 0;
+    for (const aug of queued) {
+        total += ns.singularity.getAugmentationPrice(aug);
+    }
+    return total;
+}
+
+async function triggerAugResetFromDashboard(ns, ui, queuedCount, queuedCost) {
+    const countdown = config.augmentations?.resetCountdownSec ?? 10;
+    const restartScript = config.augmentations?.resetScript || "/angel/start.js";
+    ui.log(`🔄 RESET TRIGGER: ${queuedCount} augs queued (cost: ${formatMoney(queuedCost)})`, "warn");
+
+    for (let i = countdown; i > 0; i--) {
+        ui.log(`Resetting in ${i}s...`, "warn");
+        await ns.sleep(1000);
+    }
+
+    try {
+        recordResetSnapshot(ns, {
+            trigger: "dashboard-coordinator",
+            restartScript,
+        });
+    } catch (e) {
+        // ignore monitor write errors
+    }
+
+    ns.singularity.installAugmentations(restartScript);
+}
+
+function displayResetMonitorStatus(ui, ns) {
+    try {
+        const history = getResetHistory(ns);
+        const last = history.length > 0 ? history[history.length - 1] : null;
+        const now = Date.now();
+        const resetInfo = ns.getResetInfo();
+        const lastAugReset = Number(resetInfo?.lastAugReset || now);
+        const runDuration = formatDurationForReset(Math.max(0, now - lastAugReset));
+
+        if (!last) {
+            ui.log(`🔄 RESET MONITOR: Current run ${runDuration} | No reset history yet`, "info");
+            return;
+        }
+
+        ui.log(`🔄 RESET MONITOR: Run ${runDuration} | Last: ${last.durationLabel} | Cash ${formatMoney(last.finalCash)} | Hack ${last.finalHackLevel} | Augs ${last.purchasedAugCount}`, "info");
+    } catch (e) {
+        ui.log(`🔄 RESET MONITOR: Unavailable`, "info");
+    }
+}
+
+function formatDurationForReset(ms) {
+    const seconds = Math.floor(ms / 1000);
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    if (hours > 0) return `${hours}h ${minutes}m ${secs}s`;
+    if (minutes > 0) return `${minutes}m ${secs}s`;
+    return `${secs}s`;
 }

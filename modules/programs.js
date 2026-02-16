@@ -145,19 +145,10 @@ async function phaseBuyPrograms(ns) {
 
 function hasTor(ns) {
     try {
-        // Check if we can access darkweb by trying to get a valid program cost
-        // If TOR is not available, all programs return -1
-        // If TOR is available, at least one program will have a valid cost > 0
-        const testCost = ns.singularity.getDarkwebProgramCost("BruteSSH.exe");
-        // If BruteSSH returns -1, we either don't have TOR or it's already owned
-        // Try another one
-        const testCost2 = ns.singularity.getDarkwebProgramCost("HTTPWorm.exe");
-        // If both return -1, check if they're already owned
-        if (testCost === -1 && testCost2 === -1) {
-            // They're both -1, so likely no TOR
-            return ns.fileExists("BruteSSH.exe", "home") || ns.fileExists("HTTPWorm.exe", "home");
-        }
-        return true;
+        // getDarkwebPrograms() returns an array if TOR is available
+        // Throws an error if TOR is not purchased
+        const programs = ns.singularity.getDarkwebPrograms();
+        return Array.isArray(programs) && programs.length > 0;
     } catch (e) {
         return false;
     }

@@ -81,12 +81,10 @@ export async function main(ns) {
             // Activity work: PHASES 0-2 (active), PHASES 3+ (filler only)
             if (gamePhase <= 2) {
                 // P0-2: Active crime/training/faction/company
-                ui.log(`[Loop ${loopCount}] Phase ${gamePhase} - calling processActivity`, "debug");
                 await processActivity(ns, gamePhase, ui);
             } else if (gamePhase >= 3) {
                 // P3+: Crime only as filler when activity lock is free
                 // This allows padding stats during idle moments without blocking other activities
-                ui.log(`[Loop ${loopCount}] Phase ${gamePhase} - calling processFillerCrime`, "debug");
                 await processFillerCrime(ns, gamePhase, ui);
             }
 
@@ -137,7 +135,7 @@ async function manageFactions(ns, ui) {
     // Check current work to see if faction work is happening
     const currentWork = ns.singularity.getCurrentWork();
     if (currentWork && currentWork.type === "FACTION") {
-        ui.log(`[Passthrough] Faction work ongoing: ${currentWork.factionName} (${currentWork.workType})`, "debug");
+        ui.log(`[Ongoing] Faction work: ${currentWork.factionName} (${currentWork.workType})`, "debug");
     }
 }
 
@@ -149,6 +147,20 @@ async function processActivity(ns, gamePhase, ui) {
     // Check if already working on something
     const currentWork = ns.singularity.getCurrentWork();
     if (currentWork) {
+        // Display what's in progress and why we're skipping
+        if (currentWork.type === "CRIME") {
+            const crime = currentWork.crimeType;
+            const chance = ns.singularity.getCrimeChance(crime);
+            ui.log(`[P${gamePhase}] Crime in progress: ${crime} (${(chance * 100).toFixed(1)}%)`, "info");
+        } else if (currentWork.type === "FACTION") {
+            ui.log(`[P${gamePhase}] Faction work: ${currentWork.factionName} (${currentWork.workType})`, "info");
+        } else if (currentWork.type === "COMPANY") {
+            ui.log(`[P${gamePhase}] Company work: ${currentWork.companyName}`, "info");
+        } else if (currentWork.type === "UNIVERSITY" || currentWork.type === "GYM") {
+            ui.log(`[P${gamePhase}] Training: ${currentWork.type}`, "info");
+        } else {
+            ui.log(`[P${gamePhase}] Activity in progress: ${currentWork.type}`, "debug");
+        }
         return;
     }
 
@@ -193,7 +205,14 @@ async function processFillerCrime(ns, gamePhase, ui) {
     // Check if already working on something
     const currentWork = ns.singularity.getCurrentWork();
     if (currentWork) {
-        ui.log(`[P${gamePhase}] Filler skipped: Already working on ${currentWork.type}`, "debug");
+        if (currentWork.type === "CRIME") {
+            // Display current crime progress
+            const crime = currentWork.crimeType;
+            const chance = ns.singularity.getCrimeChance(crime);
+            ui.log(`[P${gamePhase}] Crime in progress: ${crime} (${(chance * 100).toFixed(1)}%)`, "info");
+        } else {
+            ui.log(`[P${gamePhase}] Activity in progress: ${currentWork.type}`, "debug");
+        }
         return; // Already working on something, skip
     }
 

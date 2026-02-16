@@ -15,6 +15,13 @@ import { calcThreads, getAvailableRam } from "/angel/utils.js";
 
 export async function main(ns) {
     ns.disableLog("ALL");
+    ns.clearLog();
+    
+    try {
+        ns.ui.openTail();
+    } catch (e) {
+        ns.print("[XP Farm] Warning: tail failed");
+    }
     
     const flags = ns.flags([
         ["target", ""],

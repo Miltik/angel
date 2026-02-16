@@ -13,7 +13,6 @@ let lastState = {
     rootedServers: 0,
     backdooredServers: 0,
     loopCount: 0,
-    pendingConnection: null, // Store connection request from click handler
 };
 
 /**
@@ -102,23 +101,6 @@ export async function main(ns) {
         lastState.loopCount++;
         const serverInfo = new Map();
         
-        // Process pending connection request (if any)
-        if (lastState.pendingConnection) {
-            const serverName = lastState.pendingConnection;
-            lastState.pendingConnection = null;
-            
-            try {
-                const success = await ns.singularity.connect(serverName);
-                if (success) {
-                    ns.tprint(`✅ Connected to ${serverName}`);
-                } else {
-                    ns.tprint(`❌ Failed to connect to ${serverName}`);
-                }
-            } catch (err) {
-                ns.tprint(`⚠️ Connect error: ${err.message}`);
-            }
-        }
-        
         // Get all servers and organize by depth
         const serversByDepth = [];
         scanNetworkByDepth(ns, "home", serverInfo, serversByDepth, 0, maxDepth, new Set());
@@ -177,7 +159,7 @@ export async function main(ns) {
                 const statusClass = getStatusClass(info);
                 const icon = getServerIcon(serverName, factionServers, companyServers, info);
                 
-                html += `<div class="server-card ${statusClass} ${serverType}" data-server="${serverName}">`;
+                html += `<div class="server-card ${statusClass} ${serverType}">`;
                 html += `<div class="server-icon">${icon}</div>`;
                 html += `<div class="server-name">${serverName}</div>`;
                 
@@ -205,32 +187,11 @@ export async function main(ns) {
         // Update the window content
         ui.update(html);
         
-        // Attach click handlers directly to DOM elements
-        try {
-            const allCards = document.querySelectorAll('.server-card');
-            
-            allCards.forEach((card) => {
-                const serverName = card.getAttribute('data-server');
-                if (!serverName) return;
-                
-                // Remove existing listeners by cloning
-                const newCard = card.cloneNode(true);
-                card.parentNode.replaceChild(newCard, card);
-                
-                // Attach new listener - just set pending connection
-                newCard.addEventListener('click', () => {
-                    lastState.pendingConnection = serverName;
-                });
-            });
-        } catch (err) {
-            // Silent fail
-        }
-        
         lastState.totalServers = total;
         lastState.rootedServers = rooted;
         lastState.backdooredServers = backdoored;
         
-        await ns.sleep(100); // Faster update for responsive clicks
+        await ns.sleep(2000); // Update every 2 seconds
     }
 }
 
@@ -295,18 +256,11 @@ function getMapStyles() {
                 padding: 8px;
                 background: rgba(0, 0, 0, 0.3);
                 transition: all 0.2s;
-                cursor: pointer;
-                user-select: none;
             }
             .server-card:hover {
                 transform: translateY(-2px);
                 box-shadow: 0 4px 8px rgba(0, 255, 0, 0.2);
                 border-color: rgba(0, 255, 0, 0.6);
-                background: rgba(0, 255, 0, 0.08);
-            }
-            .server-card:active {
-                transform: translateY(0px);
-                box-shadow: 0 2px 4px rgba(0, 255, 0, 0.3);
             }
             .server-card.backdoored {
                 border-color: #ffd700;

@@ -21,6 +21,8 @@ const PHASE_PORT = 7;
 let lastUpdate = 0;
 let lastMoney = 0;
 let lastXp = 0;
+let lastMoneySources = null;
+let lastMoneySourceUpdate = 0;
 
 export async function main(ns) {
     ns.disableLog("ALL");
@@ -81,7 +83,7 @@ async function updateDashboard(ns, ui) {
         ui.log("", "info");
         
         // Money and XP Rates
-        displayEconomicsMetrics(ui, money, player, moneyRate, xpRate);
+        displayEconomicsMetrics(ui, ns, money, player, moneyRate, xpRate);
         ui.log("", "info");
         
         // Hacking Status
@@ -523,12 +525,107 @@ function displayPhaseStatus(ui, currentPhase, progress, nextPhase) {
 /**
  * Display money and XP generation rates
  */
-function displayEconomicsMetrics(ui, money, player, moneyRate, xpRate) {
-    const monthlyRate = moneyRate * 3600 * 24 * 30; // Scale to monthly
+function displayEconomicsMetrics(ui, ns, money, player, moneyRate, xpRate) {
     const dailyRate = moneyRate * 3600 * 24;
+    const sourceBreakdown = getIncomeBreakdown(ns);
     
     ui.log(`💰 MONEY: ${formatMoney(money).padEnd(15)} | Rate: ${formatMoney(moneyRate)}/s | Daily: ${formatMoney(dailyRate)}`, "info");
+    if (sourceBreakdown.mode === "live") {
+        if (sourceBreakdown.entries.length > 0) {
+            const line = sourceBreakdown.entries
+                .slice(0, 4)
+                .map(entry => `${entry.label} ${formatMoney(entry.value)}/s`)
+                .join(" | ");
+            ui.log(`   📊 Income Sources (live): ${line}`, "info");
+        } else {
+            ui.log(`   📊 Income Sources (live): No positive cashflow detected this cycle`, "info");
+        }
+    } else if (sourceBreakdown.mode === "total") {
+        if (sourceBreakdown.entries.length > 0) {
+            const line = sourceBreakdown.entries
+                .slice(0, 4)
+                .map(entry => `${entry.label} ${formatMoney(entry.value)}`)
+                .join(" | ");
+            ui.log(`   📊 Income Sources (since install): ${line}`, "info");
+        }
+    } else {
+        ui.log(`   📊 Income Sources: Data unavailable`, "info");
+    }
     ui.log(`📖 XP: Level ${player.skills.hacking} | Rate: ${xpRate.toFixed(2)} XP/s`, "info");
+}
+
+function getIncomeBreakdown(ns) {
+    try {
+        const moneySources = ns.getMoneySources();
+        const sinceInstall = moneySources?.sinceInstall;
+        if (!sinceInstall || typeof sinceInstall !== "object") {
+            return { mode: "none", entries: [] };
+        }
+
+        const now = Date.now();
+        if (lastMoneySources && lastMoneySourceUpdate > 0) {
+            const elapsedSeconds = Math.max(0.001, (now - lastMoneySourceUpdate) / 1000);
+            const liveEntries = [];
+
+            for (const [key, currentValue] of Object.entries(sinceInstall)) {
+                if (key === "total" || typeof currentValue !== "number") continue;
+                const previousValue = lastMoneySources[key] || 0;
+                const deltaPerSecond = (currentValue - previousValue) / elapsedSeconds;
+                if (deltaPerSecond > 0) {
+                    liveEntries.push({
+                        key,
+                        label: formatIncomeSourceLabel(key),
+                        value: deltaPerSecond
+                    });
+                }
+            }
+
+            liveEntries.sort((a, b) => b.value - a.value);
+            lastMoneySources = { ...sinceInstall };
+            lastMoneySourceUpdate = now;
+            return { mode: "live", entries: liveEntries };
+        }
+
+        const totalEntries = [];
+        for (const [key, value] of Object.entries(sinceInstall)) {
+            if (key === "total" || typeof value !== "number" || value <= 0) continue;
+            totalEntries.push({
+                key,
+                label: formatIncomeSourceLabel(key),
+                value
+            });
+        }
+
+        totalEntries.sort((a, b) => b.value - a.value);
+        lastMoneySources = { ...sinceInstall };
+        lastMoneySourceUpdate = now;
+        return { mode: "total", entries: totalEntries };
+    } catch (e) {
+        return { mode: "none", entries: [] };
+    }
+}
+
+function formatIncomeSourceLabel(sourceKey) {
+    const labels = {
+        hacking: "Hacking",
+        hacknet: "Hacknet",
+        servers: "Servers",
+        stock: "Stocks",
+        gang: "Gang",
+        bladeburner: "Bladeburner",
+        codingcontract: "Contracts",
+        crime: "Crime",
+        work: "Work",
+        class: "Class",
+        sleeves: "Sleeves",
+        corporation: "Corporation",
+        other: "Other"
+    };
+
+    if (labels[sourceKey]) return labels[sourceKey];
+    return sourceKey
+        .replace(/([a-z])([A-Z])/g, "$1 $2")
+        .replace(/^./, c => c.toUpperCase());
 }
 
 /**

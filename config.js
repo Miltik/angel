@@ -437,7 +437,7 @@ export const SCRIPTS = {
     hacknet: "/angel/modules/hacknet.js",
     milestones: "/angel/modules/milestones.js",
     dashboard: "/angel/modules/dashboard.js",
-    networkMap: "/angel/modules/networkMap.js",
+    networkMap: "/angel/networkMap.js",
     
     // Workers (actual hacking scripts)
     hack: "/angel/workers/hack.js",

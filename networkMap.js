@@ -5,6 +5,15 @@
  * 
  * @param {NS} ns
  */
+import { createWindow } from "/angel/modules/uiManager.js";
+
+// State tracking
+let lastState = {
+    totalServers: 0,
+    rootedServers: 0,
+    backdooredServers: 0,
+    loopCount: 0
+};
 
 /**
  * Get list of servers connected to a target
@@ -17,24 +26,30 @@ function getScan(ns, server) {
 }
 
 const STATUS_COLORS = {
-    "rooted": "✓",
-    "backdoored": "★",
+    "rooted": "✅",
+    "backdoored": "⭐",
     "admin": "⚡",
-    "targeting": "◆",
-    "unrooted": "○",
+    "targeting": "🎯",
+    "unrooted": "⭕",
 };
 
 const SERVER_TYPES = {
-    "home": "HOME",
-    "darkweb": "TOR",
-    "player-server": "BUY",
-    "company": "CORP",
-    "faction": "FACT",
-    "special": "SPEC",
+    "home": "🏠",
+    "darkweb": "🌐",
+    "player-server": "💾",
+    "company": "🏢",
+    "faction": "🎖️",
+    "special": "⚙️",
 };
 
 export async function main(ns) {
     ns.disableLog("ALL");
+    
+    const ui = createWindow("netmap", "🗺️ Network Map", 1000, 700, ns);
+    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    ui.log("🗺️ Network map initialized", "success");
+    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    
     const flags = ns.flags([
         ["rooted", false],
         ["unrooted", false],
@@ -86,33 +101,48 @@ export async function main(ns) {
     ];
     
     while (true) {
-        ns.clearLog();
+        lastState.loopCount++;
+        ui.clear();
         const serverInfo = new Map();
         
         // Get all servers
         const rootServer = getAllServersRecursive(ns, "home", serverInfo);
         
-        // Display header
-        ns.print("╔════════════════════════════════════════════════════════════════╗");
-        ns.print("║              ANGEL NETWORK MAP                                 ║");
-        ns.print("╚════════════════════════════════════════════════════════════════╝");
-        ns.print("");
+        // Display header with visual separator
+        ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        ui.log("🗺️  NETWORK MAP", "info");
+        ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        ui.log("");
         
-        // Display legend
-        ns.print("Legend:");
-        ns.print(`  ✓ = Rooted        ★ = Backdoored    ⚡ = Admin        ◆ = Targeting    ○ = Unrooted`);
-        ns.print("Filters:");
-        ns.print(`  rooted=${flags.rooted} unrooted=${flags.unrooted} backdoored=${flags.backdoored} hackable=${flags.hackable} pserv=${flags.pserv}`);
-        ns.print("");
+        // Display legend with emoji
+        ui.log("📋 Legend:", "info");
+        ui.log(`  ✅ = Rooted    ⭐ = Backdoored    ⚡ = Admin    🎯 = Targeting    ⭕ = Unrooted`);
+        ui.log(`  🏠 = Home      🏢 = Company       🎖️ = Faction  💾 = Purchased`);
+        
+        if (flags.rooted || flags.unrooted || flags.backdoored || flags.hackable || flags.pserv) {
+            ui.log("");
+            ui.log("🔍 Filters Active:", "info");
+            const activeFilters = [];
+            if (flags.rooted) activeFilters.push("rooted");
+            if (flags.unrooted) activeFilters.push("unrooted");
+            if (flags.backdoored) activeFilters.push("backdoored");
+            if (flags.hackable) activeFilters.push("hackable");
+            if (flags.pserv) activeFilters.push("purchased");
+            ui.log(`  ${activeFilters.join(", ")}`);
+        }
+        
+        ui.log("");
+        ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        ui.log("");
         
         // Organize servers by type
         if (rootServer) {
-            displayServerTree(ns, rootServer, "", serverInfo, factionServers, companyServers, flags, maxDepth, 0, true);
+            displayServerTree(ns, ui, rootServer, "", serverInfo, factionServers, companyServers, flags, maxDepth, 0, true);
         }
         
         // Display statistics
-        ns.print("");
-        ns.print("─────────────────────────────────────────────────────────────────");
+        ui.log("");
+        ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         
         let rooted = 0;
         let backdoored = 0;
@@ -124,8 +154,21 @@ export async function main(ns) {
             if (info.hasBackdoor) backdoored++;
         });
         
-        ns.print(`Total Servers: ${total} | Rooted: ${rooted} | Backdoored: ${backdoored}`);
-        ns.print("");
+        // Only log stats if changed or every 15 loops (~30 seconds)
+        if (total !== lastState.totalServers || 
+            rooted !== lastState.rootedServers || 
+            backdoored !== lastState.backdooredServers ||
+            lastState.loopCount % 15 === 0) {
+            
+            ui.log(`📊 Total: ${total} servers | ✅ Rooted: ${rooted} | ⭐ Backdoored: ${backdoored}`, "info");
+            const rootPct = total > 0 ? ((rooted / total) * 100).toFixed(1) : 0;
+            const backdoorPct = total > 0 ? ((backdoored / total) * 100).toFixed(1) : 0;
+            ui.log(`📈 Progress: ${rootPct}% rooted, ${backdoorPct}% backdoored`, "info");
+            
+            lastState.totalServers = total;
+            lastState.rootedServers = rooted;
+            lastState.backdooredServers = backdoored;
+        }
         
         await ns.sleep(2000); // Update every 2 seconds
     }
@@ -174,7 +217,7 @@ function getAllServersRecursive(ns, server, infoMap) {
 /**
  * Display server tree with hierarchy
  */
-function displayServerTree(ns, server, prefix, infoMap, factionServers, companyServers, flags, maxDepth, depth = 0, isLast = true) {
+function displayServerTree(ns, ui, server, prefix, infoMap, factionServers, companyServers, flags, maxDepth, depth = 0, isLast = true) {
     if (depth > maxDepth) return;
     
     const matches = matchesFilters(server, flags);
@@ -186,8 +229,8 @@ function displayServerTree(ns, server, prefix, infoMap, factionServers, companyS
     const status = getServerStatus(server, factionServers, companyServers);
     const connector = depth === 0 ? "" : (isLast ? "└─" : "├─");
     const linePrefix = depth === 0 ? "" : prefix + connector + " ";
-    const typeTag = `[${status.type}]`;
-    const nameCol = server.name.padEnd(18);
+    const typeTag = status.type;
+    const nameCol = server.name.padEnd(20);
     
     let displayLine = `${linePrefix}${status.icon} ${nameCol} ${typeTag}`;
     
@@ -197,20 +240,20 @@ function displayServerTree(ns, server, prefix, infoMap, factionServers, companyS
         const moneyPct = formatPercent(server.currMoney, server.maxMoney).padStart(4);
         const secDelta = (server.currSecurity - server.minSecurity).toFixed(1).padStart(5);
         const growth = server.growth.toString().padStart(3);
-        displayLine += ` ${hackLevel} $${moneyStr.padEnd(17)} ${moneyPct}% S+${secDelta} G${growth}`;
+        displayLine += ` ${hackLevel} 💰${moneyStr.padEnd(17)} ${moneyPct}% 🔒+${secDelta} 📈${growth}`;
     } else if (server.maxRam > 0) {
         const ramStr = formatRam(server.usedRam) + "/" + formatRam(server.maxRam);
-        displayLine += ` RAM ${ramStr}`;
+        displayLine += ` 💾 ${ramStr}`;
     }
     
-    ns.print(displayLine);
+    ui.log(displayLine);
     
     if (renderChildren.length > 0) {
         const newPrefix = depth === 0 ? "" : prefix + (isLast ? "   " : "│  ");
         for (let i = 0; i < renderChildren.length; i++) {
             const child = renderChildren[i];
             const childIsLast = i === renderChildren.length - 1;
-            displayServerTree(ns, child, newPrefix, infoMap, factionServers, companyServers, flags, maxDepth, depth + 1, childIsLast);
+            displayServerTree(ns, ui, child, newPrefix, infoMap, factionServers, companyServers, flags, maxDepth, depth + 1, childIsLast);
         }
     }
 }
@@ -220,10 +263,10 @@ function displayServerTree(ns, server, prefix, infoMap, factionServers, companyS
  */
 function getServerStatus(server, factionServers, companyServers) {
     let icon = STATUS_COLORS.unrooted;
-    let type = "UNK";
+    let type = "❓";
     
     if (server.name === "home") {
-        icon = "⊕";
+        icon = "🏠";
         type = SERVER_TYPES.home;
     } else if (factionServers.includes(server.name)) {
         if (server.hasBackdoor) {
@@ -238,7 +281,7 @@ function getServerStatus(server, factionServers, companyServers) {
         }
         type = SERVER_TYPES.company;
     } else if (server.isPurchased) {
-        icon = "⚙";
+        icon = "💾";
         type = SERVER_TYPES["player-server"];
     } else {
         if (server.hasBackdoor) {
@@ -248,6 +291,7 @@ function getServerStatus(server, factionServers, companyServers) {
         } else if (server.canHack) {
             icon = STATUS_COLORS.unrooted;
         }
+        type = "⚙️";
     }
     
     return { icon, type };

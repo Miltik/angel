@@ -12,16 +12,21 @@
 
 import { scanAll } from "/angel/scanner.js";
 import { calcThreads, getAvailableRam } from "/angel/utils.js";
+import { createWindow } from "/angel/modules/uiManager.js";
+
+// State tracking to prevent log spam
+let lastState = {
+    target: "",
+    totalThreads: 0,
+    usedServers: 0,
+    deployed: 0,
+    loopCount: 0,
+};
 
 export async function main(ns) {
     ns.disableLog("ALL");
-    ns.clearLog();
     
-    try {
-        ns.ui.openTail();
-    } catch (e) {
-        ns.print("[XP Farm] Warning: tail failed");
-    }
+    const ui = createWindow("xpfarm", "⚡ XP Farm", 600, 400, ns);
     
     const flags = ns.flags([
         ["target", ""],
@@ -37,33 +42,73 @@ export async function main(ns) {
     const scriptRam = ns.getScriptRam(worker);
     
     if (scriptRam === 0) {
-        ns.tprint(`ERROR: Missing worker script: ${worker}`);
+        ui.log("❌ Missing worker script: " + worker, "error");
+        ns.tprint(`❌ XP Farm: Missing worker script: ${worker}`);
         return;
     }
     
-    ns.tprint("╔════════════════════════════════════════╗");
-    ns.tprint("║        ANGEL XP FARM                   ║");
-    ns.tprint("╚════════════════════════════════════════╝");
-    ns.tprint("");
+    ui.log("⚡ ANGEL XP Farm Started", "success");
+    ui.log(`📋 Reserve Home RAM: ${reserveHome}GB`, "info");
+    ui.log(`⏱️ Update Interval: ${interval}ms`, "info");
+    ui.log(`🔄 Clean Mode: ${flags.clean ? "ON" : "OFF"}`, "info");
+    if (flags.target) {
+        ui.log(`🎯 Target Locked: ${flags.target}`, "info");
+    }
+    ui.log("", "info");
     
     while (true) {
+        lastState.loopCount++;
         const servers = getRunnableServers(ns);
         const target = flags.target || pickTarget(ns, servers);
         
         if (!target) {
-            ns.tprint("ERROR: No valid XP target found.");
+            ui.log("❌ No valid XP target found", "error");
+            ns.tprint("❌ XP Farm: No valid XP target found");
             return;
         }
         
         if (flags.clean) {
             stopWorkers(ns, servers, worker);
         }
+        
         const deployed = await deployWorkers(ns, servers, worker);
         const { totalThreads, usedServers } = launchWeaken(ns, servers, target, worker, reserveHome);
         
-        ns.print(`Target: ${target} | Servers: ${usedServers} | Threads: ${totalThreads} | Deployed: ${deployed}`);
+        // Only log if something changed
+        const changed = lastState.target !== target ||
+                       lastState.totalThreads !== totalThreads ||
+                       lastState.usedServers !== usedServers ||
+                       lastState.deployed !== deployed;
+        
+        if (changed || lastState.loopCount % 10 === 0) {
+            const player = ns.getPlayer();
+            const targetServer = ns.getServer(target);
+            
+            let xpInfo = "";
+            try {
+                const xpGain = ns.formulas.hacking.hackExp(targetServer, player);
+                xpInfo = `📊 XP/Thread: ${xpGain.toFixed(2)} | Total XP/tick: ${(xpGain * totalThreads).toFixed(2)}`;
+            } catch (e) {
+                xpInfo = `📊 XP formulas not available`;
+            }
+            
+            ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
+            ui.log(`🎯 Target: ${target} (Req Lvl ${targetServer.requiredHackingSkill})`, "success");
+            ui.log(`👤 Player Level: ${player.skills.hacking}`, "info");
+            ui.log(`🖥️ Active Servers: ${usedServers}/${servers.length}`, "success");
+            ui.log(`⚡ Total Threads: ${totalThreads}`, "success");
+            ui.log(`📦 Workers Deployed: ${deployed}`, "info");
+            ui.log(xpInfo, "info");
+            
+            lastState.target = target;
+            lastState.totalThreads = totalThreads;
+            lastState.usedServers = usedServers;
+            lastState.deployed = deployed;
+        }
         
         if (flags.once) {
+            ui.log("", "info");
+            ui.log("✅ One-shot mode complete", "success");
             break;
         }
         

@@ -1,9 +1,9 @@
 /**
- * Gang automation module - Phase-aware intelligent member specialization
+ * Gang automation module - Money & Faction Rep focused
  * 
- * Strategy: Specialize members by role, maximize Territory Warfare for respect.
- * Phase determines intensity: P0-2 = 75% warfare, P3-4 = 90%+ warfare
- * Respects coordinate with hacking phase progression.
+ * Strategy: Dynamic role assignment to maximize money/rep while maintaining
+ * wanted level in the optimal range (0.95-0.99 penalty = best balance).
+ * Automatically scales up/down wanted reduction members based on current wanted penalty.
  * 
  * @param {NS} ns
  */
@@ -60,22 +60,50 @@ function getPhaseConfig(phase) {
 }
 
 /**
- * Calculate warfare intensity based on global phase
- * Returns the target percentage of members to assign to Territory Warfare
+ * Calculate optimal number of members to assign to wanted reduction
+ * Based on current wanted level and desired penalty range (0.95-0.99)
+ * 
+ * Penalty < 0.95: add more wanted reducers (wanted is too high)
+ * Penalty 0.95-0.99: maintain current (optimal range)
+ * Penalty > 0.99: reduce wanted reducers, shift to money (penalty is minimal)
  */
-function getWarfareIntensity(globalPhase) {
-    switch (globalPhase) {
-        case 0: return 0.60;  // Bootstrap: moderate, build cash
-        case 1: return 0.70;  // Early: ramp up
-        case 2: return 0.75;  // Mid: steady
-        case 3: return 0.85;  // Gang Phase: aggressive
-        case 4: return 0.95;  // Late: maximum
-        default: return 0.75;
+function getOptimalWantedReducers(memberCount, currentPenalty) {
+    const MIN_PENALTY = 0.95;  // If penalty drops below 0.95, it's too punishing
+    const OPTIMAL_MIN = 0.98;  // Sweet spot: minimal but manageable wanted
+    
+    if (currentPenalty < MIN_PENALTY) {
+        // Wanted is VERY high, need aggressive reduction
+        return Math.ceil(memberCount * 0.4);  // 40% on vigilante
+    } else if (currentPenalty < OPTIMAL_MIN) {
+        // Wanted is moderately high, still too much
+        return Math.ceil(memberCount * 0.25); // 25% on vigilante
+    } else if (currentPenalty < 0.999) {
+        // In optimal range, minimal maintenance
+        return Math.ceil(memberCount * 0.15); // 15% on vigilante
+    } else {
+        // Penalty nearly 1.0, wanted is negligible
+        return Math.max(1, Math.floor(memberCount * 0.08)); // Just 1-2 members
     }
 }
 
 /**
- * Get respect target for current phase (when to install augments)
+ * Calculate warfare intensity based on global phase
+ * Now money-focused: only do warfare if we have surplus members
+ */
+function getWarfareIntensity(globalPhase) {
+    // Warfare is now secondary - minimal focus
+    switch (globalPhase) {
+        case 0: return 0.05;   // Bootstrap: focus on money
+        case 1: return 0.08;   // Early: minimal warfare
+        case 2: return 0.10;   // Mid: still money focused
+        case 3: return 0.15;   // Gang Phase: slight warfare for respect
+        case 4: return 0.20;   // Late: can afford some warfare
+        default: return 0.10;
+    }
+}
+
+/**
+ * Get respect target for current phase
  */
 function getRespectTarget(globalPhase) {
     switch (globalPhase) {
@@ -186,11 +214,12 @@ function getGangPhase(memberData, isHacking) {
 
 /**
  * Build task pool for roles based on gang phase and gang type
+ * MONEY/REP FOCUSED: Trafficking tasks are primary
  */
 function getTaskPool(availableTasks, info, gangPhase) {
     const isHacking = info.isHacking;
 
-    // Tasks by role
+    // Tasks by role - money generation is now primary
     const tasks = {
         // Warriors/Hackers who still need training
         trainCombat: findTask(availableTasks, isHacking
@@ -198,27 +227,27 @@ function getTaskPool(availableTasks, info, gangPhase) {
             : ["Train Combat", "Train Hacking"]
         ),
         
-        // Territory Warfare - primary respect builder (most important)
-        territoryWarfare: findTask(availableTasks, 
-            ["Territory Warfare"]
-        ),
-        
-        // Money earners - high income tasks
+        // Money earners - PRIMARY focus, highest income
         moneyTask: findTask(availableTasks, isHacking
-            ? ["Money Laundering", "Fraud & Counterfeiting", "Cyberterrorism", "Identity Theft"]
-            : ["Human Trafficking", "Armed Robbery", "Strongarm Civilians", "Grand Theft Auto"]
+            ? ["Money Laundering", "Fraudulent Counterfeiting", "Cyberterrorism", "Identity Theft"]
+            : ["Human Trafficking", "Trafficking", "Armed Robbery", "Strongarm Civilians"]
         ),
         
-        // Wanted management - use when wanted is too high
+        // Wanted management - CRITICAL for maintaining penalty in optimal range
         wantedReduction: findTask(availableTasks, isHacking
             ? ["Ethical Hacking", "Vigilante Justice"]
-            : ["Vigilante Justice", "Terrorism"]
+            : ["Vigilante Justice", "Assault"]
         ),
         
-        // Secondary respect builders
+        // Secondary money/respect - only if we have surplus members
         secondaryRespect: findTask(availableTasks, isHacking
             ? ["Cyberterrorism", "Plant Virus", "DDoS Attacks"]
             : ["Kidnapping", "Terrorism", "Assassinate"]
+        ),
+        
+        // Territory Warfare - minimal, only if power > enemies
+        territoryWarfare: findTask(availableTasks, 
+            ["Territory Warfare"]
         ),
     };
 
@@ -226,15 +255,21 @@ function getTaskPool(availableTasks, info, gangPhase) {
 }
 
 /**
- * Assign a role to a member based on their stats, gang needs, and BOTH gang + global phases
- * Returns the taskPool key that maps to the appropriate task
+ * Assign a role to a member based on dynamic wanted management and money optimization
+ * 
+ * Priority:
+ * 1. Still in training? → Train
+ * 2. Need wanted reduction? → Vigilante (dynamically scaled)
+ * 3. Otherwise → Money task (primary focus)
+ * 4. Surplus members → Small group on warfare only if power advantage exists
  */
 function assignRole(ns, member, allMembers, info, gangPhase, taskPool, globalPhase) {
     const m = member.info;
     const trainUntil = 60;
     const isHacking = info.isHacking;
+    const memberCount = allMembers.length;
     
-    // Check if member still needs training
+    // 1. Check if member still needs training
     const needsTraining = isHacking
         ? m.hack < trainUntil
         : (m.str < trainUntil || m.def < trainUntil || m.dex < trainUntil || m.agi < trainUntil);
@@ -243,66 +278,53 @@ function assignRole(ns, member, allMembers, info, gangPhase, taskPool, globalPha
         return "trainCombat";
     }
 
-    // Count members and analyze wanted level
-    const memberCount = allMembers.length;
-    const wantedPenalty = info.wantedPenalty;
+    // 2. DYNAMICALLY calculate how many members should be on wanted reduction
+    // This is the KEY NEW FEATURE - adapts to current wanted level
+    const optimalReducers = getOptimalWantedReducers(memberCount, info.wantedPenalty);
+    const currentReducers = allMembers.filter(m2 => {
+        const mInfo = ns.gang.getMemberInformation(m2);
+        const task = mInfo.task || "Unassigned";
+        return task === (isHacking ? "Vigilante Justice" : "Vigilante Justice");
+    }).length;
     
-    // If wanted is critical, prioritize peacekeepers
-    if (wantedPenalty < 0.8 && taskPool.wantedReduction) {
-        const peacekeeperCount = Math.ceil(memberCount * 0.3);
-        const peacekeepers = allMembers.filter(m2 => {
-            const m2Info = m2.info;
-            return !isHacking
-                ? (m2Info.str >= trainUntil && m2Info.def >= trainUntil)
-                : true;
-        }).length;
+    // If we haven't reached optimal reducer count, assign to vigilante
+    if (currentReducers < optimalReducers && taskPool.wantedReduction) {
+        return "wantedReduction";
+    }
+
+    // 3. PRIMARY STRATEGY: Money generation
+    if (taskPool.moneyTask) {
+        return "moneyTask";
+    }
+
+    // 4. Fallback to secondary respect if money unavailable
+    if (taskPool.secondaryRespect) {
+        return "secondaryRespect";
+    }
+    
+    // 5. Only do warfare if:
+    //    - We've covered training, wanted reduction, and money
+    //    - Global phase allows it
+    //    - We have power advantage
+    const warfareIntensity = getWarfareIntensity(globalPhase);
+    if (taskPool.territoryWarfare && Math.random() < warfareIntensity) {
+        // Only enable if conditions are met
+        const otherGangs = ns.gang.getOtherGangInformation();
+        let powerAdvantage = false;
+        for (const [gangName, data] of Object.entries(otherGangs)) {
+            const advantage = info.power / (data.power + 0.1);
+            if (advantage > 1.1) {
+                powerAdvantage = true;
+                break;
+            }
+        }
         
-        if (peacekeepers < peacekeeperCount) {
-            return "wantedReduction";
+        if (powerAdvantage) {
+            return "territoryWarfare";
         }
     }
 
-    // PHASE-INTENSIFIED warfare assignment
-    // Early phases: balance warfare with money/respect
-    // Late phases: aggressive warfare focus
-    const warfareIntensity = getWarfareIntensity(globalPhase);
-    
-    switch (gangPhase) {
-        case "training":
-            // All focus on training
-            return "trainCombat";
-            
-        case "transition":
-            // Mix of territory warfare and money tasks
-            // Scale based on global phase
-            if (taskPool.territoryWarfare && Math.random() < warfareIntensity) {
-                return "territoryWarfare";
-            }
-            return "moneyTask";
-            
-        case "respect_building":
-            // Primary: Territory Warfare (scaled by global phase)
-            // Secondary: Handle wanted level
-            // Fallback: Money tasks
-            
-            if (taskPool.territoryWarfare && Math.random() < warfareIntensity) {
-                return "territoryWarfare";
-            }
-            
-            // Check if wanted needs management
-            if (wantedPenalty < 0.9 && taskPool.wantedReduction) {
-                return "wantedReduction";
-            }
-            
-            // Late phase: still do warfare or secondary respect builders
-            if (globalPhase >= 3 && taskPool.secondaryRespect && Math.random() < 0.2) {
-                return "secondaryRespect";
-            }
-            
-            // Fallback to money/respect tasks
-            return "moneyTask";
-    }
-
+    // Fallback
     return "moneyTask";
 }
 
@@ -376,13 +398,20 @@ function printStatus(ns, summary, ui) {
     const globalPhase = summary.globalPhase || 0;
     const roles = summary.roleAssignments || {};
     
-    // Calculate warfare intensity for this phase
-    const intensity = Math.round(getWarfareIntensity(globalPhase) * 100);
-    const respectTarget = getRespectTarget(globalPhase);
+    // Calculate optimal wanted reducers for this state
+    const optimalReducers = getOptimalWantedReducers(count, info.wantedPenalty);
+    
+    // Money per second calculation
+    const moneyPerSec = Math.floor(info.moneyGainRate * 5);
+    
+    // Determine if wanted level is in good range
+    const wantedStatus = info.wantedPenalty > 0.98 ? "✓ OPTIMAL" : 
+                         info.wantedPenalty > 0.95 ? "⚠️ ACTIVE" : 
+                         "🔴 CRITICAL";
 
-    ui.log(`[Phase ${globalPhase}] Gang ${info.isHacking ? "Hacking" : "Combat"} | Members: ${count}`, "info");
-    ui.log(`Wanted: ${info.wantedPenalty.toFixed(3)} | Respect: ${Math.floor(info.respect)} (target: ${Math.floor(respectTarget)}) | Territory: ${info.territory.toFixed(1)}%`, "info");
-    ui.log(`${gangPhase.toUpperCase()} | Warfare Intensity: ${intensity}% | Power: ${info.power.toFixed(2)} | $${Math.floor(info.moneyGainRate * 5)}/s`, "info");
+    ui.log(`💰 GANG: ${info.isHacking ? "Hackers" : "Combat"} | Members: ${count} | Money: ${formatMoney(moneyPerSec)}/s`, "info");
+    ui.log(`Wanted: ${(info.wantedPenalty * 100).toFixed(1)}% ${wantedStatus} | Respect: ${formatMoney(info.respect)} | Territory: ${info.territory.toFixed(1)}%`, "info");
+    ui.log(`Power: ${info.power.toFixed(2)} | Gang Phase: ${gangPhase} | Optimal Peacekeepers: ${optimalReducers}/${count}`, "info");
     
     // Role distribution
     if (Object.keys(roles).length > 0) {
@@ -390,8 +419,8 @@ function printStatus(ns, summary, ui) {
             "trainCombat": "📚 Training",
             "territoryWarfare": "⭐ Warfare",
             "moneyTask": "💰 Money",
-            "wantedReduction": "🛡️ Wanted",
-            "secondaryRespect": "🔥 2ndary"
+            "wantedReduction": "🛡️ Peacekeepers",
+            "secondaryRespect": "🔥 Respect"
         };
         
         const roleDistribution = Object.entries(roles)

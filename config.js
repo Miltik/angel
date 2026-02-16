@@ -153,6 +153,7 @@ export const config = {
         enableBladeburner: true,
         enableHacknet: true,
         enableMilestones: true,
+        enableDashboard: true,     // New: Real-time monitoring
     },
 
     // Hacking settings
@@ -419,6 +420,7 @@ export const SCRIPTS = {
     bladeburner: "/angel/modules/bladeburner.js",
     hacknet: "/angel/modules/hacknet.js",
     milestones: "/angel/modules/milestones.js",
+    dashboard: "/angel/modules/dashboard.js",
     
     // Workers (actual hacking scripts)
     hack: "/angel/workers/hack.js",

@@ -51,6 +51,7 @@ export async function main(ns) {
         "modules/bladeburner.js",
         "modules/hacknet.js",
         "modules/milestones.js",
+        "modules/dashboard.js",          // New: Real-time monitoring
         
         // Workers
         "workers/hack.js",

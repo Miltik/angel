@@ -15,7 +15,7 @@ const PHASE_PORT = 7;
 export async function main(ns) {
     ns.disableLog("ALL");
     ns.ui.openTail();
-    log(ns, "👾 Gang module started - Phase-aware respect maximization", "INFO");
+    log(ns, "👾 Gang module started - Phase-aware respect maximization with clash timing", "INFO");
 
     while (true) {
         try {
@@ -27,6 +27,10 @@ export async function main(ns) {
 
             recruitMembers(ns);
             const summary = assignTasks(ns);
+            
+            // NEW: Manage territory clashes  
+            manageTerritoryclashes(ns);
+            
             printStatus(ns, summary);
             await ns.sleep(30000);
         } catch (e) {
@@ -308,6 +312,58 @@ function findTask(available, candidates) {
         if (available.includes(name)) return name;
     }
     return available.length > 0 ? available[0] : null;
+}
+
+/**
+ * Manage territory clashes - smart timing for maximum gain
+ * Enables clashes when power advantage is sufficient
+ */
+function manageTerritoryclashes(ns) {
+    if (!ns.gang.inGang()) return;
+    
+    try {
+        const info = ns.gang.getGangInformation();
+        const territory = info.territory || 50;
+        const power = info.power || 1;
+        
+        // Check enemy gangs power levels
+        const otherGangs = ns.gang.getOtherGangInformation();
+        
+        // Calculate if we should engage in clashes
+        let shouldClash = false;
+        let powerAdvantage = 0;
+        
+        // Find weakest gang(s) to target
+        for (const [gangName, data] of Object.entries(otherGangs)) {
+            const enemyPower = data.power || 0.5;
+            const enemyTerritory = data.territory || 50;
+            const advantage = power / (enemyPower + 0.1); // Avoid division by 0
+            
+            // If we have 1.2x power advantage, we should pursue
+            if (advantage > 1.2) {
+                powerAdvantage = Math.max(powerAdvantage, advantage);
+                shouldClash = true;
+            }
+        }
+        
+        // Engage with territory warfare if:
+        // 1. We have power advantage (1.2x+)
+        // 2. We're not already at maximum territory (100%)
+        // 3. Power is above minimum threshold  
+        const shouldEngage = shouldClash && territory < 95 && power > 10;
+        
+        if (shouldEngage) {
+            ns.gang.setTerritoryWarfareEngaged(true);
+        } else if (territory >= 95) {
+            // Already dominant, maintain
+            ns.gang.setTerritoryWarfareEngaged(true);
+        } else {
+            // Not ready yet, focus on recruitment and training
+            ns.gang.setTerritoryWarfareEngaged(false);
+        }
+    } catch (e) {
+        // Silently fail if clash management not available
+    }
 }
 
 function printStatus(ns, summary) {

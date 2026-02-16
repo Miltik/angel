@@ -64,35 +64,55 @@ function readGamePhase(ns) {
 /**
  * Select target based on phase and profitability
  * Adapts server selection to current game phase
+ * Early phases: Prefer easy money with low prep overhead
+ * Late phases: Maximize pure money/time ratio
  */
 function selectTargetByPhase(ns, targets, phase) {
     const player = ns.getPlayer();
     
-    // Phase 0-1: Focus on early, easily hackable servers
-    if (phase <= 1) {
-        const earlyServers = ["n00dles", "foodnstuff", "sigma-cosmetics", "joesguns", "nectar-net"];
-        for (const server of earlyServers) {
-            if (targets.includes(server)) {
-                return server;
-            }
+    // Phase 0: Bootstrap - prioritize SPEED (easiest farms)
+    if (phase === 0) {
+        const bootstrapOrder = ["n00dles", "foodnstuff", "sigma-cosmetics", "joesguns", "nectar-net"];
+        for (const server of bootstrapOrder) {
+            if (targets.includes(server)) return server;
         }
     }
     
-    // Phase 2: Expand to mid-tier servers
+    // Phase 1: Early scaling - prioritize medium-difficulty with good money
+    if (phase === 1) {
+        const earlyServers = ["foodnstuff", "joesguns", "nectar-net", "hong-fang-tea"];
+        const available = earlyServers.filter(s => targets.includes(s));
+        if (available.length > 0) {
+            // Pick highest money among available
+            return available.reduce((best, curr) => {
+                const bestMoney = ns.getServerMaxMoney(best);
+                const currMoney = ns.getServerMaxMoney(curr);
+                return currMoney > bestMoney ? curr : best;
+            });
+        }
+    }
+    
+    // Phase 2: Mid-game expansion
     if (phase === 2) {
-        const midServers = ["joesguns", "nectar-net", "hong-fang-tea", "harakiri-sushi", "iron-gym", "phantasy"];
+        const midServers = ["hong-fang-tea", "harakiri-sushi", "iron-gym", "phantasy", "summit"];
         const available = midServers.filter(s => targets.includes(s));
         if (available.length > 0) {
-            return available[0];
+            // Score by max money to security ratio (faster farming)
+            return available.reduce((best, curr) => {
+                const bestScore = ns.getServerMaxMoney(best) / (ns.getServerMinSecurityLevel(best) + 1);
+                const currScore = ns.getServerMaxMoney(curr) / (ns.getServerMinSecurityLevel(curr) + 1);
+                return currScore > bestScore ? curr : best;
+            });
         }
     }
     
-    // Phase 3+: Use profitability-based targeting
-    return getBestTargetByProfitInline(ns, targets);
+    // Phase 3+: Late game - pure profitability with consideration for growth potential
+    return selectBestTargetLateGame(ns, targets);
 }
 
 /**
  * Calculate target score based on profitability (money/time ratio)
+ * Considers: money, security, growth potential
  * Higher score = better target
  */
 function calculateProfitabilityScore(ns, server) {
@@ -100,29 +120,34 @@ function calculateProfitabilityScore(ns, server) {
     if (maxMoney <= 0) return 0;
     
     const minSecurity = ns.getServerMinSecurityLevel(server);
+    const growthRate = ns.getServerGrowth(server);
     const requiredHacking = ns.getServerRequiredHackingLevel(server);
     const player = ns.getPlayer();
     
-    // Base score: money
+    // Base score: money available
     let score = maxMoney;
     
-    // Reduce score if we're over-leveled (diminishing returns on super-easy servers)
-    if (requiredHacking < player.skills.hacking * 0.3) {
-        score *= 0.5;
-    }
+    // Security penalty (lower security = faster prep)
+    score *= Math.pow(0.9, minSecurity);
     
-    // Reduce score if security is high
-    if (minSecurity > 10) {
-        score *= 0.8;
+    // Growth bonus (higher growth = faster recovery after hack)
+    score *= Math.pow(1.05, Math.min(growthRate, 100));
+    
+    // Avoid overkill penalty: if we're WAY over-leveled, reduce score
+    if (requiredHacking < player.skills.hacking * 0.2) {
+        score *= 0.4; // Diminishing returns on trivial servers
+    } else if (requiredHacking < player.skills.hacking * 0.5) {
+        score *= 0.7; // Still less efficient than challenging targets
     }
     
     return score;
 }
 
 /**
- * Get best target by profitability (money gain per hack)
+ * Late-game target selection with consideration for batch timing
+ * Picks high-money targets that compress well for HGW batching
  */
-function getBestTargetByProfitInline(ns, servers) {
+function selectBestTargetLateGame(ns, servers) {
     let bestTarget = null;
     let bestScore = 0;
     
@@ -395,8 +420,8 @@ function getHackableServersInline(ns) {
 }
 
 /**
- * Get best target server based on profitability score (inline)
+ * Get best target by profitability (money gain per hack)
  */
-function getBestTargetInline(ns, servers) {
-    return getBestTargetByProfitInline(ns, servers);
+function getBestTargetByProfitInline(ns, servers) {
+    return selectBestTargetLateGame(ns, servers);
 }

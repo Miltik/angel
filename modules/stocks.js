@@ -75,7 +75,8 @@ function hasStockAccess(ns) {
 }
 
 /**
- * Process stock trading with phase-aware spending
+ * Process stock trading with phase-aware spending and aggressive tactics
+ * Late game: More aggressive with lower buy thresholds and profit-taking
  */
 async function processStocks(ns, gamePhase) {
     const phaseConfig = getPhaseConfig(gamePhase);
@@ -83,35 +84,71 @@ async function processStocks(ns, gamePhase) {
     const money = ns.getServerMoneyAvailable("home");
     
     // Phase-aware reserve and spending
-    const reserveRatio = gamePhase >= 4 ? 0.1 : 0.3;  // P4 spends more on stocks, earlier phases reserve
+    const reserveRatio = gamePhase >= 4 ? 0.05 : 0.2;  // P4 spends MORE on stocks
     const reserve = money * reserveRatio;
-    const budget = Math.max(0, (money - reserve) * (config.stocks.maxSpendRatio || 0.1));
+    const potentialBudget = money - reserve;
+    const budget = Math.max(0, potentialBudget * getDynamicSpendRatio(gamePhase));
     
     let bought = 0;
     let sold = 0;
     let invested = 0;
+    let profits = 0;
 
     for (const sym of symbols) {
         const forecast = ns.stock.getForecast(sym);
         const position = ns.stock.getPosition(sym);
         const shares = position[0];
         const avgPrice = position[1];
+        const currentPrice = ns.stock.getAskPrice(sym);
         const maxShares = ns.stock.getMaxShares(sym);
+        
+        // Calculate current profit/loss
+        const profitPerShare = currentPrice - avgPrice;
+        const totalProfit = profitPerShare * shares;
 
-        // SELL: Forecast poor or position strong
-        if (shares > 0 && forecast <= (config.stocks.sellForecast || 0.52)) {
-            const profit = (ns.stock.getBidPrice(sym) - avgPrice) * shares;
+        // PROFIT TAKING: Sell winners at phase-aware thresholds
+        // P3-4: More aggressive profit-taking (15%+ gains)
+        const profitThreshold = gamePhase >= 3 ? 0.15 : 0.25;
+        const profitRatio = avgPrice > 0 ? profitPerShare / avgPrice : 0;
+        
+        if (shares > 0 && profitRatio >= profitThreshold) {
             ns.stock.sellStock(sym, shares);
-            log(ns, `📈 Sold ${shares} ${sym} | Profit: ${formatMoney(profit)}`, "SUCCESS");
+            log(ns, `📈 PROFIT: Sold ${shares} ${sym} | Gain: +${(profitRatio * 100).toFixed(1)}% (${formatMoney(totalProfit)})`, "SUCCESS");
+            sold++;
+            profits += totalProfit;
+            continue;
+        }
+
+        // STOP LOSS: Sell losers at -10% to minimize bleeding
+        if (shares > 0 && profitRatio < -0.10) {
+            ns.stock.sellStock(sym, shares);
+            log(ns, `📈 STOP LOSS: Sold ${shares} ${sym} | Loss: ${(profitRatio * 100).toFixed(1)}%`, "WARN");
             sold++;
             continue;
         }
 
-        // BUY: Strong forecast and capital available
-        const minForecast = config.stocks.minForecast || 0.55;
-        if (forecast >= minForecast && budget > 0 && invested < budget) {
+        // SELL: Forecast turned poor (< 50%)
+        if (shares > 0 && forecast <= 0.50) {
+            ns.stock.sellStock(sym, shares);
+            log(ns, `📈 SOLD: ${shares} ${sym} | Forecast: ${(forecast * 100).toFixed(1)}%`, "INFO");
+            sold++;
+            continue;
+        }
+
+        // BUY: Strong forecast with phase-aware thresholds
+        // P3+: Lower threshold (0.50 = slight positive), earlier phases need 0.55+
+        const minForecast = gamePhase >= 3 ? 0.50 : 0.55;
+        const isGoodForecast = forecast >= minForecast;
+        
+        if (isGoodForecast && budget > 0 && invested < budget) {
             const price = ns.stock.getAskPrice(sym);
-            const desired = Math.floor(maxShares * (config.stocks.maxPositionRatio || 0.3));
+            
+            // Position sizing based on forecast confidence
+            const confidence = Math.min((forecast - 0.5) * 10, 1.0); // 0 to 1
+            const baseRatio = gamePhase >= 3 ? 0.4 : 0.2;
+            const positionRatio = baseRatio * (0.5 + confidence * 0.5); // Scale from 0.5x to 1.5x base
+            
+            const desired = Math.floor(maxShares * positionRatio);
             const toBuy = Math.max(0, desired - shares);
             const budgetLeft = budget - invested;
             const affordable = Math.floor(budgetLeft / price);
@@ -121,13 +158,26 @@ async function processStocks(ns, gamePhase) {
                 ns.stock.buyStock(sym, qty);
                 const cost = qty * price;
                 invested += cost;
-                log(ns, `📈 Bought ${qty} ${sym} | Forecast: ${(forecast * 100).toFixed(1)}% | Cost: ${formatMoney(cost)}`, "SUCCESS");
+                log(ns, `📈 BUY: ${qty} ${sym} | Forecast: ${(forecast * 100).toFixed(1)}% | Confidence: ${(confidence * 100).toFixed(0)}% | Cost: ${formatMoney(cost)}`, "SUCCESS");
                 bought++;
             }
         }
     }
 
-    if (bought > 0 || sold > 0) {
-        log(ns, `📈 [P${gamePhase}] Traded: +${bought} / -${sold} | Portfolio: ${formatMoney(invested)} invested`, "INFO");
+    if (bought > 0 || sold > 0 || profits > 0) {
+        log(ns, `📈 [P${gamePhase}] Traded: +${bought}/-${sold} | Profits: ${formatMoney(profits)} | Invested: ${formatMoney(invested)}`, "INFO");
     }
+}
+
+/**
+ * Get dynamic spend ratio based on game phase
+ * P3+: Aggressive (15-20%), P0-2: Conservative (5-10%)
+ */
+function getDynamicSpendRatio(gamePhase) {
+    switch (gamePhase) {
+        case 3: return 0.15;    // Gang phase: start building positions
+        case 4: return 0.20;    // Late game: aggressive
+        default: return 0.08;   // Early/mid: conservative
+    }
+}
 }

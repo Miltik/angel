@@ -211,6 +211,12 @@ async function ensureModulesRunning(ns) {
         await ns.sleep(1500);
     }
     
+    // Dashboard module - monitoring (low RAM)
+    if (config.orchestrator.enableDashboard) {
+        await ensureModuleRunning(ns, SCRIPTS.dashboard, "Dashboard");
+        await ns.sleep(1500);
+    }
+    
     // Hacking module - start last as it consumes most RAM
     if (config.orchestrator.enableHacking) {
         await ensureModuleRunning(ns, SCRIPTS.hacking, "Hacking");

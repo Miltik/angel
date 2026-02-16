@@ -17,6 +17,13 @@ import { createWindow } from "/angel/modules/uiManager.js";
 const PHASE_PORT = 7;
 const ACTIVITY_OWNER = "activity";
 const ACTIVITY_LOCK_TTL = 180000;
+const CRIME_FACTIONS = [
+    "Slum Snakes",
+    "Tetrads",
+    "Speakers for the Dead",
+    "The Syndicate",
+    "The Dark Army",
+];
 
 // State tracking
 let lastState = {
@@ -261,6 +268,12 @@ function chooseActivity(ns, gamePhase) {
     const player = ns.getPlayer();
     const money = ns.getServerMoneyAvailable("home");
     const targets = config.training?.targetStats || { strength: 60, defense: 60, dexterity: 60, agility: 60 };
+    const missingCrimeFactions = getMissingCrimeFactions(player);
+
+    // Force crime grind until crime factions are unlocked
+    if (missingCrimeFactions.length > 0) {
+        return "crime";
+    }
 
     const needsTraining = 
         player.skills.hacking < (config.training?.targetHacking || 75) ||
@@ -304,6 +317,11 @@ function chooseActivity(ns, gamePhase) {
     
     // All stats trained, no faction work needed - crime for money
     return "crime";
+}
+
+function getMissingCrimeFactions(player) {
+    const joined = new Set(player.factions || []);
+    return CRIME_FACTIONS.filter(faction => !joined.has(faction));
 }
 
 /**
@@ -561,94 +579,61 @@ async function doCompanyWork(ns, ui) {
  * Prefers higher-tier crimes for better money, falls back to low-tier if success chance is too low
  */
 function selectCrime(ns) {
-    let best = null;
-    let bestScore = 0;
-    let bestChance = 0;
-
-    const crimes = config.crime?.crimes || [
-        "Shoplift",
-        "Rob Store",
-        "Mug Someone",
-        "Larceny",
-        "Deal Drugs",
-        "Bond Forgery",
-        "Grand Theft Auto",
-        "Traffick Illegal Arms",
-        "Assassination",
+    const crimesByTierDesc = [
         "Heist",
+        "Assassination",
+        "Traffick Illegal Arms",
+        "Grand Theft Auto",
+        "Bond Forgery",
+        "Deal Drugs",
+        "Larceny",
+        "Mug Someone",
+        "Rob Store",
+        "Shoplift",
     ];
-
-    const money = ns.getServerMoneyAvailable("home") + ns.getPlayer().money;
-    const tierThresholds = config.crime?.tierThresholds || {
-        high: 100000000,
-        mid: 10000000,
-        low: 0,
-    };
-
-    // Determine which tier crimes we should prefer
-    let preferredTier = "low";
-    if (money >= tierThresholds.high) {
-        preferredTier = "high";
-    } else if (money >= tierThresholds.mid) {
-        preferredTier = "mid";
-    }
-
-    // Crime tiers for priority weighting
-    const crimeTiers = {
-        "Shoplift": "low",
-        "Rob Store": "low",
-        "Mug Someone": "low",
-        "Larceny": "low",
-        "Deal Drugs": "mid",
-        "Bond Forgery": "mid",
-        "Grand Theft Auto": "mid",
-        "Traffick Illegal Arms": "high",
-        "Assassination": "high",
-        "Heist": "high",
-    };
 
     const minSuccessChance = config.crime?.minSuccessChance || 0.25;
 
-    for (const crime of crimes) {
+    // Highest available crime first: pick first crime that clears success threshold
+    for (const crime of crimesByTierDesc) {
         try {
-            const stats = ns.singularity.getCrimeStats(crime);
             const chance = ns.singularity.getCrimeChance(crime);
-            const tier = crimeTiers[crime] || "low";
-
-            // Strict minimum for any crime
-            if (chance < minSuccessChance) continue;
-
-            // Prefer crimes from our current tier
-            const tierWeight = tier === preferredTier ? 1.5 : (tier < preferredTier ? 0.5 : 1.0);
-
-            // Score: (money * chance * tierWeight) / time
-            const score = (stats.money * chance * tierWeight) / Math.max(1, stats.time);
-
-            if (score > bestScore || (score === bestScore && chance > bestChance)) {
-                bestScore = score;
-                bestChance = chance;
-                best = crime;
+            if (chance >= minSuccessChance) {
+                return crime;
             }
         } catch (e) {}
     }
 
-    // Fallback: pick highest success chance crime if nothing scored well
-    if (!best) {
-        let fallbackBest = null;
-        let fallbackChance = 0;
-        for (const crime of crimes) {
-            try {
-                const chance = ns.singularity.getCrimeChance(crime);
-                if (chance > fallbackChance) {
-                    fallbackChance = chance;
-                    fallbackBest = crime;
-                }
-            } catch (e) {}
-        }
-        best = fallbackBest || crimes[0];
+    // Fallback: pick highest success chance crime if no crime meets threshold
+    let fallbackBest = null;
+    let fallbackChance = 0;
+    for (const crime of crimesByTierDesc) {
+        try {
+            const chance = ns.singularity.getCrimeChance(crime);
+            if (chance > fallbackChance) {
+                fallbackChance = chance;
+                fallbackBest = crime;
+            }
+        } catch (e) {}
     }
 
-    return best;
+    if (fallbackBest) {
+        return fallbackBest;
+    }
+
+    const configuredCrimes = config.crime?.crimes;
+    if (Array.isArray(configuredCrimes) && configuredCrimes.length > 0) {
+        for (const crime of configuredCrimes) {
+            try {
+                ns.singularity.getCrimeChance(crime);
+                return crime;
+            } catch (e) {
+                // invalid/unavailable crime label
+            }
+        }
+    }
+
+    return "Shoplift";
 }
 
 /**

@@ -314,6 +314,9 @@ function hasAnyViableFactionWork(ns) {
     const owned = ns.singularity.getOwnedAugmentations(true);
 
     for (const faction of player.factions) {
+        if (faction === "NiteSec") {
+            continue;
+        }
         const augments = ns.singularity.getAugmentationsFromFaction(faction);
         
         // Check if ANY augment in this faction is unowned
@@ -424,6 +427,9 @@ async function doFactionWork(ns, ui) {
 
     // Filter to factions with actual unowned augments
     const factions = player.factions.filter(f => {
+        if (f === "NiteSec") {
+            return false;
+        }
         const augments = ns.singularity.getAugmentationsFromFaction(f);
         return augments.some(aug => !owned.includes(aug));  // Must have unowned augs
     });

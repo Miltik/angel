@@ -63,18 +63,26 @@ async function phaseBuyPrograms(ns) {
         // Buy TOR if needed (autoBuyTor default: true)
         if (!hasTor(ns)) {
             const money = ns.getServerMoneyAvailable("home");
+            ns.print(`[Programs] TOR not available. Money: $${money.toLocaleString()}`);
+            
             if (money >= 200000) {
                 try {
                     ns.singularity.purchaseTor();
-                    ns.print("[Programs] Purchased TOR");
-                    await ns.sleep(1000);
+                    await ns.sleep(2000);  // Give it time to process
+                    
+                    // Verify TOR was actually purchased
+                    if (hasTor(ns)) {
+                        ns.print("[Programs] Purchased TOR successfully");
+                    } else {
+                        ns.print("[Programs] TOR purchase completed but verification failed");
+                    }
                 } catch (e) {
                     ns.print(`[Programs] TOR purchase failed: ${e}`);
                 }
             } else {
                 ns.print(`[Programs] Need $${(200000 - money).toLocaleString()} more for TOR`);
-                return false; // Still need TOR
             }
+            return false; // Still need TOR, wait for next loop
         }
         
         // Buy programs (autoBuyPrograms default: true, preferBuying default: true)
@@ -137,7 +145,18 @@ async function phaseBuyPrograms(ns) {
 
 function hasTor(ns) {
     try {
-        ns.singularity.getDarkwebPrograms();
+        // Check if we can access darkweb by trying to get a valid program cost
+        // If TOR is not available, all programs return -1
+        // If TOR is available, at least one program will have a valid cost > 0
+        const testCost = ns.singularity.getDarkwebProgramCost("BruteSSH.exe");
+        // If BruteSSH returns -1, we either don't have TOR or it's already owned
+        // Try another one
+        const testCost2 = ns.singularity.getDarkwebProgramCost("HTTPWorm.exe");
+        // If both return -1, check if they're already owned
+        if (testCost === -1 && testCost2 === -1) {
+            // They're both -1, so likely no TOR
+            return ns.fileExists("BruteSSH.exe", "home") || ns.fileExists("HTTPWorm.exe", "home");
+        }
         return true;
     } catch (e) {
         return false;

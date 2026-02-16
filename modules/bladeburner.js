@@ -6,6 +6,7 @@
  */
 import { config } from "/angel/config.js";
 import { createWindow } from "/angel/modules/uiManager.js";
+import { log } from "/angel/utils.js";
 
 const PHASE_PORT = 7;
 
@@ -41,19 +42,19 @@ export async function main(ns) {
     }
 
     if (!ns.bladeburner.inBladeburner()) {
-        log(ns, "⚔️  Not in Bladeburner yet - idle", "WARN");
+        ui.log("⚔️  Not in Bladeburner yet - idle", "warn");
         while (true) {
             await ns.sleep(60000);
         }
     }
 
-    log(ns, "⚔️  Bladeburner active", "SUCCESS");
+    ui.log("⚔️  Bladeburner active", "success");
 
     while (true) {
         try {
             const gamePhase = readGamePhase(ns);
             if (gamePhase < 4) {
-                log(ns, "⚔️  Phase dropped below 4 - pausing", "WARN");
+                ui.log("⚔️  Phase dropped below 4 - pausing", "warn");
                 await ns.sleep(60000);
                 continue;
             }
@@ -62,19 +63,19 @@ export async function main(ns) {
             if (action) {
                 const success = ns.bladeburner.startAction(action.type, action.name);
                 if (success) {
-                    log(ns, `⚔️  Started ${action.type}: ${action.name} (Success: ${(action.chance * 100).toFixed(1)}%)`, "DEBUG");
+                    ui.log(`⚔️  Started ${action.type}: ${action.name} (Success: ${(action.chance * 100).toFixed(1)}%)`, "debug");
                 }
             }
 
             const stats = ns.bladeburner.getStamina();
             const staminaRatio = stats[0] / stats[1];
             if (staminaRatio < 0.5) {
-                log(ns, `⚔️  Stamina low (${(staminaRatio * 100).toFixed(0)}%) - resting`, "INFO");
+                ui.log(`⚔️  Stamina low (${(staminaRatio * 100).toFixed(0)}%) - resting`, "info");
             }
 
             await ns.sleep(config.bladeburner.loopDelay || 30000);
         } catch (e) {
-            log(ns, `⚔️  Error: ${e}`, "ERROR");
+            ui.log(`⚔️  Error: ${e}`, "error");
             await ns.sleep(5000);
         }
     }

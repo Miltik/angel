@@ -13,6 +13,7 @@ let lastState = {
     rootedServers: 0,
     backdooredServers: 0,
     loopCount: 0,
+    pendingConnection: null, // Store connection request from click handler
 };
 
 /**
@@ -101,6 +102,23 @@ export async function main(ns) {
         lastState.loopCount++;
         const serverInfo = new Map();
         
+        // Process pending connection request (if any)
+        if (lastState.pendingConnection) {
+            const serverName = lastState.pendingConnection;
+            lastState.pendingConnection = null;
+            
+            try {
+                const success = await ns.singularity.connect(serverName);
+                if (success) {
+                    ns.tprint(`✅ Connected to ${serverName}`);
+                } else {
+                    ns.tprint(`❌ Failed to connect to ${serverName}`);
+                }
+            } catch (err) {
+                ns.tprint(`⚠️ Connect error: ${err.message}`);
+            }
+        }
+        
         // Get all servers and organize by depth
         const serversByDepth = [];
         scanNetworkByDepth(ns, "home", serverInfo, serversByDepth, 0, maxDepth, new Set());
@@ -187,21 +205,15 @@ export async function main(ns) {
         // Update the window content
         ui.update(html);
         
-        // Debug: Log state
-        if (lastState.loopCount === 1) {
-            ns.tprint("🔍 Network Map: First update complete");
-            ns.tprint(`🔍 Singularity available: ${typeof ns.singularity !== 'undefined'}`);
-        }
-        
         // Attach click handlers directly to DOM elements
         try {
             const allCards = document.querySelectorAll('.server-card');
             
             if (lastState.loopCount === 1) {
-                ns.tprint(`🔍 Found ${allCards.length} server cards in DOM`);
+                ns.tprint(`🔍 Network Map: Found ${allCards.length} server cards`);
             }
             
-            allCards.forEach((card, index) => {
+            allCards.forEach((card) => {
                 const serverName = card.getAttribute('data-server');
                 if (!serverName) return;
                 
@@ -209,41 +221,23 @@ export async function main(ns) {
                 const newCard = card.cloneNode(true);
                 card.parentNode.replaceChild(newCard, card);
                 
-                // Attach new listener
-                newCard.addEventListener('click', async () => {
-                    ns.tprint(`🖱️ Clicked on ${serverName}`);
-                    try {
-                        if (!ns.singularity) {
-                            ns.tprint(`❌ Singularity API not available! You need Source-File 4 (Singularity)`);
-                            return;
-                        }
-                        
-                        ns.tprint(`🔗 Attempting to connect to ${serverName}...`);
-                        const success = await ns.singularity.connect(serverName);
-                        if (success) {
-                            ns.tprint(`✅ Connected to ${serverName}`);
-                        } else {
-                            ns.tprint(`❌ Failed to connect to ${serverName}`);
-                        }
-                    } catch (err) {
-                        ns.tprint(`⚠️ Connect error: ${err.message}`);
-                    }
+                // Attach new listener - just set pending connection
+                newCard.addEventListener('click', () => {
+                    lastState.pendingConnection = serverName;
+                    console.log(`Click registered: ${serverName}`);
                 });
-                
-                // Debug: Log first few cards
-                if (lastState.loopCount === 1 && index < 3) {
-                    ns.tprint(`🔍 Attached listener to card ${index}: ${serverName}`);
-                }
             });
         } catch (err) {
-            ns.tprint(`❌ Error attaching listeners: ${err.message}`);
+            if (lastState.loopCount === 1) {
+                ns.tprint(`❌ Error attaching listeners: ${err.message}`);
+            }
         }
         
         lastState.totalServers = total;
         lastState.rootedServers = rooted;
         lastState.backdooredServers = backdoored;
         
-        await ns.sleep(2000); // Update every 2 seconds
+        await ns.sleep(100); // Faster update for responsive clicks
     }
 }
 

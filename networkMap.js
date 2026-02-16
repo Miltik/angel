@@ -45,10 +45,7 @@ const SERVER_TYPES = {
 export async function main(ns) {
     ns.disableLog("ALL");
     
-    const ui = createWindow("netmap", "🗺️ Network Map", 1000, 700, ns);
-    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    ui.log("🗺️ Network map initialized", "success");
-    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    const ui = createWindow("netmap", "🗺️ Network Map", 1200, 800, ns);
     
     const flags = ns.flags([
         ["rooted", false],
@@ -100,50 +97,21 @@ export async function main(ns) {
         "Snowball Operations",
     ];
     
+    // Add custom CSS for visual map
+    addMapStyles(ui);
+    
     while (true) {
         lastState.loopCount++;
-        ui.clear();
         const serverInfo = new Map();
         
-        // Get all servers
-        const rootServer = getAllServersRecursive(ns, "home", serverInfo);
+        // Get all servers and organize by depth
+        const serversByDepth = [];
+        scanNetworkByDepth(ns, "home", serverInfo, serversByDepth, 0, maxDepth, new Set());
         
-        // Display header with visual separator
-        ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        ui.log("🗺️  NETWORK MAP", "info");
-        ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        ui.log("");
+        // Build HTML for visual map
+        let html = '<div class="network-map">';
         
-        // Display legend with emoji
-        ui.log("📋 Legend:", "info");
-        ui.log(`  ✅ = Rooted    ⭐ = Backdoored    ⚡ = Admin    🎯 = Targeting    ⭕ = Unrooted`);
-        ui.log(`  🏠 = Home      🏢 = Company       🎖️ = Faction  💾 = Purchased`);
-        
-        if (flags.rooted || flags.unrooted || flags.backdoored || flags.hackable || flags.pserv) {
-            ui.log("");
-            ui.log("🔍 Filters Active:", "info");
-            const activeFilters = [];
-            if (flags.rooted) activeFilters.push("rooted");
-            if (flags.unrooted) activeFilters.push("unrooted");
-            if (flags.backdoored) activeFilters.push("backdoored");
-            if (flags.hackable) activeFilters.push("hackable");
-            if (flags.pserv) activeFilters.push("purchased");
-            ui.log(`  ${activeFilters.join(", ")}`);
-        }
-        
-        ui.log("");
-        ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        ui.log("");
-        
-        // Organize servers by type
-        if (rootServer) {
-            displayServerTree(ns, ui, rootServer, "", serverInfo, factionServers, companyServers, flags, maxDepth, 0, true);
-        }
-        
-        // Display statistics
-        ui.log("");
-        ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        
+        // Stats header
         let rooted = 0;
         let backdoored = 0;
         let total = 0;
@@ -154,42 +122,230 @@ export async function main(ns) {
             if (info.hasBackdoor) backdoored++;
         });
         
-        // Only log stats if changed or every 15 loops (~30 seconds)
-        if (total !== lastState.totalServers || 
-            rooted !== lastState.rootedServers || 
-            backdoored !== lastState.backdooredServers ||
-            lastState.loopCount % 15 === 0) {
+        const rootPct = total > 0 ? ((rooted / total) * 100).toFixed(0) : 0;
+        const backdoorPct = total > 0 ? ((backdoored / total) * 100).toFixed(0) : 0;
+        
+        html += `<div class="stats-header">`;
+        html += `<div class="stat-box">📊 ${total} Servers</div>`;
+        html += `<div class="stat-box">✅ ${rooted} Rooted (${rootPct}%)</div>`;
+        html += `<div class="stat-box">⭐ ${backdoored} Backdoored (${backdoorPct}%)</div>`;
+        html += `</div>`;
+        
+        // Legend
+        html += `<div class="legend">`;
+        html += `<span class="legend-item">🏠 Home</span>`;
+        html += `<span class="legend-item">🎖️ Faction</span>`;
+        html += `<span class="legend-item">🏢 Company</span>`;
+        html += `<span class="legend-item">💾 Purchased</span>`;
+        html += `<span class="legend-item">✅ Rooted</span>`;
+        html += `<span class="legend-item">⭐ Backdoored</span>`;
+        html += `</div>`;
+        
+        // Display servers by depth (layers)
+        for (let depth = 0; depth < serversByDepth.length && depth <= maxDepth; depth++) {
+            if (!serversByDepth[depth] || serversByDepth[depth].length === 0) continue;
             
-            ui.log(`📊 Total: ${total} servers | ✅ Rooted: ${rooted} | ⭐ Backdoored: ${backdoored}`, "info");
-            const rootPct = total > 0 ? ((rooted / total) * 100).toFixed(1) : 0;
-            const backdoorPct = total > 0 ? ((backdoored / total) * 100).toFixed(1) : 0;
-            ui.log(`📈 Progress: ${rootPct}% rooted, ${backdoorPct}% backdoored`, "info");
+            const servers = serversByDepth[depth];
+            html += `<div class="depth-layer">`;
+            html += `<div class="depth-label">Layer ${depth}</div>`;
+            html += `<div class="server-grid">`;
             
-            lastState.totalServers = total;
-            lastState.rootedServers = rooted;
-            lastState.backdooredServers = backdoored;
+            for (const serverName of servers) {
+                const info = serverInfo.get(serverName);
+                if (!info) continue;
+                
+                // Apply filters
+                if (!matchesFilters(info, flags)) continue;
+                
+                const serverType = getServerType(serverName, factionServers, companyServers, info);
+                const statusClass = getStatusClass(info);
+                const icon = getServerIcon(serverName, factionServers, companyServers, info);
+                
+                html += `<div class="server-card ${statusClass} ${serverType}">`;
+                html += `<div class="server-icon">${icon}</div>`;
+                html += `<div class="server-name">${serverName}</div>`;
+                
+                if (info.canHack && info.maxMoney > 0) {
+                    const moneyPct = info.maxMoney > 0 ? Math.floor((info.currMoney / info.maxMoney) * 100) : 0;
+                    html += `<div class="server-stats">`;
+                    html += `<div class="stat">L${info.requiredHackingLevel}</div>`;
+                    html += `<div class="stat">💰${moneyPct}%</div>`;
+                    html += `<div class="stat">📈${info.growth}</div>`;
+                    html += `</div>`;
+                } else if (info.maxRam > 0) {
+                    html += `<div class="server-stats">`;
+                    html += `<div class="stat">💾${formatRam(info.maxRam)}</div>`;
+                    html += `</div>`;
+                }
+                
+                html += `</div>`;
+            }
+            
+            html += `</div></div>`;
         }
+        
+        html += '</div>';
+        
+        // Update the window content
+        ui.update(html);
+        
+        lastState.totalServers = total;
+        lastState.rootedServers = rooted;
+        lastState.backdooredServers = backdoored;
         
         await ns.sleep(2000); // Update every 2 seconds
     }
 }
 
 /**
- * Recursively get all servers from a starting point
+ * Add CSS styles for visual map (only done once)
  */
-function getAllServersRecursive(ns, server, infoMap) {
-    if (infoMap.has(server)) {
-        return infoMap.get(server);
+let stylesAdded = false;
+function addMapStyles(ui) {
+    if (stylesAdded) return;
+    stylesAdded = true;
+    
+    // Check if we can inject a style tag into the document
+    try {
+        const existingStyle = document.getElementById("networkMapStyles");
+        if (existingStyle) return;
+        
+        const style = document.createElement("style");
+        style.id = "networkMapStyles";
+        style.textContent = `
+            .stats-header {
+                display: flex;
+                gap: 15px;
+                margin-bottom: 15px;
+                padding: 10px;
+                background: rgba(0, 255, 0, 0.05);
+                border: 1px solid rgba(0, 255, 0, 0.3);
+                border-radius: 4px;
+            }
+            .stat-box {
+                padding: 5px 10px;
+                background: rgba(0, 255, 0, 0.1);
+                border-radius: 3px;
+                font-weight: bold;
+            }
+            .legend {
+                display: flex;
+                gap: 15px;
+                margin-bottom: 15px;
+                padding: 8px;
+                background: rgba(0, 255, 0, 0.05);
+                border: 1px solid rgba(0, 255, 0, 0.2);
+                border-radius: 4px;
+                font-size: 10px;
+            }
+            .legend-item {
+                padding: 2px 6px;
+            }
+            .depth-layer {
+                margin-bottom: 20px;
+            }
+            .depth-label {
+                font-weight: bold;
+                margin-bottom: 8px;
+                padding: 5px 10px;
+                background: rgba(0, 255, 0, 0.15);
+                border-left: 3px solid #0f0;
+                display: inline-block;
+            }
+            .server-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+                gap: 8px;
+                margin-top: 8px;
+            }
+            .server-card {
+                border: 1px solid rgba(0, 255, 0, 0.3);
+                border-radius: 4px;
+                padding: 8px;
+                background: rgba(0, 0, 0, 0.3);
+                transition: all 0.2s;
+                cursor: pointer;
+            }
+            .server-card:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 4px 8px rgba(0, 255, 0, 0.2);
+                border-color: rgba(0, 255, 0, 0.6);
+            }
+            .server-card.backdoored {
+                border-color: #ffd700;
+                background: rgba(255, 215, 0, 0.1);
+            }
+            .server-card.rooted {
+                border-color: #00ff00;
+                background: rgba(0, 255, 0, 0.08);
+            }
+            .server-card.unrooted {
+                border-color: #ff4444;
+                background: rgba(255, 68, 68, 0.05);
+            }
+            .server-card.home-type {
+                border: 2px solid #00ffff;
+                background: rgba(0, 255, 255, 0.1);
+            }
+            .server-card.faction-type {
+                border-color: #ff00ff;
+                background: rgba(255, 0, 255, 0.08);
+            }
+            .server-icon {
+                font-size: 20px;
+                text-align: center;
+                margin-bottom: 5px;
+            }
+            .server-name {
+                font-size: 10px;
+                text-align: center;
+                margin-bottom: 5px;
+                font-weight: bold;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+            .server-stats {
+                display: flex;
+                justify-content: space-around;
+                font-size: 9px;
+                margin-top: 5px;
+                padding-top: 5px;
+                border-top: 1px solid rgba(0, 255, 0, 0.2);
+            }
+            .stat {
+                padding: 2px 4px;
+                background: rgba(0, 255, 0, 0.1);
+                border-radius: 2px;
+            }
+        `;
+        document.head.appendChild(style);
+    } catch (e) {
+        // Silently fail if DOM not available
     }
+}
+
+/**
+ * Scan network and organize servers by depth
+ */
+function scanNetworkByDepth(ns, server, infoMap, byDepth, depth, maxDepth, visited) {
+    if (depth > maxDepth || visited.has(server)) return;
+    visited.add(server);
+    
+    // Ensure depth array exists
+    if (!byDepth[depth]) byDepth[depth] = [];
+    byDepth[depth].push(server);
+    
+    // Get server info
     const srv = ns.getServer(server);
     const serverData = {
         name: server,
-        children: [],
+        depth: depth,
         hasRoot: ns.hasRootAccess(server),
         hasBackdoor: srv.backdoorInstalled,
         isPurchased: srv.purchasedByPlayer,
         portsRequired: srv.numOpenPortsRequired,
-        canHack: canHackServer(ns, server),
+        canHack: ns.getServerMaxMoney(server) > 0,
         maxMoney: ns.getServerMaxMoney(server),
         currMoney: ns.getServerMoneyAvailable(server),
         minSecurity: ns.getServerMinSecurityLevel(server),
@@ -202,110 +358,53 @@ function getAllServersRecursive(ns, server, infoMap) {
     
     infoMap.set(server, serverData);
     
-    // Get child servers (servers this one connects to)
-    const scan = getScan(ns, server);
-    for (const child of scan) {
-        if (child !== "home" && !infoMap.has(child)) {
-            const childData = getAllServersRecursive(ns, child, infoMap);
-            serverData.children.push(childData);
+    // Scan children
+    const connections = ns.scan(server);
+    for (const child of connections) {
+        if (!visited.has(child)) {
+            scanNetworkByDepth(ns, child, infoMap, byDepth, depth + 1, maxDepth, visited);
         }
     }
-    
-    return serverData;
 }
 
 /**
- * Display server tree with hierarchy
+ * Get server type class name
  */
-function displayServerTree(ns, ui, server, prefix, infoMap, factionServers, companyServers, flags, maxDepth, depth = 0, isLast = true) {
-    if (depth > maxDepth) return;
-    
-    const matches = matchesFilters(server, flags);
-    const childCandidates = server.children || [];
-    const renderChildren = childCandidates.filter(child => hasMatchingDescendant(child, flags, maxDepth, depth + 1));
-    const shouldRender = matches || renderChildren.length > 0 || server.name === "home";
-    if (!shouldRender) return;
-    
-    const status = getServerStatus(server, factionServers, companyServers);
-    const connector = depth === 0 ? "" : (isLast ? "└─" : "├─");
-    const linePrefix = depth === 0 ? "" : prefix + connector + " ";
-    const typeTag = status.type;
-    const nameCol = server.name.padEnd(20);
-    
-    let displayLine = `${linePrefix}${status.icon} ${nameCol} ${typeTag}`;
-    
-    if (server.canHack && server.maxMoney > 0) {
-        const hackLevel = "L" + server.requiredHackingLevel.toString().padStart(4);
-        const moneyStr = formatMoney(server.currMoney) + "/" + formatMoney(server.maxMoney);
-        const moneyPct = formatPercent(server.currMoney, server.maxMoney).padStart(4);
-        const secDelta = (server.currSecurity - server.minSecurity).toFixed(1).padStart(5);
-        const growth = server.growth.toString().padStart(3);
-        displayLine += ` ${hackLevel} 💰${moneyStr.padEnd(17)} ${moneyPct}% 🔒+${secDelta} 📈${growth}`;
-    } else if (server.maxRam > 0) {
-        const ramStr = formatRam(server.usedRam) + "/" + formatRam(server.maxRam);
-        displayLine += ` 💾 ${ramStr}`;
-    }
-    
-    ui.log(displayLine);
-    
-    if (renderChildren.length > 0) {
-        const newPrefix = depth === 0 ? "" : prefix + (isLast ? "   " : "│  ");
-        for (let i = 0; i < renderChildren.length; i++) {
-            const child = renderChildren[i];
-            const childIsLast = i === renderChildren.length - 1;
-            displayServerTree(ns, ui, child, newPrefix, infoMap, factionServers, companyServers, flags, maxDepth, depth + 1, childIsLast);
-        }
-    }
+function getServerType(serverName, factionServers, companyServers, info) {
+    if (serverName === "home") return "home-type";
+    if (factionServers.includes(serverName)) return "faction-type";
+    if (companyServers.includes(serverName)) return "company-type";
+    if (info.isPurchased) return "purchased-type";
+    return "regular-type";
 }
 
 /**
- * Get server status icon and type info
+ * Get server status class
  */
-function getServerStatus(server, factionServers, companyServers) {
-    let icon = STATUS_COLORS.unrooted;
-    let type = "❓";
-    
-    if (server.name === "home") {
-        icon = "🏠";
-        type = SERVER_TYPES.home;
-    } else if (factionServers.includes(server.name)) {
-        if (server.hasBackdoor) {
-            icon = STATUS_COLORS.backdoored;
-        } else if (server.hasRoot) {
-            icon = STATUS_COLORS.rooted;
-        }
-        type = SERVER_TYPES.faction;
-    } else if (companyServers.includes(server.name)) {
-        if (server.hasRoot) {
-            icon = STATUS_COLORS.rooted;
-        }
-        type = SERVER_TYPES.company;
-    } else if (server.isPurchased) {
-        icon = "💾";
-        type = SERVER_TYPES["player-server"];
-    } else {
-        if (server.hasBackdoor) {
-            icon = STATUS_COLORS.backdoored;
-        } else if (server.hasRoot) {
-            icon = STATUS_COLORS.rooted;
-        } else if (server.canHack) {
-            icon = STATUS_COLORS.unrooted;
-        }
-        type = "⚙️";
-    }
-    
-    return { icon, type };
+function getStatusClass(info) {
+    if (info.hasBackdoor) return "backdoored";
+    if (info.hasRoot) return "rooted";
+    return "unrooted";
 }
 
 /**
- * Check if server can be hacked
+ * Get server icon
  */
-function canHackServer(ns, server) {
-    return ns.getServerMaxMoney(server) > 0;
+function getServerIcon(serverName, factionServers, companyServers, info) {
+    if (serverName === "home") return "🏠";
+    if (factionServers.includes(serverName)) {
+        if (info.hasBackdoor) return "⭐";
+        return "🎖️";
+    }
+    if (companyServers.includes(serverName)) return "🏢";
+    if (info.isPurchased) return "💾";
+    if (info.hasBackdoor) return "⭐";
+    if (info.hasRoot) return "✅";
+    return "⭕";
 }
 
 /**
- * Check if a server matches active filters
+ * Check if server matches active filters
  */
 function matchesFilters(server, flags) {
     const anyFilter = flags.rooted || flags.unrooted || flags.backdoored || flags.hackable || flags.pserv;
@@ -322,20 +421,11 @@ function matchesFilters(server, flags) {
 }
 
 /**
- * Check if a server or its descendants match filters
+ * Format RAM values
  */
-function hasMatchingDescendant(server, flags, maxDepth, depth) {
-    if (depth > maxDepth) return false;
-    if (matchesFilters(server, flags)) return true;
-    if (!server.children || server.children.length === 0) return false;
-    
-    for (const child of server.children) {
-        if (hasMatchingDescendant(child, flags, maxDepth, depth + 1)) {
-            return true;
-        }
-    }
-    
-    return false;
+function formatRam(ram) {
+    if (ram >= 1000) return (ram / 1000).toFixed(0) + "T";
+    return ram.toFixed(0) + "G";
 }
 
 /**
@@ -352,20 +442,4 @@ function formatMoney(money) {
     }
     
     return amount.toFixed(1) + units[unitIndex];
-}
-
-/**
- * Format RAM values
- */
-function formatRam(ram) {
-    return formatMoney(ram) + "GB";
-}
-
-/**
- * Format percent with cap at 100
- */
-function formatPercent(current, max) {
-    if (max <= 0) return "0";
-    const pct = Math.min(100, Math.floor((current / max) * 100));
-    return pct.toString();
 }

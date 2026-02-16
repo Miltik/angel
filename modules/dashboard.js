@@ -166,6 +166,22 @@ async function updateDashboard(ns, ui) {
             // Singularity not available
         }
         
+        // Coding Contracts Status
+        try {
+            displayContractsStatus(ui, ns);
+            ui.log("", "info");
+        } catch (e) {
+            // Contracts not available
+        }
+        
+        // Formulas.exe Farm Status
+        try {
+            displayFormulasStatus(ui, ns);
+            ui.log("", "info");
+        } catch (e) {
+            // Formulas not available
+        }
+        
         // Network & Combat Stats
         try {
             displayNetworkStatus(ui, ns);
@@ -404,6 +420,77 @@ function displayProgramsStatus(ui, ns) {
     } catch (e) {
         // Singularity not available
     }
+}
+
+/**
+ * Display Coding Contracts status
+ */
+function displayContractsStatus(ui, ns) {
+    try {
+        let contractCount = 0;
+        let totalRewards = 0;
+        
+        // Scan all servers for contracts
+        const servers = getAllServersForDashboard(ns);
+        for (const server of servers) {
+            try {
+                const contracts = ns.codingcontract.listContracts(server);
+                contractCount += contracts.length;
+            } catch (e) {
+                // Server doesn't have contracts API
+            }
+        }
+        
+        if (contractCount === 0) {
+            ui.log(`📋 CONTRACTS: No pending contracts | ✅ Solving complete`, "info");
+        } else {
+            ui.log(`📋 CONTRACTS: ${contractCount} pending on network`, "info");
+        }
+    } catch (e) {
+        ui.log(`📋 CONTRACTS: Error - ${e.message.substring(0, 30)}`, "warn");
+    }
+}
+
+/**
+ * Display Formulas.exe farming status
+ */
+function displayFormulasStatus(ui, ns) {
+    try {
+        const hasFormulas = ns.fileExists("Formulas.exe", "home");
+        
+        if (!hasFormulas) {
+            ui.log(`📐 FORMULAS: Not yet acquired | Searching for hashes...`, "info");
+        } else {
+            ui.log(`📐 FORMULAS: ✅ Active | Farming optimizations...`, "success");
+        }
+    } catch (e) {
+        ui.log(`📐 FORMULAS: Error - ${e.message.substring(0, 30)}`, "warn");
+    }
+}
+
+/**
+ * Get all servers for scanning (dashboard helper)
+ */
+function getAllServersForDashboard(ns) {
+    const servers = [];
+    const visited = new Set();
+    const queue = ["home"];
+    
+    while (queue.length > 0) {
+        const server = queue.shift();
+        if (visited.has(server)) continue;
+        visited.add(server);
+        servers.push(server);
+        
+        const neighbors = ns.scan(server);
+        for (const neighbor of neighbors) {
+            if (!visited.has(neighbor)) {
+                queue.push(neighbor);
+            }
+        }
+    }
+    
+    return servers;
 }
 
 /**

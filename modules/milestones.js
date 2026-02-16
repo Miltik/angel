@@ -7,7 +7,7 @@
  * - Tracks progress toward daemon
  *
  * Primary coordination now runs in dashboard.js when
- * orchestrator.enableDashboard=true and enableMilestones=false.
+ * dashboard mode is enabled and milestones mode is disabled.
  * 
  * @param {NS} ns
  */

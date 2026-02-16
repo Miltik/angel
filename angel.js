@@ -22,6 +22,7 @@ let backdoorState = {
 let startupState = {
     coreReady: false,
     lastBlockedLog: 0,
+    blockedCoreModules: [],
 };
 
 export async function main(ns) {
@@ -104,13 +105,17 @@ async function orchestrate(ns) {
     if (!coreReady) {
         const now = Date.now();
         if (now - startupState.lastBlockedLog > 15000) {
-            log(ns, "Core startup still pending; deferring optional backdoor automation until critical modules are running", "WARN");
+            const blocked = startupState.blockedCoreModules.length > 0
+                ? ` (blocked: ${startupState.blockedCoreModules.join(", ")})`
+                : "";
+            log(ns, `Core startup still pending; deferring optional backdoor automation until critical modules are running${blocked}`, "WARN");
             startupState.lastBlockedLog = now;
         }
         return;
     }
 
     startupState.coreReady = true;
+    startupState.blockedCoreModules = [];
 
     // Opportunistic backdoor automation
     await maybeRunBackdoor(ns);
@@ -223,6 +228,12 @@ function displayStatus(ns) {
     ns.print(`│ Total RAM: ${formatRam(serverStats.totalRam).padEnd(19)}│`);
     ns.print(`│ Available RAM: ${formatRam(totalRam).padEnd(15)}│`);
     ns.print("└─────────────────────────────────────┘");
+    if (!startupState.coreReady) {
+        const blocked = startupState.blockedCoreModules.length > 0
+            ? startupState.blockedCoreModules.join(", ")
+            : "initializing";
+        ns.print(`Startup: waiting on core modules -> ${blocked}`);
+    }
     ns.print("");
 }
 
@@ -232,6 +243,7 @@ function displayStatus(ns) {
  */
 async function ensureModulesRunning(ns) {
     let coreReady = true;
+    const blockedCoreModules = [];
 
     const startupReclaimOrder = [
         SCRIPTS.xpFarm,
@@ -252,6 +264,7 @@ async function ensureModulesRunning(ns) {
             reclaimOnLowRam: true,
             reclaimOrder: startupReclaimOrder,
         });
+        if (!started) blockedCoreModules.push("Programs");
         coreReady = coreReady && started;
         await ns.sleep(1500); // Stagger startup
     }
@@ -259,6 +272,7 @@ async function ensureModulesRunning(ns) {
     // Server management module
     if (config.orchestrator.enableServerMgmt) {
         const started = await ensureModuleRunning(ns, SCRIPTS.serverMgmt, "Server Management");
+        if (!started) blockedCoreModules.push("Server Management");
         coreReady = coreReady && started;
         await ns.sleep(1500);
     }
@@ -272,6 +286,7 @@ async function ensureModulesRunning(ns) {
     // Augmentation module (if SF4 available)
     if (config.orchestrator.enableAugments) {
         const started = await ensureModuleRunning(ns, SCRIPTS.augments, "Augmentations");
+        if (!started) blockedCoreModules.push("Augmentations");
         coreReady = coreReady && started;
         await ns.sleep(1500);
     }
@@ -291,6 +306,7 @@ async function ensureModulesRunning(ns) {
     // Activities module (unified: crime, training, faction, company)
     if (config.orchestrator.enableActivities) {
         const started = await ensureModuleRunning(ns, SCRIPTS.activities, "Activities");
+        if (!started) blockedCoreModules.push("Activities");
         coreReady = coreReady && started;
         await ns.sleep(1500);
     }
@@ -298,6 +314,7 @@ async function ensureModulesRunning(ns) {
     // Hacknet module
     if (config.orchestrator.enableHacknet) {
         const started = await ensureModuleRunning(ns, SCRIPTS.hacknet, "Hacknet");
+        if (!started) blockedCoreModules.push("Hacknet");
         coreReady = coreReady && started;
         await ns.sleep(1500);
     }
@@ -329,9 +346,12 @@ async function ensureModulesRunning(ns) {
     // Dashboard module - monitoring (low RAM)
     if (config.orchestrator.enableDashboard) {
         const started = await ensureModuleRunning(ns, SCRIPTS.dashboard, "Dashboard");
+        if (!started) blockedCoreModules.push("Dashboard");
         coreReady = coreReady && started;
         await ns.sleep(1500);
     }
+
+    startupState.blockedCoreModules = blockedCoreModules;
 
     if (!coreReady) {
         return false;
@@ -403,7 +423,7 @@ async function ensureModuleRunning(ns, script, name, args = [], options = {}) {
     // Check if script exists
     if (!ns.fileExists(script, "home")) {
         log(ns, `Module ${name} not found at ${script}`, "WARN");
-        return;
+        return false;
     }
     
     const reclaimOnLowRam = Boolean(options?.reclaimOnLowRam);

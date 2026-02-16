@@ -298,6 +298,20 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
         const container = document.createElement("div");
         container.className = "angel-window";
         container.id = containerId;
+        // Set z-index stacking
+        container.style.zIndex = 10000 + WINDOWS.size;
+                // Bring window to top on click
+                container.addEventListener("mousedown", () => {
+                    // Find max z-index among all windows
+                    let maxZ = 10000;
+                    for (const w of WINDOWS.values()) {
+                        if (w.element && w.element.style.zIndex) {
+                            const z = parseInt(w.element.style.zIndex, 10);
+                            if (z > maxZ) maxZ = z;
+                        }
+                    }
+                    container.style.zIndex = maxZ + 1;
+                });
         container.style.width = requestedWidth + "px";
         container.style.height = requestedHeight + "px";
         container.style.left = (50 + WINDOWS.size * 20) + "px";
@@ -365,7 +379,13 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
         container.appendChild(header);
         container.appendChild(content);
         container.appendChild(resize);
-        container.style.display = getPreferredVisibility(id) ? "flex" : "none";
+        // Always show backdoor window by default
+        if (id === "backdoor") {
+            container.style.display = "flex";
+            persistVisibility(id, true);
+        } else {
+            container.style.display = getPreferredVisibility(id) ? "flex" : "none";
+        }
         document.body.appendChild(container);
 
         // Setup event handlers

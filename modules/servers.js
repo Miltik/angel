@@ -9,7 +9,7 @@ const PHASE_PORT = 7;
 export async function main(ns) {
     ns.disableLog("ALL");
     
-    const ui = createWindow("servers", "🖥 Server Management", 700, 400);
+    const ui = createWindow("servers", "🖥 Server Management", 700, 400, ns);
     ui.log("Server management module started - Phase-aware scaling", "info");
     
     while (true) {

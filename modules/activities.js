@@ -50,7 +50,7 @@ function readGamePhase(ns) {
 export async function main(ns) {
     ns.disableLog("ALL");
     
-    const ui = createWindow("activities", "🎭 Activities", 700, 450);
+    const ui = createWindow("activities", "🎭 Activities", 700, 450, ns);
     ui.log("Activities module started (P0-2 active, P3+ filler, all-phase factions)", "info");
 
     if (!hasSingularityAccess(ns)) {

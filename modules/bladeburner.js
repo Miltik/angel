@@ -30,7 +30,7 @@ function getPhaseConfig(phase) {
 export async function main(ns) {
     ns.disableLog("ALL");
     
-    const ui = createWindow("bladeburner", "⚔️ Bladeburner", 700, 400);
+    const ui = createWindow("bladeburner", "⚔️ Bladeburner", 700, 400, ns);
     ui.log("Bladeburner module started - Phase-gated (P4 only)", "info");
 
     // Wait for phase 4 (very late game, close to daemon)

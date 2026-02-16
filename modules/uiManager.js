@@ -10,13 +10,23 @@
  */
 
 const WINDOWS = new Map();
+let nsReference = null;  // Store NS reference for file I/O
 
-// Window state persistence
+// Window state persistence (localStorage + file backup)
 function saveWindowState(id, state) {
     try {
         const allStates = JSON.parse(localStorage.getItem("angelWindowStates") || "{}");
         allStates[id] = state;
         localStorage.setItem("angelWindowStates", JSON.stringify(allStates));
+        
+        // Also save to file for persistence across game resets
+        if (nsReference) {
+            try {
+                nsReference.write("angel_windowstates.json", JSON.stringify(allStates), "w");
+            } catch (e) {
+                // Silently fail if file write not available
+            }
+        }
     } catch (e) {
         // Silently fail if localStorage not available
     }
@@ -24,6 +34,20 @@ function saveWindowState(id, state) {
 
 function loadWindowState(id) {
     try {
+        // Try file first (survives game resets)
+        if (nsReference) {
+            try {
+                const fileContent = nsReference.read("angel_windowstates.json");
+                if (fileContent) {
+                    const allStates = JSON.parse(fileContent);
+                    return allStates[id] || null;
+                }
+            } catch (e) {
+                // Fall through to localStorage
+            }
+        }
+        
+        // Fall back to localStorage
         const allStates = JSON.parse(localStorage.getItem("angelWindowStates") || "{}");
         return allStates[id] || null;
     } catch (e) {
@@ -80,7 +104,12 @@ function createMockWindow(id, title) {
     };
 }
 
-export function createWindow(id, title, width = 600, height = 400) {
+export function createWindow(id, title, width = 600, height = 400, ns = null) {
+    // Store NS reference for file I/O (use first non-null reference)
+    if (ns && !nsReference) {
+        nsReference = ns;
+    }
+    
     if (WINDOWS.has(id)) {
         return WINDOWS.get(id);
     }

@@ -4,7 +4,7 @@ import { createWindow } from "/angel/modules/uiManager.js";
 export async function main(ns) {
     ns.disableLog("ALL");
     
-    const ui = createWindow("programs", "💾 Programs", 600, 350);
+    const ui = createWindow("programs", "💾 Programs", 600, 350, ns);
     ui.log("Programs module started", "info");
     
     let loopCount = 0;

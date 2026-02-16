@@ -22,7 +22,7 @@ function readGamePhase(ns) {
 export async function main(ns) {
     ns.disableLog("ALL");
     
-    const ui = createWindow("sleeves", "🧠 Sleeves", 700, 400);
+    const ui = createWindow("sleeves", "🧠 Sleeves", 700, 400, ns);
     ui.log("Sleeve module started - Phase-gated activation (P3+)", "info");
 
     // Wait for phase 3+ (when sleeves are needed for delegation work)

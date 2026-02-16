@@ -5,7 +5,7 @@ export async function main(ns) {
     ns.disableLog("ALL");
     
     // Create DOM window for output
-    const ui = createWindow("hacking", "🖥 Hacking Module", 700, 500);
+    const ui = createWindow("hacking", "🖥 Hacking Module", 700, 500, ns);
     ui.log("Phase-aware dynamic targeting initialized");
     ui.log("Waiting for other modules to initialize...", "info");
     

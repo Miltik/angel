@@ -31,7 +31,7 @@ export async function main(ns) {
     ns.disableLog("ALL");
     
     // Create DOM window for output
-    const ui = createWindow("stocks", "📈 Stock Market", 700, 500);
+    const ui = createWindow("stocks", "📈 Stock Market", 700, 500, ns);
     ui.log("Stock market module initialized - Phase-gated (P3+)", "info");
 
     // Wait for phase 3+ when capital is available

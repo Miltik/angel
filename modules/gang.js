@@ -16,7 +16,7 @@ const PHASE_PORT = 7;
 export async function main(ns) {
     ns.disableLog("ALL");
     
-    const ui = createWindow("gang", "👾 Gang Management", 700, 450);
+    const ui = createWindow("gang", "👾 Gang Management", 700, 450, ns);
     ui.log("Gang module started - Phase-aware respect maximization with clash timing", "info");
 
     while (true) {

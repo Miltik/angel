@@ -25,7 +25,7 @@ let lastXp = 0;
 export async function main(ns) {
     ns.disableLog("ALL");
     
-    const ui = createWindow("dashboard", "📊 Dashboard", 900, 600);
+    const ui = createWindow("dashboard", "📊 Dashboard", 900, 600, ns);
     ui.log("Dashboard monitoring started - Real-time metrics", "info");
     
     let loopCount = 0;

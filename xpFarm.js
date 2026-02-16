@@ -59,6 +59,7 @@ export async function main(ns) {
     const reserveHome = Math.max(0, Number(flags.reserve) || 0);
     const minHomeFree = Math.max(0, Number(flags.minHomeFree) || 0);
     const interval = Math.max(1000, Number(flags.interval) || 10000);
+    const effectiveInterval = mode === "spare-home" ? Math.min(interval, 3000) : interval;
     const hyperClean = String(flags.clean).toLowerCase() !== "false";
 
     const scriptRam = ns.getScriptRam(worker);
@@ -76,7 +77,7 @@ export async function main(ns) {
     } else {
         ui.log(`🔄 Clean Mode: ${hyperClean ? "ON" : "OFF"}`, "info");
     }
-    ui.log(`⏱️ Update Interval: ${interval}ms`, "info");
+    ui.log(`⏱️ Update Interval: ${effectiveInterval}ms`, "info");
     if (flags.target) {
         ui.log(`🎯 Target Locked: ${flags.target}`, "info");
     }
@@ -146,7 +147,7 @@ export async function main(ns) {
             break;
         }
 
-        await ns.sleep(interval);
+        await ns.sleep(effectiveInterval);
     }
 }
 
@@ -213,7 +214,7 @@ function getActiveXPFarmStats(ns, servers, worker) {
     let usedServers = 0;
 
     for (const server of servers) {
-        const processes = ns.ps(server).filter(proc => proc.filename === worker);
+        const processes = ns.ps(server).filter(proc => isSameScriptPath(proc.filename, worker));
         let serverActive = false;
         for (const proc of processes) {
             const args = proc.args || [];
@@ -234,7 +235,7 @@ function stopWorkers(ns, servers, worker, strategy = "xpfarm-only") {
     for (const server of servers) {
         const processes = ns.ps(server);
         for (const proc of processes) {
-            if (proc.filename !== worker) continue;
+            if (!isSameScriptPath(proc.filename, worker)) continue;
 
             if (strategy === "all") {
                 ns.kill(proc.pid);
@@ -248,4 +249,9 @@ function stopWorkers(ns, servers, worker, strategy = "xpfarm-only") {
             }
         }
     }
+}
+
+function isSameScriptPath(actualPath, expectedPath) {
+    const normalize = (path) => String(path || "").replace(/^\//, "");
+    return normalize(actualPath) === normalize(expectedPath);
 }

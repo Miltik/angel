@@ -268,7 +268,8 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
 
         // Setup event handlers
         let minimizedState = { isMinimized: false, originalHeight: height };
-        let autoSizeEnabled = !savedState;
+        let sizeLocked = Boolean(savedState?.sizeLocked);
+        let autoSizeEnabled = !sizeLocked;
         let autoSizeScheduled = false;
 
         function fitToContent() {
@@ -334,7 +335,8 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
                 top: container.style.top,
                 width: container.style.width,
                 height: container.style.height,
-                minimized: minimizedState.isMinimized
+                minimized: minimizedState.isMinimized,
+                sizeLocked,
             });
         };
         
@@ -358,7 +360,8 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
                     top: container.style.top,
                     width: container.style.width,
                     height: container.style.height,
-                    minimized: minimizedState.isMinimized
+                    minimized: minimizedState.isMinimized,
+                    sizeLocked,
                 });
             };
             document.onmousemove = (e) => {
@@ -383,6 +386,7 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
                 resizeState.isResizing = false;
                 document.onmouseup = null;
                 document.onmousemove = null;
+                sizeLocked = true;
                 autoSizeEnabled = false;
                 // Save window state after resize
                 saveWindowState(id, {
@@ -390,7 +394,8 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
                     top: container.style.top,
                     width: container.style.width,
                     height: container.style.height,
-                    minimized: minimizedState.isMinimized
+                    minimized: minimizedState.isMinimized,
+                    sizeLocked,
                 });
             };
             document.onmousemove = (e) => {

@@ -660,22 +660,19 @@ function displayHackingStatus(ui, player, ns) {
 function displayXPFarmStatus(ui, ns) {
     let mode = "inactive";
     try {
-        const homeProcesses = ns.ps("home");
-        const xpProcess = homeProcesses.find(p => p.filename === XP_FARM_SCRIPT);
-        if (!xpProcess) {
-            ui.log("⚡ XP FARM: Inactive", "info");
-            return;
-        }
-
-        mode = parseXPFarmMode(xpProcess.args || []);
-
         const rooted = scanAll(ns).filter(server => ns.hasRootAccess(server));
         let totalThreads = 0;
         let activeServers = 0;
         let target = "-";
 
+        const homeProcesses = ns.ps("home");
+        const xpProcess = homeProcesses.find(p => isSameScriptPath(p.filename, XP_FARM_SCRIPT));
+        if (xpProcess) {
+            mode = parseXPFarmMode(xpProcess.args || []);
+        }
+
         for (const server of rooted) {
-            const processes = ns.ps(server).filter(proc => proc.filename === XP_FARM_WORKER);
+            const processes = ns.ps(server).filter(proc => isSameScriptPath(proc.filename, XP_FARM_WORKER));
             let serverHasXpFarmWorker = false;
             for (const proc of processes) {
                 const args = proc.args || [];
@@ -683,6 +680,9 @@ function displayXPFarmStatus(ui, ns) {
                 if (!marked) continue;
                 totalThreads += proc.threads || 0;
                 serverHasXpFarmWorker = true;
+                if (mode === "inactive") {
+                    mode = "spare-home";
+                }
                 if (target === "-" && args.length > 0) {
                     target = String(args[0]);
                 }
@@ -690,6 +690,11 @@ function displayXPFarmStatus(ui, ns) {
             if (serverHasXpFarmWorker) {
                 activeServers++;
             }
+        }
+
+        if (!xpProcess && totalThreads <= 0) {
+            ui.log("⚡ XP FARM: Inactive", "info");
+            return;
         }
 
         ui.log(`⚡ XP FARM: ${mode} | Threads: ${totalThreads} | Servers: ${activeServers} | Target: ${target}`, "info");
@@ -705,6 +710,11 @@ function parseXPFarmMode(args) {
         }
     }
     return "spare-home";
+}
+
+function isSameScriptPath(actualPath, expectedPath) {
+    const normalize = (path) => String(path || "").replace(/^\//, "");
+    return normalize(actualPath) === normalize(expectedPath);
 }
 
 /**

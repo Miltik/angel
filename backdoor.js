@@ -27,10 +27,16 @@ export async function main(ns) {
         // Skip home and purchased servers - can't backdoor own servers
         if (server === "home") return false;
         
+        // Skip suspicious names
+        if (server === "." || server === ".." || server.length === 0) return false;
+        
         const srv = ns.getServer(server);
         if (srv.purchasedByPlayer) return false; // Skip player-owned servers
         
-        // Can backdoor if: rooted AND has backdoor capability AND not already backdoored
+        // Only include servers with backdoor support
+        if (srv.backdoorInstalled === undefined) return false;
+        
+        // Can backdoor if: rooted AND not already backdoored
         return srv.hasAdminRights && srv.backdoorInstalled === false;
     });
     
@@ -60,15 +66,27 @@ export async function main(ns) {
             }
             
             // Travel to server and backdoor
-            await ns.singularity.connect(server);
-            await ns.singularity.installBackdoor();
-            ns.tprint(`✓ ${server}`);
-            successful++;
+            try {
+                await ns.singularity.connect(server);
+            } catch (e) {
+                ns.tprint(`✗ ${server} - Failed to connect: ${e.message || e}`);
+                failed++;
+                continue;
+            }
+            
+            try {
+                await ns.singularity.installBackdoor();
+                ns.tprint(`✓ ${server}`);
+                successful++;
+            } catch (e) {
+                ns.tprint(`✗ ${server} - Failed to backdoor: ${e.message || e}`);
+                failed++;
+            }
             
             // Small delay between backdoors
             await ns.sleep(100);
         } catch (e) {
-            ns.tprint(`✗ ${server} - ${e}`);
+            ns.tprint(`✗ ${server} - ${e.message || e}`);
             failed++;
         }
     }

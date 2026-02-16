@@ -65,43 +65,43 @@ async function updateDashboard(ns) {
     const nextPhase = currentPhase < 4 ? currentPhase + 1 : 4;
     
     // Display header
-    ns.tprint("");
-    ns.tprint("╔═══════════════════════════════════════════════════════════════╗");
-    ns.tprint("║            ANGEL AUTOMATION DASHBOARD                         ║");
-    ns.tprint("╚═══════════════════════════════════════════════════════════════╝");
-    ns.tprint("");
+    ns.print("");
+    ns.print("╔═══════════════════════════════════════════════════════════════╗");
+    ns.print("║            ANGEL AUTOMATION DASHBOARD                         ║");
+    ns.print("╚═══════════════════════════════════════════════════════════════╝");
+    ns.print("");
     
     // Game Phase
     displayPhaseStatus(ns, currentPhase, phaseProgress, nextPhase);
-    ns.tprint("");
+    ns.print("");
     
     // Money and XP Rates
     displayEconomicsMetrics(ns, money, player, moneyRate, xpRate);
-    ns.tprint("");
+    ns.print("");
     
     // Hacking Status
     displayHackingStatus(ns, player);
-    ns.tprint("");
+    ns.print("");
     
     // Gang Status (if available)
     if (ns.gang.inGang && ns.gang.inGang()) {
         displayGangStatus(ns);
-        ns.tprint("");
+        ns.print("");
     }
     
     // Augmentation Status
     displayAugmentationStatus(ns, player);
-    ns.tprint("");
+    ns.print("");
     
     // Stock Status (if available)
     if (hasStockAccess(ns)) {
         displayStockStatus(ns);
-        ns.tprint("");
+        ns.print("");
     }
     
     // Network Status
     displayNetworkStatus(ns);
-    ns.tprint("");
+    ns.print("");
 }
 
 /**
@@ -115,8 +115,8 @@ function displayPhaseStatus(ns, currentPhase, progress, nextPhase) {
     const progressBar = "█".repeat(Math.floor(progress * 20)) + 
                         "░".repeat(20 - Math.floor(progress * 20));
     
-    ns.tprint(`💎 PHASE: ${currentName.padEnd(12)} [${progressBar}] ${(progress * 100).toFixed(1)}%`);
-    ns.tprint(`   Next: ${nextName}`);
+    ns.print(`💎 PHASE: ${currentName.padEnd(12)} [${progressBar}] ${(progress * 100).toFixed(1)}%`);
+    ns.print(`   Next: ${nextName}`);
 }
 
 /**
@@ -126,8 +126,8 @@ function displayEconomicsMetrics(ns, money, player, moneyRate, xpRate) {
     const monthlyRate = moneyRate * 3600 * 24 * 30; // Scale to monthly
     const dailyRate = moneyRate * 3600 * 24;
     
-    ns.tprint(`💰 MONEY: ${formatMoney(money).padEnd(15)} | Rate: ${formatMoney(moneyRate)}/s | Daily: ${formatMoney(dailyRate)}`);
-    ns.tprint(`📖 XP: Level ${player.skills.hacking} | Rate: ${xpRate.toFixed(2)} XP/s`);
+    ns.print(`💰 MONEY: ${formatMoney(money).padEnd(15)} | Rate: ${formatMoney(moneyRate)}/s | Daily: ${formatMoney(dailyRate)}`);
+    ns.print(`📖 XP: Level ${player.skills.hacking} | Rate: ${xpRate.toFixed(2)} XP/s`);
 }
 
 /**
@@ -142,9 +142,9 @@ function displayHackingStatus(ns, player) {
     const ramBar = "▮".repeat(Math.floor((usedRam / totalRam) * 20)) + 
                    "▯".repeat(20 - Math.floor((usedRam / totalRam) * 20));
     
-    ns.tprint(`⚔️  HACKING: ${player.skills.hacking.toString().padStart(4)} (${(player.skills.hacking / 1000).toFixed(1)}k/1k)`);
-    ns.tprint(`🖥️  NETWORK: ${serverCount} rooted | ${purchasedServers} purchased`);
-    ns.tprint(`💾 RAM: ${ramBar} ${(usedRam / 1024).toFixed(1)}TB / ${(totalRam / 1024).toFixed(1)}TB`);
+    ns.print(`⚔️  HACKING: ${player.skills.hacking.toString().padStart(4)} (${(player.skills.hacking / 1000).toFixed(1)}k/1k)`);
+    ns.print(`🖥️  NETWORK: ${serverCount} rooted | ${purchasedServers} purchased`);
+    ns.print(`💾 RAM: ${ramBar} ${(usedRam / 1024).toFixed(1)}TB / ${(totalRam / 1024).toFixed(1)}TB`);
 }
 
 /**
@@ -156,8 +156,8 @@ function displayGangStatus(ns) {
         const members = ns.gang.getMemberNames();
         const territory = (info.territory * 100).toFixed(1);
         
-        ns.tprint(`👾 GANG: ${info.faction} | Members: ${members.length} | Territory: ${territory}% | Power: ${info.power.toFixed(2)}`);
-        ns.tprint(`   Respect: ${formatMoney(info.respect)} | Wanted: ${info.wantedLevel.toFixed(0)} (×${info.wantedPenalty.toFixed(2)})`);
+        ns.print(`👾 GANG: ${info.faction} | Members: ${members.length} | Territory: ${territory}% | Power: ${info.power.toFixed(2)}`);
+        ns.print(`   Respect: ${formatMoney(info.respect)} | Wanted: ${info.wantedLevel.toFixed(0)} (×${info.wantedPenalty.toFixed(2)})`);
     } catch (e) {
         // Gang not available
     }
@@ -184,7 +184,7 @@ function displayAugmentationStatus(ns, player) {
     const resetThreshold = config.augmentations?.minQueuedAugs || 7;
     const status = queuedCount >= resetThreshold ? "🔴 READY FOR RESET" : "⏳ Building queue";
     
-    ns.tprint(`🧬 AUGMENTS: Installed ${ownedCount} | ${queuedText} | ${status} (threshold: ${resetThreshold})`);
+    ns.print(`🧬 AUGMENTS: Installed ${ownedCount} | ${queuedText} | ${status} (threshold: ${resetThreshold})`);
 }
 
 /**
@@ -211,7 +211,7 @@ function displayStockStatus(ns) {
         const gain = totalValue - totalInvested;
         const gainPct = totalInvested > 0 ? (gain / totalInvested * 100) : 0;
         
-        ns.tprint(`📈 STOCKS: ${holdings} holdings | Invested: ${formatMoney(totalInvested)} | Value: ${formatMoney(totalValue)} | Gain: ${formatMoney(gain)} (${gainPct.toFixed(1)}%)`);
+        ns.print(`📈 STOCKS: ${holdings} holdings | Invested: ${formatMoney(totalInvested)} | Value: ${formatMoney(totalValue)} | Gain: ${formatMoney(gain)} (${gainPct.toFixed(1)}%)`);
     } catch (e) {
         // Stocks not available
     }
@@ -230,7 +230,7 @@ function displayNetworkStatus(ns) {
     ];
     
     const statLine = stats.map(s => `${s.name}: ${s.val.toString().padStart(4)}`).join(" | ");
-    ns.tprint(`⚔️  COMBAT: ${statLine}`);
+    ns.print(`⚔️  COMBAT: ${statLine}`);
 }
 
 /**

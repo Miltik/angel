@@ -24,6 +24,9 @@ export async function main(ns) {
     
     // Filter to servers we can backdoor
     const hackableServers = allServers.filter(server => {
+        // Skip home - can't backdoor home server
+        if (server === "home") return false;
+        
         const srv = ns.getServer(server);
         // Can backdoor if: rooted AND has backdoor capability AND not already backdoored
         return srv.hasAdminRights && srv.backdoorInstalled === false;
@@ -55,8 +58,8 @@ export async function main(ns) {
             }
             
             // Travel to server and backdoor
-            ns.singularity.connect(server);
-            ns.singularity.installBackdoor();
+            await ns.singularity.connect(server);
+            await ns.singularity.installBackdoor();
             ns.tprint(`✓ ${server}`);
             successful++;
             
@@ -70,7 +73,7 @@ export async function main(ns) {
     
     // Return home
     try {
-        ns.singularity.connect("home");
+        await ns.singularity.connect("home");
     } catch (e) {}
     
     ns.tprint("─────────────────────────────────────────");

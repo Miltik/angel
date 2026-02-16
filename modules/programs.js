@@ -12,9 +12,9 @@ let lastState = {
 export async function main(ns) {
     ns.disableLog("ALL");
     
-    const ui = createWindow("programs", "💾 Programs & Backdoors", 600, 350, ns);
+    const ui = createWindow("programs", "💾 Buy All Programs", 600, 350, ns);
     ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    ui.log("💾 Programs & Backdoors module initialized", "success");
+    ui.log("💾 Aggressive program acquisition module", "success");
     ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     
     while (true) {
@@ -41,7 +41,7 @@ export async function main(ns) {
         // Always return home before sleeping
         await connectToHome(ns);
         
-        await ns.sleep(30000);
+        await ns.sleep(5000);  // Aggressive: check every 5 seconds
     }
 }
 
@@ -101,69 +101,73 @@ async function phaseBuyPrograms(ns, ui) {
         // Buy programs (autoBuyPrograms default: true, preferBuying default: true)
         if (hasTor(ns)) {
             lastState.hasTor = true;
+            // ALL available programs - buy everything ASAP
             const programs = [
                 "BruteSSH.exe",
                 "FTPCrack.exe",
                 "relaySMTP.exe",
                 "HTTPWorm.exe",
                 "SQLInject.exe",
-                "AutoLink.exe",
                 "DeepscanV1.exe",
+                "DeepscanV2.exe",
                 "ServerProfiler.exe",
+                "AutoLink.exe",
+                "Formulas.exe"
             ];
             
             let ownedCount = 0;
             let nextTarget = null;
             
+            // First pass: check what we own and find next target
             for (const prog of programs) {
                 if (ns.fileExists(prog, "home")) {
                     ownedCount++;
-                    // Only log when program list changes
                     if (!lastState.ownedPrograms.includes(prog)) {
                         lastState.ownedPrograms.push(prog);
+                        ui.log(`✅ Found: ${prog}`, "success");
                     }
                     continue;
                 }
                 
                 if (!nextTarget) nextTarget = prog;
-                
+            }
+            
+            // Second pass: aggressively buy next program
+            if (nextTarget) {
                 try {
-                    const cost = ns.singularity.getDarkwebProgramCost(prog);
+                    const cost = ns.singularity.getDarkwebProgramCost(nextTarget);
                     const money = ns.getServerMoneyAvailable("home");
                     
                     if (cost <= 0) {
                         if (lastState.loopCount % 20 === 0) {
-                            ui.log(`⚠️  ${prog} not available on darkweb`, "warn");
+                            ui.log(`⚠️  ${nextTarget} not available`, "warn");
                         }
-                        continue;
-                    }
-
-                    if (money >= cost) {
-                        const purchased = ns.singularity.purchaseProgram(prog);
+                    } else if (money >= cost) {
+                        // BUY IT NOW - don't waste time
+                        const purchased = ns.singularity.purchaseProgram(nextTarget);
                         if (purchased) {
-                            ui.log(`✅ Purchased ${prog} for $${(cost / 1000000).toFixed(2)}M`, "success");
-                            lastState.ownedPrograms.push(prog);
+                            ui.log(`🚀 BOUGHT: ${nextTarget} for $${(cost / 1000000).toFixed(2)}M`, "success");
+                            lastState.ownedPrograms.push(nextTarget);
                             ownedCount++;
                         } else {
-                            ui.log(`❌ Failed to purchase ${prog}`, "warn");
+                            ui.log(`❌ Failed to buy ${nextTarget}`, "warn");
                         }
                         await ns.sleep(500);
-                        return false; // Keep buying more
+                        return false;  // Keep aggressive cycle
                     } else {
-                        // Only log save progress periodically
-                        if (lastState.loopCount % 10 === 0) {
-                            ui.log(`💰 Saving for ${prog}: $${(money / 1000000).toFixed(2)}M / $${(cost / 1000000).toFixed(2)}M`, "info");
-                        }
-                        return false; // Still need money
+                        // Money progress - show percentage
+                        const percent = (money / cost * 100).toFixed(0);
+                        ui.log(`⏳ ${nextTarget}: $${(money / 1000000).toFixed(1)}M / $${(cost / 1000000).toFixed(2)}M (${percent}%)`, "info");
+                        return false;  // Still saving
                     }
                 } catch (e) {
-                    ui.log(`❌ Error buying ${prog}: ${e}`, "error");
+                    ui.log(`❌ Error: ${e}`, "error");
                 }
             }
             
             // Log completion status periodically
             if (ownedCount === programs.length && lastState.lastLoggedStatus !== "all_programs") {
-                ui.log(`✅ All ${programs.length} programs acquired!`, "success");
+                ui.log(`🎉 All ${programs.length} programs acquired!`, "success");
                 lastState.lastLoggedStatus = "all_programs";
             } else if (lastState.loopCount % 10 === 0 && ownedCount < programs.length) {
                 ui.log(`📦 Programs: ${ownedCount}/${programs.length} | Next: ${nextTarget}`, "info");

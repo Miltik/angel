@@ -79,7 +79,16 @@ async function phaseBuyPrograms(ns) {
         
         // Buy programs (autoBuyPrograms default: true, preferBuying default: true)
         if (hasTor(ns)) {
-            const programs = ["BruteSSH.exe", "FTPCrack.exe", "relaySMTP.exe", "HTTPWorm.exe", "SQLInject.exe"];
+            const programs = [
+                "BruteSSH.exe",
+                "FTPCrack.exe",
+                "relaySMTP.exe",
+                "HTTPWorm.exe",
+                "SQLInject.exe",
+                "AutoLink.exe",
+                "DeepscanV1.exe",
+                "ServerProfiler.exe",
+            ];
             
             for (const prog of programs) {
                 if (ns.fileExists(prog, "home")) {
@@ -91,9 +100,18 @@ async function phaseBuyPrograms(ns) {
                     const cost = ns.singularity.getDarkwebProgramCost(prog);
                     const money = ns.getServerMoneyAvailable("home");
                     
+                    if (cost <= 0) {
+                        ns.print(`[Programs] ${prog} not available on darkweb (cost: ${cost})`);
+                        continue;
+                    }
+
                     if (money >= cost) {
-                        ns.singularity.purchaseProgram(prog);
-                        ns.print(`[Programs] Bought ${prog} for $${cost.toLocaleString()}`);
+                        const purchased = ns.singularity.purchaseProgram(prog);
+                        if (purchased) {
+                            ns.print(`[Programs] Bought ${prog} for $${cost.toLocaleString()}`);
+                        } else {
+                            ns.print(`[Programs] Failed to buy ${prog} (cost: $${cost.toLocaleString()})`);
+                        }
                         await ns.sleep(500);
                         return false; // Keep buying more
                     } else {

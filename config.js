@@ -158,6 +158,7 @@ export const config = {
         enableContracts: true,     // Coding contracts solver
         enableFormulas: true,      // Formulas.exe farming
         enableXPFarm: true,        // Optional XP farming using spare/home RAM or hyper mode
+        enableBackdoorAuto: true,  // Auto-run backdoor flow when new servers become eligible
     },
 
     // Hacking settings
@@ -406,6 +407,13 @@ export const config = {
         target: "",                // Optional fixed target (empty = auto)
     },
 
+    // Backdoor automation settings
+    backdoor: {
+        checkIntervalMs: 60000,     // How often orchestrator checks for new eligible backdoor targets
+        minHackLevelDelta: 25,      // Trigger if hacking level increased by this much since last run/check
+        forceRunIntervalMs: 300000, // Force a run every N ms if eligible targets exist
+    },
+
     // Early game targets (sorted by difficulty)
     targets: {
         earlyGame: [
@@ -463,6 +471,7 @@ export const SCRIPTS = {
     contracts: "/angel/modules/contracts.js",
     formulas: "/angel/modules/formulas.js",
     xpFarm: "/angel/xpFarm.js",
+    backdoor: "/angel/backdoor.js",
     
     // Workers (actual hacking scripts)
     hack: "/angel/workers/hack.js",

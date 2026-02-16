@@ -12,6 +12,13 @@ import { scanAll, rootAll, getRootedServers, getHackableServers } from "/angel/s
 import { getTotalAvailableRam } from "/angel/modules/hacking.js";
 import { getServerStats } from "/angel/modules/servers.js";
 
+let backdoorState = {
+    lastCheckTime: 0,
+    lastRunTime: 0,
+    lastHackLevel: 0,
+    lastEligibleCount: 0,
+};
+
 export async function main(ns) {
     ns.disableLog("ALL");
     ns.clearLog();
@@ -88,6 +95,83 @@ async function orchestrate(ns) {
     
     // Check if modules are running, start if needed
     await ensureModulesRunning(ns);
+
+    // Opportunistic backdoor automation
+    await maybeRunBackdoor(ns);
+}
+
+async function maybeRunBackdoor(ns) {
+    if (!config.orchestrator.enableBackdoorAuto) return;
+
+    // Backdoor automation needs singularity access
+    try {
+        ns.singularity.connect("home");
+    } catch (e) {
+        return;
+    }
+
+    const now = Date.now();
+    const settings = config.backdoor || {};
+    const checkIntervalMs = settings.checkIntervalMs ?? 60000;
+    const minHackLevelDelta = settings.minHackLevelDelta ?? 25;
+    const forceRunIntervalMs = settings.forceRunIntervalMs ?? 300000;
+
+    if (now - backdoorState.lastCheckTime < checkIntervalMs) {
+        return;
+    }
+    backdoorState.lastCheckTime = now;
+
+    // Avoid duplicate launches while either launcher or runner is active
+    if (ns.isRunning(SCRIPTS.backdoor, "home") || ns.isRunning("/angel/modules/backdoorRunner.js", "home")) {
+        return;
+    }
+
+    const playerHack = ns.getPlayer().skills.hacking;
+    const eligibleCount = countEligibleBackdoorTargets(ns);
+    if (eligibleCount <= 0) {
+        backdoorState.lastEligibleCount = 0;
+        backdoorState.lastHackLevel = playerHack;
+        return;
+    }
+
+    const unlockedMoreTargets = eligibleCount > backdoorState.lastEligibleCount;
+    const gainedHackLevels = playerHack >= backdoorState.lastHackLevel + minHackLevelDelta;
+    const forceDue = now - backdoorState.lastRunTime >= forceRunIntervalMs;
+
+    if (!unlockedMoreTargets && !gainedHackLevels && !forceDue) {
+        return;
+    }
+
+    const pid = ns.exec(SCRIPTS.backdoor, "home");
+    if (pid !== 0) {
+        log(ns, `Auto-backdoor triggered (eligible: ${eligibleCount}, hack: ${playerHack})`, "INFO");
+        backdoorState.lastRunTime = now;
+        backdoorState.lastHackLevel = playerHack;
+        backdoorState.lastEligibleCount = eligibleCount;
+    } else {
+        log(ns, "Auto-backdoor trigger skipped (insufficient RAM)", "WARN");
+    }
+}
+
+function countEligibleBackdoorTargets(ns) {
+    const playerHack = ns.getPlayer().skills.hacking;
+    const purchased = new Set(ns.getPurchasedServers());
+    const servers = scanAll(ns);
+
+    let count = 0;
+    for (const server of servers) {
+        if (server === "home") continue;
+        if (purchased.has(server)) continue;
+
+        const info = ns.getServer(server);
+        if (!info.hasAdminRights) continue;
+        if (info.backdoorInstalled) continue;
+        if (info.requiredHackingSkill > playerHack) continue;
+
+        count++;
+    }
+
+    return count;
 }
 
 /**
@@ -331,6 +415,8 @@ export function stopAll(ns) {
         SCRIPTS.bladeburner,
         SCRIPTS.sleeves,
         SCRIPTS.xpFarm,
+        SCRIPTS.backdoor,
+        "/angel/modules/backdoorRunner.js",
     ];
     
     for (const module of modules) {
@@ -370,6 +456,7 @@ export function getSystemHealth(ns) {
         { name: "Bladeburner", script: SCRIPTS.bladeburner, enabled: config.orchestrator.enableBladeburner },
         { name: "Sleeves", script: SCRIPTS.sleeves, enabled: config.orchestrator.enableSleeves },
         { name: "XP Farm", script: SCRIPTS.xpFarm, enabled: config.orchestrator.enableXPFarm },
+        { name: "Backdoor", script: SCRIPTS.backdoor, enabled: config.orchestrator.enableBackdoorAuto },
     ];
     
     const health = {

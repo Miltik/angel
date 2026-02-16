@@ -215,7 +215,8 @@ async function processActivity(ns, gamePhase, ui) {
                     const chance = ns.singularity.getCrimeChance(crime);
                     ui.log(`🔪 Crime in progress: ${crime} (${(chance * 100).toFixed(1)}% success)`, "info");
                 } else if (currentWork.type === "FACTION") {
-                    ui.log(`🤝 Faction work: ${currentWork.factionName} (${currentWork.workType})`, "info");
+                    const workType = currentWork.factionWorkType || currentWork.workType || "Unknown";
+                    ui.log(`🤝 Faction work: ${currentWork.factionName} (${workType})`, "info");
                 } else if (currentWork.type === "COMPANY") {
                     ui.log(`💼 Company work: ${currentWork.companyName}`, "info");
                 } else if (currentWork.type === "UNIVERSITY" || currentWork.type === "GYM" || currentWork.type === "CLASS") {

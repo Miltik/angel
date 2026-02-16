@@ -98,9 +98,6 @@ export async function main(ns) {
         "Snowball Operations",
     ];
     
-    // Add custom CSS for visual map
-    addMapStyles(ui);
-    
     while (true) {
         lastState.loopCount++;
         const serverInfo = new Map();
@@ -109,8 +106,12 @@ export async function main(ns) {
         const serversByDepth = [];
         scanNetworkByDepth(ns, "home", serverInfo, serversByDepth, 0, maxDepth, new Set());
         
-        // Build HTML for visual map
-        let html = '<div class="network-map">';
+        // Build HTML for visual map (include styles inline once)
+        let html = '';
+        if (lastState.loopCount === 1) {
+            html += getMapStyles();
+        }
+        html += '<div class="network-map">';
         
         // Stats header
         let rooted = 0;
@@ -223,21 +224,15 @@ export async function main(ns) {
 }
 
 /**
- * Add CSS styles for visual map (only done once)
+ * Get CSS styles for visual map (returned as inline style tag)
  */
-let stylesAdded = false;
-function addMapStyles(ui) {
-    if (stylesAdded) return;
-    stylesAdded = true;
-    
-    // Check if we can inject a style tag into the document
-    try {
-        const existingStyle = document.getElementById("networkMapStyles");
-        if (existingStyle) return;
-        
-        const style = document.createElement("style");
-        style.id = "networkMapStyles";
-        style.textContent = `
+function getMapStyles() {
+    return `<style>
+            .network-map {
+                padding: 10px;
+                font-family: 'Courier New', monospace;
+                font-size: 11px;
+            }
             .stats-header {
                 display: flex;
                 gap: 15px;
@@ -266,17 +261,11 @@ function addMapStyles(ui) {
             .legend-item {
                 padding: 2px 6px;
             }
-                user-select: none;
+            .depth-layer {
+                margin-bottom: 20px;
             }
-            .server-card:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 4px 8px rgba(0, 255, 0, 0.2);
-                border-color: rgba(0, 255, 0, 0.6);
-                background: rgba(0, 255, 0, 0.08);
-            }
-            .server-card:active {
-                transform: translateY(0px);
-                box-shadow: 0 2px 4px rgba(0, 255, 0, 0.3
+            .depth-label {
+                font-weight: bold;
                 margin-bottom: 8px;
                 padding: 5px 10px;
                 background: rgba(0, 255, 0, 0.15);
@@ -296,11 +285,17 @@ function addMapStyles(ui) {
                 background: rgba(0, 0, 0, 0.3);
                 transition: all 0.2s;
                 cursor: pointer;
+                user-select: none;
             }
             .server-card:hover {
                 transform: translateY(-2px);
                 box-shadow: 0 4px 8px rgba(0, 255, 0, 0.2);
                 border-color: rgba(0, 255, 0, 0.6);
+                background: rgba(0, 255, 0, 0.08);
+            }
+            .server-card:active {
+                transform: translateY(0px);
+                box-shadow: 0 2px 4px rgba(0, 255, 0, 0.3);
             }
             .server-card.backdoored {
                 border-color: #ffd700;
@@ -349,11 +344,7 @@ function addMapStyles(ui) {
                 background: rgba(0, 255, 0, 0.1);
                 border-radius: 2px;
             }
-        `;
-        document.head.appendChild(style);
-    } catch (e) {
-        // Silently fail if DOM not available
-    }
+        </style>`;
 }
 
 /**

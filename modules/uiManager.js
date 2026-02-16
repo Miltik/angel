@@ -50,6 +50,21 @@ function loadWindowPrefs() {
 function getWindowPrefs() {
     if (!windowPrefsCache) {
         windowPrefsCache = loadWindowPrefs() || {};
+
+        // Safety recovery: never permanently hide the UI launcher,
+        // and ensure at least one core control window is visible.
+        let changed = false;
+        if (windowPrefsCache["ui-launcher"] === false) {
+            windowPrefsCache["ui-launcher"] = true;
+            changed = true;
+        }
+        if (windowPrefsCache["dashboard"] === false && windowPrefsCache["ui-launcher"] === false) {
+            windowPrefsCache["dashboard"] = true;
+            changed = true;
+        }
+        if (changed) {
+            saveWindowPrefs(windowPrefsCache);
+        }
     }
     return windowPrefsCache;
 }
@@ -59,6 +74,9 @@ function getDefaultVisibility(id) {
 }
 
 function getPreferredVisibility(id) {
+    if (id === "ui-launcher") {
+        return true;
+    }
     const prefs = getWindowPrefs();
     if (Object.prototype.hasOwnProperty.call(prefs, id)) {
         return Boolean(prefs[id]);

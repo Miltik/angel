@@ -96,7 +96,7 @@ async function updateDashboard(ns, ui) {
         ui.log("", "info");
         
         // Game Phase
-        displayPhaseStatus(ui, currentPhase, phaseProgress, nextPhase);
+        displayPhaseStatus(ui, ns, player, currentPhase, phaseProgress, nextPhase);
         ui.log("", "info");
         
         // Money and XP Rates
@@ -280,21 +280,24 @@ function displayFactionStatus(ui, ns, player) {
         })).sort((a, b) => b.rep - a.rep);
         
         if (factionInfo.length > 0) {
-            const top3 = factionInfo.slice(0, 3);
-            const factionLines = top3.map(f => 
-                `${f.name}: ${formatMoney(f.rep)} rep (Favor: ${f.favor.toFixed(0)})`
-            ).join(" | ");
-            ui.log(`🏛️  FACTIONS: ${factionLines}`, "info");
-            
-            if (factionInfo.length > 3) {
-                ui.log(`   + ${factionInfo.length - 3} more factions`, "info");
+            const top2 = factionInfo.slice(0, 2);
+            const topRep = factionInfo[0];
+            ui.log(`🏛️  FACTIONS: ${factions.length} joined | ${invites.length} invites | Top rep: ${topRep.name} (${formatMoney(topRep.rep)})`, "info");
+
+            const topLine = top2
+                .map(f => `${f.name}: ${formatMoney(f.rep)} (F${f.favor.toFixed(0)})`)
+                .join(" | ");
+            ui.log(`   Top: ${topLine}`, "info");
+
+            if (factionInfo.length > 2) {
+                ui.log(`   + ${factionInfo.length - 2} more joined factions`, "info");
             }
         }
 
         const grindCandidates = getFactionGrindCandidates(ns, factions).slice(0, 2);
         if (grindCandidates.length > 0) {
             const candidateLine = grindCandidates
-                .map(c => `${c.name} [A:${c.grindableCount}, V:${formatMoney(c.grindableValue)}, R:${formatMoney(c.maxRepNeeded)}]`)
+                .map(c => `${c.name} (A${c.grindableCount} • ${formatMoney(c.grindableValue)} • Rep ${formatMoney(c.maxRepNeeded)})`)
                 .join(" | ");
             ui.log(`   🎯 Grind Priority: ${candidateLine}`, "info");
         }
@@ -586,16 +589,72 @@ function hasBladeburnerAccess(ns) {
 /**
  * Display game phase and transition progress
  */
-function displayPhaseStatus(ui, currentPhase, progress, nextPhase) {
+function displayPhaseStatus(ui, ns, player, currentPhase, progress, nextPhase) {
     const phaseNames = ["Bootstrap", "Early", "Mid-Game", "Gang", "Late"];
     const currentName = phaseNames[currentPhase] || "Unknown";
     const nextName = phaseNames[nextPhase] || "Complete";
+    const phaseConfig = config.gamePhases?.[`phase${currentPhase}`] || {};
+    const primaryFocus = formatPhaseLabel(phaseConfig.primaryActivity || "none");
+    const secondaryFocus = (phaseConfig.secondaryActivities || [])
+        .slice(0, 3)
+        .map(s => formatPhaseLabel(s))
+        .join(", ") || "none";
     
     const progressBar = "█".repeat(Math.floor(progress * 20)) + 
                         "░".repeat(20 - Math.floor(progress * 20));
     
     ui.log(`💎 PHASE: ${currentName.padEnd(12)} [${progressBar}] ${(progress * 100).toFixed(1)}%`, "info");
-    ui.log(`   Next: ${nextName}`, "info");
+    ui.log(`   Focus: ${primaryFocus} | Secondary: ${secondaryFocus}`, "info");
+    ui.log(`   Next: ${nextName} | Goal: ${getPhaseGoalSummary(ns, player, currentPhase, nextPhase)}`, "info");
+}
+
+function getPhaseGoalSummary(ns, player, currentPhase, nextPhase) {
+    const thresholds = config.gamePhases?.thresholds || {};
+    const hackLevel = Number(player?.skills?.hacking || 0);
+    const money = Number(player?.money || 0) + Number(ns.getServerMoneyAvailable("home") || 0);
+    const minCombat = Math.min(
+        Number(player?.skills?.strength || 0),
+        Number(player?.skills?.defense || 0),
+        Number(player?.skills?.dexterity || 0),
+        Number(player?.skills?.agility || 0)
+    );
+
+    if (nextPhase === 1) {
+        const t = thresholds.phase0to1 || { hackLevel: 75, money: 10000000 };
+        const hackNeed = Math.max(0, t.hackLevel - hackLevel);
+        const moneyNeed = Math.max(0, t.money - money);
+        return `Hack +${Math.ceil(hackNeed)}, Money +${formatMoney(moneyNeed)}`;
+    }
+
+    if (nextPhase === 2) {
+        const t = thresholds.phase1to2 || { hackLevel: 200, money: 100000000 };
+        const hackNeed = Math.max(0, t.hackLevel - hackLevel);
+        const moneyNeed = Math.max(0, t.money - money);
+        return `Hack +${Math.ceil(hackNeed)}, Money +${formatMoney(moneyNeed)}`;
+    }
+
+    if (nextPhase === 3) {
+        const t = thresholds.phase2to3 || { hackLevel: 500, money: 500000000 };
+        const hackNeed = Math.max(0, t.hackLevel - hackLevel);
+        const moneyNeed = Math.max(0, t.money - money);
+        return `Hack +${Math.ceil(hackNeed)}, Money +${formatMoney(moneyNeed)}`;
+    }
+
+    if (nextPhase === 4 || currentPhase === 4) {
+        const t = thresholds.phase3to4 || { hackLevel: 800, stats: 70 };
+        const hackNeed = Math.max(0, t.hackLevel - hackLevel);
+        const statNeed = Math.max(0, t.stats - minCombat);
+        return `Hack +${Math.ceil(hackNeed)}, Combat mins +${Math.ceil(statNeed)}`;
+    }
+
+    return "Maintain daemon prep systems";
+}
+
+function formatPhaseLabel(value) {
+    return String(value || "")
+        .replace(/([a-z])([A-Z])/g, "$1 $2")
+        .replace(/_/g, " ")
+        .replace(/^./, c => c.toUpperCase());
 }
 
 /**

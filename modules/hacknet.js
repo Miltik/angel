@@ -46,16 +46,16 @@ export async function main(ns) {
 
 function displayStatus(ns, ui) {
     const count = ns.hacknet.numNodes();
-    const money = ns.getServerMoneyAvailable("home");
-    const budget = Math.max(0, (money - config.hacknet.reserveMoney) * config.hacknet.maxSpendRatio);
+    const budgetInfo = getHacknetBudget(ns);
+    const budget = budgetInfo.budget;
     
     ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
-    ui.log(`🌐 Hacknet Status | Nodes: ${count} | 💰 Budget: ${formatMoney(budget)}`, "info");
+    ui.log(`🌐 Hacknet Status | Nodes: ${count} | 💰 Budget: ${formatMoney(budget)} | Reserve: ${formatMoney(budgetInfo.reserve)} | Ratio: ${(budgetInfo.spendRatio * 100).toFixed(0)}%`, "info");
 }
 
 function buyBestUpgrade(ns, ui) {
-    const money = ns.getServerMoneyAvailable("home");
-    const budget = Math.max(0, (money - config.hacknet.reserveMoney) * config.hacknet.maxSpendRatio);
+    const budgetInfo = getHacknetBudget(ns);
+    const budget = budgetInfo.budget;
     if (budget <= 0) return false;
 
     let best = null;
@@ -83,37 +83,62 @@ function buyBestUpgrade(ns, ui) {
     if (!best || best.cost > budget) return false;
 
     // Track state change
-    const prevNodeCount = lastState.nodeCount;
     lastState.lastUpgradeLoop = lastState.loopCount;
 
     if (best.type === "node") {
-        ns.hacknet.purchaseNode();
+        const purchasedNode = ns.hacknet.purchaseNode();
+        if (purchasedNode === -1) {
+            return false;
+        }
         lastState.nodeCount = ns.hacknet.numNodes();
         ui.log(`✅ Purchased new node (total: ${lastState.nodeCount}) | ${formatMoney(best.cost)}`, "success");
         return true;
     }
 
     if (best.type === "level") {
-        ns.hacknet.upgradeLevel(best.node, 1);
+        if (!ns.hacknet.upgradeLevel(best.node, 1)) return false;
         ui.log(`⬆️ Upgraded level on node ${best.node} | ${formatMoney(best.cost)}`, "success");
     }
     if (best.type === "ram") {
-        ns.hacknet.upgradeRam(best.node, 1);
+        if (!ns.hacknet.upgradeRam(best.node, 1)) return false;
         ui.log(`💾 Upgraded RAM on node ${best.node} | ${formatMoney(best.cost)}`, "success");
     }
     if (best.type === "core") {
-        ns.hacknet.upgradeCore(best.node, 1);
+        if (!ns.hacknet.upgradeCore(best.node, 1)) return false;
         ui.log(`🔧 Upgraded core on node ${best.node} | ${formatMoney(best.cost)}`, "success");
     }
     if (best.type === "cache") {
-        ns.hacknet.upgradeCache(best.node, 1);
+        if (!ns.hacknet.upgradeCache(best.node, 1)) return false;
         ui.log(`📦 Upgraded cache on node ${best.node} | ${formatMoney(best.cost)}`, "success");
     }
     return true;
 }
 
 function pickBest(current, candidate) {
-    if (!candidate || candidate.cost <= 0) return current;
+    if (!candidate || !Number.isFinite(candidate.cost) || candidate.cost <= 0) return current;
     if (!current || candidate.cost < current.cost) return candidate;
     return current;
+}
+
+function getHacknetBudget(ns) {
+    const settings = config.hacknet;
+    const money = ns.getServerMoneyAvailable("home");
+    const nodeCount = ns.hacknet.numNodes();
+
+    const bootstrapNodeTarget = settings.bootstrapNodeTarget ?? 2;
+    const inBootstrap = nodeCount < bootstrapNodeTarget;
+
+    const spendRatio = inBootstrap
+        ? (settings.bootstrapSpendRatio ?? 0.9)
+        : settings.maxSpendRatio;
+
+    const reserveMoney = settings.reserveMoney ?? 0;
+    const reserveScale = settings.reserveScale ?? 0.25;
+    const minReserveMoney = settings.minReserveMoney ?? 0;
+
+    const scaledReserve = Math.min(reserveMoney, money * reserveScale);
+    const reserve = inBootstrap ? 0 : Math.max(minReserveMoney, scaledReserve);
+    const budget = Math.max(0, (money - reserve) * spendRatio);
+
+    return { budget, reserve, spendRatio, inBootstrap };
 }

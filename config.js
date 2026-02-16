@@ -383,6 +383,10 @@ export const config = {
     hacknet: {
         maxSpendRatio: 0.15,
         reserveMoney: 500000000,
+        reserveScale: 0.25,
+        minReserveMoney: 200000,
+        bootstrapNodeTarget: 2,
+        bootstrapSpendRatio: 0.9,
         allowCache: false,
     },
 

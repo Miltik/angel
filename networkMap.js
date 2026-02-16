@@ -106,11 +106,8 @@ export async function main(ns) {
         const serversByDepth = [];
         scanNetworkByDepth(ns, "home", serverInfo, serversByDepth, 0, maxDepth, new Set());
         
-        // Build HTML for visual map (include styles inline once)
-        let html = '';
-        if (lastState.loopCount === 1) {
-            html += getMapStyles();
-        }
+        // Build HTML for visual map (include styles inline every time)
+        let html = getMapStyles();
         html += '<div class="network-map">';
         
         // Stats header

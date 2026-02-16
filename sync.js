@@ -84,6 +84,7 @@ export async function main(ns) {
     // Build base URL
     const baseUrl = `https://raw.githubusercontent.com/${GITHUB_USER}/${GITHUB_REPO}/${GITHUB_BRANCH}`;
     const subdir = REPO_SUBDIR ? `/${REPO_SUBDIR}` : "";
+    const cacheBust = `?v=${Date.now()}`;
     
     let successCount = 0;
     let failCount = 0;
@@ -93,7 +94,7 @@ export async function main(ns) {
     ns.tprint("─────────────────────────────────────────");
     
     for (const file of files) {
-        const url = `${baseUrl}${subdir}/${file}`;
+        const url = `${baseUrl}${subdir}/${file}${cacheBust}`;
         const destination = `angel/${file}`;
         
         try {

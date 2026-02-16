@@ -211,7 +211,6 @@ async function updateDashboard(ns, ui) {
             // Network error
         }
         
-        ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
         ui.log(`🕐 Last updated: ${new Date().toLocaleTimeString()} | Refresh: 2s`, "info");
     } catch (e) {
         ui.log(`Dashboard update error: ${e.message || e}`, "error");

@@ -233,7 +233,6 @@ function displayStatus(ns) {
     ns.print(`│ Purchased Servers: ${serverStats.count}/${serverStats.maxPossible}      │`);
     ns.print(`│ Total RAM: ${formatRam(serverStats.totalRam).padEnd(19)}│`);
     ns.print(`│ Net Free RAM: ${formatRam(totalRam).padEnd(14)}│`);
-    ns.print("└─────────────────────────────────────┘");
     ns.print(`Home Free RAM: ${formatRam(homeFreeRam)} / ${formatRam(homeRam)}`);
     if (!startupState.coreReady) {
         const blocked = startupState.blockedCoreModules.length > 0

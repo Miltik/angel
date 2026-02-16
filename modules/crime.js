@@ -157,6 +157,9 @@ function chooseActivity(ns, gamePhase) {
         player.skills.dexterity < targets.dexterity ||
         player.skills.agility < targets.agility;
 
+    // Check if any faction actually has viable work (not just gang-only like Nitesec)
+    const hasViableFactionWork = hasAnyViableFactionWork(ns);
+
     // Phase 0: Bootstrap - prioritize cash, then training
     if (gamePhase === 0) {
         if (money < 10000000) return "crime";
@@ -164,15 +167,16 @@ function chooseActivity(ns, gamePhase) {
         return "crime";
     }
 
-    // Phase 1: Early - prioritize faction, but train if needed
+    // Phase 1: Early - prioritize faction if work available, training, then company
     if (gamePhase === 1) {
         if (needsTraining) return "training";
         const companyThreshold = config.company?.onlyWhenMoneyBelow || 200000000;
         if (money < companyThreshold) return "company";
-        return "faction";
+        if (hasViableFactionWork) return "faction";
+        return "crime";  // Fallback: crime for money/stats if no faction work
     }
 
-    // Phase 2: Mid - faction primary, company/training backup
+    // Phase 2: Mid - faction primary if available, company/training backup, else crime
     if (gamePhase === 2) {
         const allTrained = 
             player.skills.strength >= targets.strength &&
@@ -183,10 +187,37 @@ function chooseActivity(ns, gamePhase) {
         if (!allTrained) return "training";
         const companyThreshold = config.company?.onlyWhenMoneyBelow || 200000000;
         if (money < companyThreshold) return "company";
-        return "faction";
+        if (hasViableFactionWork) return "faction";
+        return "crime";  // Fallback: crime if no faction work available
     }
 
     return "none";
+}
+
+/**
+ * Check if any faction has actual unowned augments to grind for
+ */
+function hasAnyViableFactionWork(ns) {
+    const player = ns.getPlayer();
+    const owned = ns.singularity.getOwnedAugmentations(true);
+
+    for (const faction of player.factions) {
+        // Skip gang-only factions (Netburners, NiteSec - can't gain rep from work)
+        if (faction === "NiteSec" || faction === "Netburners" || faction === "Bladeburners") {
+            continue;
+        }
+
+        const augments = ns.singularity.getAugmentationsFromFaction(faction);
+        
+        // Check if ANY augment in this faction is unowned
+        for (const aug of augments) {
+            if (!owned.includes(aug)) {
+                return true;  // Found at least one unowned augment
+            }
+        }
+    }
+
+    return false;  // No faction has viable work
 }
 
 /**
@@ -268,10 +299,19 @@ async function doTraining(ns) {
  */
 async function doFactionWork(ns) {
     const player = ns.getPlayer();
-    const factions = player.factions.filter(f => f !== "Bladeburners");
+    const owned = ns.singularity.getOwnedAugmentations(true);
+
+    // Filter to factions with actual unowned augments
+    const factions = player.factions.filter(f => {
+        if (f === "NiteSec" || f === "Netburners" || f === "Bladeburners") {
+            return false;  // Skip gang-only factions
+        }
+        const augments = ns.singularity.getAugmentationsFromFaction(f);
+        return augments.some(aug => !owned.includes(aug));  // Must have unowned augs
+    });
 
     if (factions.length === 0) {
-        log(ns, `🎭 Faction: No joined factions`, "WARN");
+        log(ns, `🎭 Faction: No factions with unowned augments - falling back to crime`, "DEBUG");
         await ns.sleep(30000);
         return;
     }
@@ -288,15 +328,15 @@ async function doFactionWork(ns) {
         }
     }
 
-    if (!bestFaction) {
-        log(ns, `🎭 Faction: All factions satisfied`, "DEBUG");
+    if (!bestFaction || mostNeeded <= 0) {
+        log(ns, `🎭 Faction: All factions satisfied - falling back to crime`, "DEBUG");
         await ns.sleep(30000);
         return;
     }
 
     const currentWork = ns.singularity.getCurrentWork();
     if (currentWork && currentWork.type === "FACTION" && currentWork.factionName === bestFaction) {
-        // Already working
+        // Already working on best faction
         await ns.sleep(180000);
         return;
     }

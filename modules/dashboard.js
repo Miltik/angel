@@ -36,8 +36,8 @@ export async function main(ns) {
             loopCount++;
             await updateDashboard(ns, ui);
             
-            // Update every 30 seconds for dashboard
-            await ns.sleep(30000);
+            // Update every 2 seconds for real-time monitoring
+            await ns.sleep(2000);
         } catch (e) {
             ui.log(`❌ Error: ${e}`, "error");
             await ns.sleep(5000);
@@ -175,7 +175,7 @@ async function updateDashboard(ns, ui) {
         }
         
         ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
-        ui.log(`🕐 Last updated: ${new Date().toLocaleTimeString()} | Refresh: 30s`, "info");
+        ui.log(`🕐 Last updated: ${new Date().toLocaleTimeString()} | Refresh: 2s`, "info");
     } catch (e) {
         ui.log(`Dashboard update error: ${e.message || e}`, "error");
         throw e;
@@ -246,7 +246,7 @@ function displayFactionStatus(ui, ns, player) {
         if (factionInfo.length > 0) {
             const top3 = factionInfo.slice(0, 3);
             const factionLines = top3.map(f => 
-                `${f.name}: ${formatMoney(f.rep)} rep (Favor: ${f.favor})`
+                `${f.name}: ${formatMoney(f.rep)} rep (Favor: ${f.favor.toFixed(0)})`
             ).join(" | ");
             ui.log(`🏛️  FACTIONS: ${factionLines}`, "info");
             

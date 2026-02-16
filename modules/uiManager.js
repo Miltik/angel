@@ -192,7 +192,13 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
     if (WINDOWS.has(id)) {
         const existing = WINDOWS.get(id);
         const preferredVisible = getPreferredVisibility(id);
-        if (!existing.isMock && existing.element) {
+        if (!existing.isMock && typeof existing.show === "function" && typeof existing.hide === "function") {
+            if (preferredVisible) {
+                existing.show();
+            } else {
+                existing.hide();
+            }
+        } else if (!existing.isMock && existing.element) {
             existing.element.style.display = preferredVisible ? "flex" : "none";
         }
         return existing;
@@ -381,7 +387,7 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
                 resizeState.isResizing = false;
                 document.onmouseup = null;
                 document.onmousemove = null;
-                autoSizeEnabled = true;
+                autoSizeEnabled = false;
                 // Save window state after resize
                 saveWindowState(id, {
                     left: container.style.left,
@@ -472,7 +478,21 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
 export function setWindowVisibility(id, visible) {
     persistVisibility(id, visible);
     const windowApi = WINDOWS.get(id);
-    if (windowApi && !windowApi.isMock && windowApi.element) {
+    if (!windowApi || windowApi.isMock) {
+        return;
+    }
+
+    if (visible && typeof windowApi.show === "function") {
+        windowApi.show();
+        return;
+    }
+
+    if (!visible && typeof windowApi.hide === "function") {
+        windowApi.hide();
+        return;
+    }
+
+    if (windowApi.element) {
         windowApi.element.style.display = visible ? "flex" : "none";
     }
 }

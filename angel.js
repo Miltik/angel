@@ -25,6 +25,7 @@ let startupState = {
     lastBlockedLog: 0,
     blockedCoreModules: [],
     lastDeferredLog: {},
+    lastModuleIssueLog: {},
 };
 
 export async function main(ns) {
@@ -217,6 +218,7 @@ function displayStatus(ns) {
     // RAM stats
     const totalRam = getTotalAvailableRam(ns);
     const homeRam = ns.getServerMaxRam("home");
+    const homeFreeRam = Math.max(0, homeRam - ns.getServerUsedRam("home"));
     
     ns.print("┌─────────────────────────────────────┐");
     ns.print("│         ANGEL STATUS REPORT         │");
@@ -230,8 +232,9 @@ function displayStatus(ns) {
     ns.print("├─────────────────────────────────────┤");
     ns.print(`│ Purchased Servers: ${serverStats.count}/${serverStats.maxPossible}      │`);
     ns.print(`│ Total RAM: ${formatRam(serverStats.totalRam).padEnd(19)}│`);
-    ns.print(`│ Available RAM: ${formatRam(totalRam).padEnd(15)}│`);
+    ns.print(`│ Net Free RAM: ${formatRam(totalRam).padEnd(14)}│`);
     ns.print("└─────────────────────────────────────┘");
+    ns.print(`Home Free RAM: ${formatRam(homeFreeRam)} / ${formatRam(homeRam)}`);
     if (!startupState.coreReady) {
         const blocked = startupState.blockedCoreModules.length > 0
             ? startupState.blockedCoreModules.join(", ")
@@ -355,25 +358,37 @@ async function ensureModulesRunning(ns) {
 
     // Dashboard module - monitoring (optional, non-blocking)
     if (config.orchestrator.enableDashboard) {
-        await ensureModuleRunning(ns, SCRIPTS.dashboard, "Dashboard");
+        await ensureModuleRunning(ns, SCRIPTS.dashboard, "Dashboard", [], {
+            deferIfInsufficientRam: true,
+            lowRamLogIntervalMs: 45000,
+        });
         await ns.sleep(1500);
     }
     
     // Coding Contracts solver - low RAM
     if (config.orchestrator.enableContracts) {
-        await ensureModuleRunning(ns, SCRIPTS.contracts, "Contracts");
+        await ensureModuleRunning(ns, SCRIPTS.contracts, "Contracts", [], {
+            deferIfInsufficientRam: true,
+            lowRamLogIntervalMs: 45000,
+        });
         await ns.sleep(1500);
     }
     
     // Formulas.exe farming - low RAM
     if (config.orchestrator.enableFormulas) {
-        await ensureModuleRunning(ns, SCRIPTS.formulas, "Formulas");
+        await ensureModuleRunning(ns, SCRIPTS.formulas, "Formulas", [], {
+            deferIfInsufficientRam: true,
+            lowRamLogIntervalMs: 45000,
+        });
         await ns.sleep(1500);
     }
     
     // Network Map module - visualization
     if (config.orchestrator.enableNetworkMap) {
-        await ensureModuleRunning(ns, SCRIPTS.networkMap, "Network Map");
+        await ensureModuleRunning(ns, SCRIPTS.networkMap, "Network Map", [], {
+            deferIfInsufficientRam: true,
+            lowRamLogIntervalMs: 45000,
+        });
         await ns.sleep(1500);
     }
 
@@ -384,7 +399,10 @@ async function ensureModulesRunning(ns) {
     // Hacking module - start last as it consumes most RAM
     if (config.orchestrator.enableHacking) {
         if (startupElapsedMs >= hackingDelayMs) {
-            await ensureModuleRunning(ns, SCRIPTS.hacking, "Hacking");
+            await ensureModuleRunning(ns, SCRIPTS.hacking, "Hacking", [], {
+                deferIfInsufficientRam: true,
+                lowRamLogIntervalMs: 45000,
+            });
         } else if (shouldLogDeferredModule("hacking")) {
             const remainingSec = Math.ceil((hackingDelayMs - startupElapsedMs) / 1000);
             log(ns, `Deferring Hacking module startup for ${remainingSec}s to let core modules stabilize`, "INFO");
@@ -426,7 +444,10 @@ async function ensureModulesRunning(ns) {
             xpArgs.push("--clean", "false");
         }
 
-        await ensureModuleRunning(ns, SCRIPTS.xpFarm, "XP Farm", xpArgs);
+        await ensureModuleRunning(ns, SCRIPTS.xpFarm, "XP Farm", xpArgs, {
+            deferIfInsufficientRam: true,
+            lowRamLogIntervalMs: 45000,
+        });
     }
 
     return true;
@@ -457,6 +478,8 @@ async function ensureModuleRunning(ns, script, name, args = [], options = {}) {
     
     const reclaimOnLowRam = Boolean(options?.reclaimOnLowRam);
     const reclaimOrder = Array.isArray(options?.reclaimOrder) ? options.reclaimOrder : [];
+    const deferIfInsufficientRam = Boolean(options?.deferIfInsufficientRam);
+    const lowRamLogIntervalMs = Number(options?.lowRamLogIntervalMs ?? 30000);
 
     // Check if already running
     if (ns.isRunning(script, "home")) {
@@ -466,6 +489,8 @@ async function ensureModuleRunning(ns, script, name, args = [], options = {}) {
     // Check RAM requirements
     const scriptRam = ns.getScriptRam(script, "home");
     let availableRam = ns.getServerMaxRam("home") - ns.getServerUsedRam("home");
+
+    const homeMaxRam = ns.getServerMaxRam("home");
 
     if (scriptRam > availableRam && reclaimOnLowRam && reclaimOrder.length > 0) {
         const reclaimed = [];
@@ -488,7 +513,16 @@ async function ensureModuleRunning(ns, script, name, args = [], options = {}) {
     }
     
     if (scriptRam > availableRam) {
-        log(ns, `Failed to start ${name} module: needs ${scriptRam.toFixed(2)}GB, have ${availableRam.toFixed(2)}GB`, "WARN");
+        const impossibleOnCurrentHome = scriptRam > homeMaxRam;
+        const detail = impossibleOnCurrentHome
+            ? `${name} requires ${scriptRam.toFixed(2)}GB, but home max is ${homeMaxRam.toFixed(2)}GB`
+            : `${name} needs ${scriptRam.toFixed(2)}GB, have ${availableRam.toFixed(2)}GB free on home`;
+
+        if (deferIfInsufficientRam) {
+            logThrottled(ns, `module-lowram-${name}`, `Deferring ${name} startup: ${detail}`, "INFO", lowRamLogIntervalMs);
+        } else {
+            logThrottled(ns, `module-lowram-${name}`, `Failed to start ${name} module: ${detail}`, "WARN", lowRamLogIntervalMs);
+        }
         return false;
     }
     
@@ -502,6 +536,16 @@ async function ensureModuleRunning(ns, script, name, args = [], options = {}) {
         log(ns, `Started ${name} module (PID: ${pid})`, "INFO");
         return true;
     }
+}
+
+function logThrottled(ns, key, message, level = "INFO", intervalMs = 30000) {
+    const now = Date.now();
+    const last = Number(startupState.lastModuleIssueLog[key] || 0);
+    if (now - last < intervalMs) {
+        return;
+    }
+    startupState.lastModuleIssueLog[key] = now;
+    log(ns, message, level);
 }
 
 /**

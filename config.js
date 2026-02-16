@@ -229,17 +229,29 @@ export const config = {
     // Crime automation settings (SF4)
     crime: {
         onlyWhenMoneyBelow: 5000000000, // Only commit crimes when money is below this
-        minSuccessChance: 0.4,          // Minimum success chance to pick a crime
+        minSuccessChance: 0.25,          // Minimum success chance (lower for high-tier crimes)
         focus: false,
         crimes: [
+            // Low tier (early game)
             "Shoplift",
-            "Rob store",
-            "Mug someone",
+            "Rob Store",
+            "Mug Someone",
             "Larceny",
+            // Mid tier
             "Deal Drugs",
             "Bond Forgery",
             "Grand Theft Auto",
+            // High tier (late game)
+            "Traffick Illegal Arms",
+            "Assassination",
+            "Heist",
         ],
+        // Prefer higher tier crimes when money is above these thresholds
+        tierThresholds: {
+            high: 100000000,      // Above $100M, prefer high-tier crimes
+            mid: 10000000,        // Above $10M, prefer mid-tier
+            low: 0,               // Otherwise, do low-tier
+        },
     },
 
     // University + gym training settings (SF4)

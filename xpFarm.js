@@ -93,7 +93,11 @@ export async function main(ns) {
         }
 
         if (mode === "spare-home") {
-            stopWorkers(ns, ["home"], worker, "xpfarm-only");
+            // In friendly mode, keep existing workers alive to avoid thread thrashing.
+            // Only reset workers if the selected target changed.
+            if (lastState.target && lastState.target !== target) {
+                stopWorkers(ns, ["home"], worker, "xpfarm-only");
+            }
         } else if (hyperClean) {
             stopWorkers(ns, servers, worker, "all");
         }
@@ -102,7 +106,8 @@ export async function main(ns) {
             ? await deployWorkers(ns, servers, worker)
             : 0;
 
-        const { totalThreads, usedServers } = launchWeaken(ns, servers, target, worker, reserveHome, minHomeFree, mode);
+        launchWeaken(ns, servers, target, worker, reserveHome, minHomeFree, mode);
+        const { totalThreads, usedServers } = getActiveXPFarmStats(ns, servers, worker);
 
         const changed =
             lastState.target !== target ||
@@ -188,8 +193,6 @@ async function deployWorkers(ns, servers, worker) {
 }
 
 function launchWeaken(ns, servers, target, worker, reserveHome, minHomeFree, mode) {
-    let totalThreads = 0;
-    let usedServers = 0;
 
     for (const server of servers) {
         const reserve = server === "home"
@@ -201,8 +204,25 @@ function launchWeaken(ns, servers, target, worker, reserveHome, minHomeFree, mod
         if (threads <= 0) continue;
 
         const pid = ns.exec(worker, server, threads, target, XP_FARM_MARKER, mode);
-        if (pid !== 0) {
-            totalThreads += threads;
+        if (pid === 0) continue;
+    }
+}
+
+function getActiveXPFarmStats(ns, servers, worker) {
+    let totalThreads = 0;
+    let usedServers = 0;
+
+    for (const server of servers) {
+        const processes = ns.ps(server).filter(proc => proc.filename === worker);
+        let serverActive = false;
+        for (const proc of processes) {
+            const args = proc.args || [];
+            const isXpFarmWorker = args.some(arg => String(arg) === XP_FARM_MARKER);
+            if (!isXpFarmWorker) continue;
+            totalThreads += proc.threads || 0;
+            serverActive = true;
+        }
+        if (serverActive) {
             usedServers++;
         }
     }

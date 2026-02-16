@@ -73,6 +73,11 @@ async function serverLoop(ns, ui) {
         lastState.lastRootCount = newlyRooted;
     }
     
+    // Prioritize home machine upgrades for orchestrator stability and daemon prep
+    if (config.homeUpgrades?.enabled !== false) {
+        await manageHomeUpgrades(ns, phase, ui);
+    }
+
     // Buy/upgrade servers if enabled
     if (config.servers.autoBuyServers) {
         await manageServerPurchases(ns, phase, phaseConfig, ui);
@@ -134,17 +139,125 @@ function getPurchaseStrategy(phase) {
  */
 async function manageServerPurchases(ns, phase, phaseConfig, ui) {
     const money = ns.getServerMoneyAvailable("home");
+    const reserveForHome = getHomeUpgradeReserve(ns, phase, money);
+    const spendableMoney = Math.max(0, money - reserveForHome);
     const ownedServers = ns.getPurchasedServers();
     const strategy = getPurchaseStrategy(phase);
+
+    if (spendableMoney <= 0) {
+        return;
+    }
     
     // Decide: buy new server or upgrade existing?
     if (ownedServers.length < config.servers.maxServers) {
         // Buy new servers until we hit max
-        await buyNewServer(ns, money, strategy, ui);
+        await buyNewServer(ns, spendableMoney, strategy, ui);
     } else {
         // All server slots filled - upgrade to next tier
-        await upgradeServerCascade(ns, money, strategy, ui);
+        await upgradeServerCascade(ns, spendableMoney, strategy, ui);
     }
+}
+
+function getHomeUpgradeReserve(ns, phase, currentMoney) {
+    const homeCfg = config.homeUpgrades || {};
+    if (homeCfg.enabled === false || homeCfg.prioritizeUntilTarget === false) return 0;
+    if (!hasHomeUpgradeAccess(ns)) return 0;
+
+    const status = getHomeUpgradeStatus(ns, phase);
+    if (!status.needsAny || !status.nextCost || status.nextCost <= 0) return 0;
+
+    const reserveRatio = Number(homeCfg.reserveRatio ?? 0.75);
+    const maxReserveRatio = Number(homeCfg.maxReserveMoneyRatio ?? 0.5);
+    const reserveByCost = status.nextCost * Math.max(0, reserveRatio);
+    const reserveCap = Math.max(0, currentMoney * maxReserveRatio);
+    return Math.min(reserveByCost, reserveCap);
+}
+
+async function manageHomeUpgrades(ns, phase, ui) {
+    const homeCfg = config.homeUpgrades || {};
+    if (!hasHomeUpgradeAccess(ns)) return;
+
+    const status = getHomeUpgradeStatus(ns, phase);
+    if (!status.needsAny) {
+        if (lastState.loopCount % 30 === 0) {
+            ui.log(`🏠 Home target reached: ${formatRam(status.homeRam)} RAM | ${status.homeCores} cores`, "info");
+        }
+        return;
+    }
+
+    const money = ns.getServerMoneyAvailable("home");
+    const minMoney = Number(homeCfg.minMoneyToUpgrade ?? 0);
+    if (money < minMoney) {
+        return;
+    }
+
+    const purchaseRatio = Number(homeCfg.purchaseThresholdRatio ?? 1.0);
+
+    if (status.nextType === "ram" && status.ramCost > 0) {
+        if (money >= status.ramCost * purchaseRatio) {
+            const upgraded = ns.singularity.upgradeHomeRam();
+            if (upgraded) {
+                ui.log(`🏠 Upgraded home RAM to ${formatRam(ns.getServerMaxRam("home"))}`, "success");
+            }
+        }
+        return;
+    }
+
+    if (status.nextType === "cores" && status.coreCost > 0) {
+        if (money >= status.coreCost * purchaseRatio) {
+            const upgraded = ns.singularity.upgradeHomeCores();
+            if (upgraded) {
+                ui.log(`🏠 Upgraded home CPU cores to ${ns.getServer("home").cpuCores}`, "success");
+            }
+        }
+    }
+}
+
+function hasHomeUpgradeAccess(ns) {
+    try {
+        ns.singularity.getUpgradeHomeRamCost();
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function getHomeUpgradeStatus(ns, phase) {
+    const homeCfg = config.homeUpgrades || {};
+    const phaseKey = `phase${phase}`;
+    const targetCfg = homeCfg.targets?.[phaseKey] || {};
+
+    const home = ns.getServer("home");
+    const homeRam = home.maxRam || 0;
+    const homeCores = home.cpuCores || 1;
+
+    const targetRam = Number(targetCfg.ram ?? homeCfg.defaultTargetRam ?? homeRam);
+    const targetCores = Number(targetCfg.cores ?? homeCfg.defaultTargetCores ?? homeCores);
+
+    const needsRam = homeRam < targetRam;
+    const needsCores = homeCores < targetCores;
+
+    let ramCost = 0;
+    let coreCost = 0;
+    try { ramCost = Number(ns.singularity.getUpgradeHomeRamCost() || 0); } catch (e) {}
+    try { coreCost = Number(ns.singularity.getUpgradeHomeCoresCost() || 0); } catch (e) {}
+
+    const nextType = needsRam ? "ram" : (needsCores ? "cores" : "none");
+    const nextCost = nextType === "ram" ? ramCost : (nextType === "cores" ? coreCost : 0);
+
+    return {
+        homeRam,
+        homeCores,
+        targetRam,
+        targetCores,
+        needsRam,
+        needsCores,
+        needsAny: needsRam || needsCores,
+        ramCost,
+        coreCost,
+        nextType,
+        nextCost,
+    };
 }
 
 /**

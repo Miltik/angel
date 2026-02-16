@@ -180,6 +180,25 @@ export const config = {
         maxServers: 25,
     },
 
+    // Home machine upgrade policy (Singularity)
+    homeUpgrades: {
+        enabled: true,
+        prioritizeUntilTarget: true,   // Reserve budget for home upgrades before server expansion
+        purchaseThresholdRatio: 1.0,   // Buy when we have 100% of upgrade cost
+        reserveRatio: 0.75,            // Reserve up to 75% of next home upgrade cost
+        maxReserveMoneyRatio: 0.5,     // Never reserve more than 50% of current cash
+        minMoneyToUpgrade: 5000000,    // Ignore tiny early balances
+        defaultTargetRam: 256,
+        defaultTargetCores: 4,
+        targets: {
+            phase0: { ram: 128, cores: 2 },
+            phase1: { ram: 256, cores: 4 },
+            phase2: { ram: 512, cores: 6 },
+            phase3: { ram: 1024, cores: 8 },
+            phase4: { ram: 4096, cores: 8 },
+        },
+    },
+
     // Faction settings (for SF4)
     factions: {
         autoJoinFactions: true,

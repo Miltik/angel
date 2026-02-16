@@ -101,15 +101,9 @@ export async function main(ns) {
             // Faction management: ALWAYS ACTIVE (all phases)
             await manageFactions(ns, ui);
 
-            // Activity work: PHASES 0-2 (active), PHASES 3+ (filler only)
-            if (gamePhase <= 2) {
-                // P0-2: Active crime/training/faction/company
-                await processActivity(ns, gamePhase, ui);
-            } else if (gamePhase >= 3) {
-                // P3+: Crime only as filler when activity lock is free
-                // This allows padding stats during idle moments without blocking other activities
-                await processFillerCrime(ns, gamePhase, ui);
-            }
+            // Activity work: ALL PHASES
+            // Priority: Faction work for augments > training > company > crime
+            await processActivity(ns, gamePhase, ui);
 
             await ns.sleep(5000);
         } catch (e) {
@@ -128,13 +122,35 @@ async function manageFactions(ns, ui) {
     const currentFactions = player.factions;
     const invitations = ns.singularity.checkFactionInvitations();
 
-    // Auto-join priority factions
+    // Auto-join priority factions first
     if (config.factions?.autoJoinFactions && invitations.length > 0) {
         const priorityFactions = config.factions.priorityFactions || [];
         for (const faction of invitations) {
             if (priorityFactions.includes(faction)) {
                 ns.singularity.joinFaction(faction);
-                ui.log(`✅ Joined faction: ${faction}`, "success");
+                ui.log(`✅ Joined priority faction: ${faction}`, "success");
+            }
+        }
+    }
+    
+    // Auto-join ANY faction that has augmentations we don't own
+    if (config.factions?.autoJoinFactions && invitations.length > 0) {
+        const owned = ns.singularity.getOwnedAugmentations(true);
+        for (const faction of invitations) {
+            // Skip if already joined
+            if (currentFactions.includes(faction)) continue;
+            
+            // Check if this faction has unowned augments
+            try {
+                const augments = ns.singularity.getAugmentationsFromFaction(faction);
+                const hasUnownedAugs = augments.some(aug => !owned.includes(aug));
+                
+                if (hasUnownedAugs) {
+                    ns.singularity.joinFaction(faction);
+                    ui.log(`✅ Joined faction (has augments): ${faction}`, "success");
+                }
+            } catch (e) {
+                // Faction might not be joinable yet, skip
             }
         }
     }
@@ -219,43 +235,8 @@ async function processActivity(ns, gamePhase, ui) {
 }
 
 /**
- * FILLER CRIME: Phases 3+ only
- * Do brief crimes when activity lock is free (statpadding only)
- */
-async function processFillerCrime(ns, gamePhase, ui) {
-    // Check if already working on something
-    const currentWork = ns.singularity.getCurrentWork();
-    if (currentWork) {
-        if (currentWork.type === "CRIME") {
-            // Display current crime progress (only on change or periodically)
-            const crime = currentWork.crimeType;
-            const chance = ns.singularity.getCrimeChance(crime);
-            if (crime !== lastState.currentCrime || lastState.loopCount % 12 === 0) {
-                ui.log(`🔪 Filler crime: ${crime} (${(chance * 100).toFixed(1)}% success)`, "info");
-                lastState.currentCrime = crime;
-            }
-        }
-        return; // Already working on something, skip
-    }
-
-    // Try to acquire activity lock (only if free - don't wait)
-    if (!claimLock(ns, ACTIVITY_OWNER, ACTIVITY_LOCK_TTL)) {
-        // Lock held by another module (faction work, etc), skip
-        return;
-    }
-
-    try {
-        // Do a quick crime for stat padding
-        await doCrime(ns, ui);
-    } catch (err) {
-        ui.log(`❌ Error during filler crime: ${err}`, "error");
-    }
-
-    releaseLock(ns, ACTIVITY_OWNER);
-}
-
-/**
  * Choose best activity based on phase and player state
+ * PRIORITY: Faction work (when augments need rep) > Training (when stats low) > Company (when money low) > Crime
  */
 function chooseActivity(ns, gamePhase) {
     const player = ns.getPlayer();
@@ -272,6 +253,11 @@ function chooseActivity(ns, gamePhase) {
     // Check if any faction actually has viable work (not just gang-only like Nitesec)
     const hasViableFactionWork = hasAnyViableFactionWork(ns);
 
+    // ALWAYS prioritize faction work if we have augments that need rep (all phases)
+    if (hasViableFactionWork) {
+        return "faction";
+    }
+
     // Phase 0: Bootstrap - prioritize cash, then training
     if (gamePhase === 0) {
         if (money < 10000000) return "crime";
@@ -279,31 +265,26 @@ function chooseActivity(ns, gamePhase) {
         return "crime";
     }
 
-    // Phase 1: Early - prioritize faction if work available, training, then company
+    // Phase 1: Early - training, then company
     if (gamePhase === 1) {
         if (needsTraining) return "training";
         const companyThreshold = config.company?.onlyWhenMoneyBelow || 200000000;
         if (money < companyThreshold) return "company";
-        if (hasViableFactionWork) return "faction";
-        return "crime";  // Fallback: crime for money/stats if no faction work
+        return "crime";
     }
 
-    // Phase 2: Mid - faction primary if available, company/training backup, else crime
-    if (gamePhase === 2) {
-        const allTrained = 
-            player.skills.strength >= targets.strength &&
-            player.skills.defense >= targets.defense &&
-            player.skills.dexterity >= targets.dexterity &&
-            player.skills.agility >= targets.agility;
+    // Phase 2+: Training if needed, otherwise crime for stats/money
+    const allTrained = 
+        player.skills.strength >= targets.strength &&
+        player.skills.defense >= targets.defense &&
+        player.skills.dexterity >= targets.dexterity &&
+        player.skills.agility >= targets.agility &&
+        player.skills.hacking >= (config.training?.targetHacking || 75);
 
-        if (!allTrained) return "training";
-        const companyThreshold = config.company?.onlyWhenMoneyBelow || 200000000;
-        if (money < companyThreshold) return "company";
-        if (hasViableFactionWork) return "faction";
-        return "crime";  // Fallback: crime if no faction work available
-    }
-
-    return "none";
+    if (!allTrained) return "training";
+    
+    // All stats trained, no faction work needed - crime for money
+    return "crime";
 }
 
 /**

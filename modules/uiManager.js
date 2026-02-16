@@ -13,6 +13,7 @@ const WINDOWS = new Map();
 let nsReference = null;  // Store NS reference for file I/O
 const UI_PREFS_KEY = "angelUiWindowPrefs";
 let windowPrefsCache = null;
+const sessionVisibility = new Map();
 
 function saveWindowPrefs(prefs) {
     try {
@@ -70,25 +71,18 @@ function getWindowPrefs() {
 }
 
 function getDefaultVisibility(id) {
-    return id === "dashboard" || id === "ui-launcher";
+    return true;
 }
 
 function getPreferredVisibility(id) {
-    if (id === "ui-launcher") {
-        return true;
-    }
-    const prefs = getWindowPrefs();
-    if (Object.prototype.hasOwnProperty.call(prefs, id)) {
-        return Boolean(prefs[id]);
+    if (sessionVisibility.has(id)) {
+        return Boolean(sessionVisibility.get(id));
     }
     return getDefaultVisibility(id);
 }
 
 function persistVisibility(id, visible) {
-    const prefs = getWindowPrefs();
-    prefs[id] = Boolean(visible);
-    windowPrefsCache = prefs;
-    saveWindowPrefs(prefs);
+    sessionVisibility.set(id, Boolean(visible));
 }
 
 // Window state persistence (localStorage + file backup)

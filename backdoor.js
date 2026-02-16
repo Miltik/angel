@@ -33,10 +33,11 @@ export async function main(ns) {
         
         if (server !== "home") {
             const srv = ns.getServer(server);
+            const isPServer = ns.getPurchasedServers().includes(server);
             const canBackdoor = srv.backdoorInstalled !== undefined;
             const hackLevelOk = ns.getPlayer().skills.hacking >= srv.requiredHackingSkill;
             
-            if (canBackdoor && srv.hasAdminRights && !srv.backdoorInstalled && hackLevelOk) {
+            if (!isPServer && canBackdoor && srv.hasAdminRights && !srv.backdoorInstalled && hackLevelOk) {
                 attempted++;
                 try {
                     await ns.singularity.installBackdoor();

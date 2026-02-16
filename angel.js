@@ -239,6 +239,27 @@ async function ensureModulesRunning(ns) {
     if (config.orchestrator.enableHacking) {
         await ensureModuleRunning(ns, SCRIPTS.hacking, "Hacking");
     }
+
+    // XP Farm module - optional, starts after core modules to use spare RAM
+    if (config.orchestrator.enableXPFarm) {
+        const xpMode = config.xpFarm?.mode || "spare-home";
+        const xpArgs = [
+            "--mode", xpMode,
+            "--reserve", String(config.xpFarm?.reserveHomeRam ?? 16),
+            "--minHomeFree", String(config.xpFarm?.minHomeFreeRamGb ?? 8),
+            "--interval", String(config.xpFarm?.interval ?? 10000),
+        ];
+
+        if (config.xpFarm?.target) {
+            xpArgs.push("--target", String(config.xpFarm.target));
+        }
+
+        if (xpMode === "hyper" && config.xpFarm?.cleanHyper === false) {
+            xpArgs.push("--clean", "false");
+        }
+
+        await ensureModuleRunning(ns, SCRIPTS.xpFarm, "XP Farm", xpArgs);
+    }
 }
 
 /**
@@ -247,7 +268,7 @@ async function ensureModulesRunning(ns) {
  * @param {string} script
  * @param {string} name
  */
-async function ensureModuleRunning(ns, script, name) {
+async function ensureModuleRunning(ns, script, name, args = []) {
     // Check if script exists
     if (!ns.fileExists(script, "home")) {
         log(ns, `Module ${name} not found at ${script}`, "WARN");
@@ -269,7 +290,7 @@ async function ensureModuleRunning(ns, script, name) {
     }
     
     // Try to start it
-    const pid = ns.exec(script, "home");
+    const pid = ns.exec(script, "home", 1, ...args);
     
     if (pid === 0) {
         log(ns, `Failed to start ${name} module: exec returned 0 (check for errors in module)`, "WARN");
@@ -300,6 +321,7 @@ export function stopAll(ns) {
         SCRIPTS.gang,
         SCRIPTS.bladeburner,
         SCRIPTS.sleeves,
+        SCRIPTS.xpFarm,
     ];
     
     for (const module of modules) {
@@ -338,6 +360,7 @@ export function getSystemHealth(ns) {
         { name: "Gang", script: SCRIPTS.gang, enabled: config.orchestrator.enableGang },
         { name: "Bladeburner", script: SCRIPTS.bladeburner, enabled: config.orchestrator.enableBladeburner },
         { name: "Sleeves", script: SCRIPTS.sleeves, enabled: config.orchestrator.enableSleeves },
+        { name: "XP Farm", script: SCRIPTS.xpFarm, enabled: config.orchestrator.enableXPFarm },
     ];
     
     const health = {

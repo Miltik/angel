@@ -157,6 +157,7 @@ export const config = {
         enableNetworkMap: true,    // Network visualization
         enableContracts: true,     // Coding contracts solver
         enableFormulas: true,      // Formulas.exe farming
+        enableXPFarm: true,        // Optional XP farming using spare/home RAM or hyper mode
     },
 
     // Hacking settings
@@ -395,6 +396,16 @@ export const config = {
         allowCache: false,
     },
 
+    // XP farm settings
+    xpFarm: {
+        mode: "spare-home",        // spare-home | hyper
+        reserveHomeRam: 16,         // GB reserved on home for other modules
+        minHomeFreeRamGb: 8,        // Keep at least this much home RAM free
+        interval: 10000,            // Loop interval in ms
+        cleanHyper: true,           // In hyper mode, clean existing weaken workers before redeploy
+        target: "",                // Optional fixed target (empty = auto)
+    },
+
     // Early game targets (sorted by difficulty)
     targets: {
         earlyGame: [
@@ -451,6 +462,7 @@ export const SCRIPTS = {
     networkMap: "/angel/networkMap.js",
     contracts: "/angel/modules/contracts.js",
     formulas: "/angel/modules/formulas.js",
+    xpFarm: "/angel/xpFarm.js",
     
     // Workers (actual hacking scripts)
     hack: "/angel/workers/hack.js",

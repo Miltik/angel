@@ -1,12 +1,16 @@
 /**
  * ANGEL XP Farm
- * Hyper-aggressive hacking XP farming across all rooted servers
- * 
+ * Two modes:
+ * - spare-home: friendly mode, uses only spare home RAM
+ * - hyper: standalone aggressive mode, uses all rooted servers
+ *
  * Usage:
  *   run /angel/xpFarm.js
+ *   run /angel/xpFarm.js --mode spare-home --reserve 16 --minHomeFree 8
+ *   run /angel/xpFarm.js --mode hyper
  *   run /angel/xpFarm.js --target foodnstuff
  *   run /angel/xpFarm.js --reserve 16 --once
- * 
+ *
  * @param {NS} ns
  */
 
@@ -14,7 +18,8 @@ import { scanAll } from "/angel/scanner.js";
 import { calcThreads, getAvailableRam } from "/angel/utils.js";
 import { createWindow } from "/angel/modules/uiManager.js";
 
-// State tracking to prevent log spam
+const XP_FARM_MARKER = "__angel_xpfarm__";
+
 let lastState = {
     target: "",
     totalThreads: 0,
@@ -25,87 +30,98 @@ let lastState = {
 
 export async function main(ns) {
     ns.disableLog("ALL");
-    
-    // Version check
-    ns.tprint("⚡ XP Farm v2.0 (DOM UI) - Loading...");
-    
+
+    ns.tprint("⚡ XP Farm v3.0 - Loading...");
+
     let ui;
     try {
         ui = createWindow("xpfarm", "⚡ XP Farm", 600, 400, ns);
-        ns.tprint("✅ DOM UI initialized successfully");
     } catch (error) {
         ns.tprint(`❌ DOM UI failed: ${error.message}`);
-        ns.tprint("Falling back to tail window...");
         ns.ui.openTail();
         ui = {
             log: (msg) => ns.print(msg),
         };
     }
-    
+
     const flags = ns.flags([
+        ["mode", "spare-home"],
         ["target", ""],
         ["reserve", 0],
+        ["minHomeFree", 0],
         ["once", false],
         ["interval", 10000],
         ["clean", true],
     ]);
-    
-    const worker = "angel/workers/weaken.js";
-    const reserveHome = Number(flags.reserve) || 0;
+
+    const worker = "/angel/workers/weaken.js";
+    const mode = String(flags.mode || "spare-home").toLowerCase() === "hyper" ? "hyper" : "spare-home";
+    const reserveHome = Math.max(0, Number(flags.reserve) || 0);
+    const minHomeFree = Math.max(0, Number(flags.minHomeFree) || 0);
     const interval = Math.max(1000, Number(flags.interval) || 10000);
+    const hyperClean = String(flags.clean).toLowerCase() !== "false";
+
     const scriptRam = ns.getScriptRam(worker);
-    
     if (scriptRam === 0) {
         ui.log("❌ Missing worker script: " + worker, "error");
-        ns.tprint(`❌ XP Farm: Missing worker script: ${worker}`);
         return;
     }
-    
+
     ui.log("⚡ ANGEL XP Farm Started", "success");
+    ui.log(`🧭 Mode: ${mode === "hyper" ? "Hyper (Standalone)" : "Spare-Home (Friendly)"}`, "info");
     ui.log(`📋 Reserve Home RAM: ${reserveHome}GB`, "info");
+    if (mode === "spare-home") {
+        ui.log(`🏠 Min Free Home RAM: ${minHomeFree}GB`, "info");
+        ui.log("🔄 Clean Mode: Managed (XP Farm workers only)", "info");
+    } else {
+        ui.log(`🔄 Clean Mode: ${hyperClean ? "ON" : "OFF"}`, "info");
+    }
     ui.log(`⏱️ Update Interval: ${interval}ms`, "info");
-    ui.log(`🔄 Clean Mode: ${flags.clean ? "ON" : "OFF"}`, "info");
     if (flags.target) {
         ui.log(`🎯 Target Locked: ${flags.target}`, "info");
     }
-    ui.log("", "info");
-    
+
     while (true) {
         lastState.loopCount++;
-        const servers = getRunnableServers(ns);
-        const target = flags.target || pickTarget(ns, servers);
-        
+
+        const servers = mode === "hyper" ? getRunnableServers(ns) : ["home"];
+        const target = flags.target || pickTarget(ns);
+
         if (!target) {
             ui.log("❌ No valid XP target found", "error");
-            ns.tprint("❌ XP Farm: No valid XP target found");
             return;
         }
-        
-        if (flags.clean) {
-            stopWorkers(ns, servers, worker);
+
+        if (mode === "spare-home") {
+            stopWorkers(ns, ["home"], worker, "xpfarm-only");
+        } else if (hyperClean) {
+            stopWorkers(ns, servers, worker, "all");
         }
-        
-        const deployed = await deployWorkers(ns, servers, worker);
-        const { totalThreads, usedServers } = launchWeaken(ns, servers, target, worker, reserveHome);
-        
-        // Only log if something changed
-        const changed = lastState.target !== target ||
-                       lastState.totalThreads !== totalThreads ||
-                       lastState.usedServers !== usedServers ||
-                       lastState.deployed !== deployed;
-        
+
+        const deployed = mode === "hyper"
+            ? await deployWorkers(ns, servers, worker)
+            : 0;
+
+        const { totalThreads, usedServers } = launchWeaken(ns, servers, target, worker, reserveHome, minHomeFree, mode);
+
+        const changed =
+            lastState.target !== target ||
+            lastState.totalThreads !== totalThreads ||
+            lastState.usedServers !== usedServers ||
+            lastState.deployed !== deployed;
+
         if (changed || lastState.loopCount % 10 === 0) {
             const player = ns.getPlayer();
             const targetServer = ns.getServer(target);
-            
+
             let xpInfo = "";
             try {
                 const xpGain = ns.formulas.hacking.hackExp(targetServer, player);
                 xpInfo = `📊 XP/Thread: ${xpGain.toFixed(2)} | Total XP/tick: ${(xpGain * totalThreads).toFixed(2)}`;
             } catch (e) {
-                xpInfo = `📊 XP formulas not available`;
+                xpInfo = "📊 XP formulas not available";
             }
-            
+
             ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
             ui.log(`🎯 Target: ${target} (Req Lvl ${targetServer.requiredHackingSkill})`, "success");
             ui.log(`👤 Player Level: ${player.skills.hacking}`, "info");
@@ -113,19 +129,18 @@ export async function main(ns) {
             ui.log(`⚡ Total Threads: ${totalThreads}`, "success");
             ui.log(`📦 Workers Deployed: ${deployed}`, "info");
             ui.log(xpInfo, "info");
-            
+
             lastState.target = target;
             lastState.totalThreads = totalThreads;
             lastState.usedServers = usedServers;
             lastState.deployed = deployed;
         }
-        
+
         if (flags.once) {
-            ui.log("", "info");
             ui.log("✅ One-shot mode complete", "success");
             break;
         }
-        
+
         await ns.sleep(interval);
     }
 }
@@ -136,11 +151,13 @@ function getRunnableServers(ns) {
     return rooted.filter(server => ns.getServerMaxRam(server) > 0);
 }
 
-function pickTarget(ns, servers) {
+function pickTarget(ns) {
     const player = ns.getPlayer();
+    const servers = getRunnableServers(ns);
+
     let best = "";
     let bestLevel = -1;
-    
+
     for (const server of servers) {
         if (server === "home") continue;
         const srv = ns.getServer(server);
@@ -152,7 +169,7 @@ function pickTarget(ns, servers) {
             best = server;
         }
     }
-    
+
     return best || "n00dles";
 }
 
@@ -164,37 +181,49 @@ async function deployWorkers(ns, servers, worker) {
             await ns.scp(worker, server, "home");
             deployed++;
         } catch (e) {
-            // Ignore copy errors
+            // ignore copy errors
         }
     }
     return deployed;
 }
 
-function launchWeaken(ns, servers, target, worker, reserveHome) {
+function launchWeaken(ns, servers, target, worker, reserveHome, minHomeFree, mode) {
     let totalThreads = 0;
     let usedServers = 0;
-    
+
     for (const server of servers) {
-        const reserve = server === "home" ? reserveHome : 0;
+        const reserve = server === "home"
+            ? Math.max(reserveHome, minHomeFree)
+            : 0;
+
         const availableRam = getAvailableRam(ns, server, reserve);
         const threads = calcThreads(ns, worker, availableRam);
         if (threads <= 0) continue;
-        
-        const pid = ns.exec(worker, server, threads, target);
+
+        const pid = ns.exec(worker, server, threads, target, XP_FARM_MARKER, mode);
         if (pid !== 0) {
             totalThreads += threads;
             usedServers++;
         }
     }
-    
+
     return { totalThreads, usedServers };
 }
 
-function stopWorkers(ns, servers, worker) {
+function stopWorkers(ns, servers, worker, strategy = "xpfarm-only") {
     for (const server of servers) {
         const processes = ns.ps(server);
         for (const proc of processes) {
-            if (proc.filename === worker) {
+            if (proc.filename !== worker) continue;
+
+            if (strategy === "all") {
+                ns.kill(proc.pid);
+                continue;
+            }
+
+            const args = proc.args || [];
+            const isXpFarmWorker = args.some(arg => String(arg) === XP_FARM_MARKER);
+            if (isXpFarmWorker) {
                 ns.kill(proc.pid);
             }
         }

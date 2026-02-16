@@ -1,149 +1,78 @@
 /**
- * ANGEL Backdoor Script
- * Faster path-based backdoor installer with DOM UI
+ * ANGEL Backdoor Launcher
+ * Frees RAM (xpFarm first) and launches the full backdoor runner.
  *
  * Run manually: run /angel/backdoor.js
  *
  * @param {NS} ns
  */
 
-import { createWindow } from "/angel/modules/uiManager.js";
+const RUNNER_SCRIPT = "/angel/modules/backdoorRunner.js";
+const RECLAIM_ORDER = [
+    "/angel/xpFarm.js",
+    "/angel/modules/networkMap.js",
+    "/angel/networkMap.js",
+    "/angel/modules/dashboard.js",
+];
 
 export async function main(ns) {
     ns.disableLog("ALL");
 
-    const ui = createWindow("backdoor", "🛡️ Backdoor", 640, 420, ns);
-    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
-    ui.log("🛡️ ANGEL Backdoor runner initialized", "success");
-    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
-
-    if (!hasSingularityAccess(ns)) {
-        ui.log("⚠️ Singularity access not available (need SF4)", "warn");
+    if (!ns.fileExists(RUNNER_SCRIPT, "home")) {
+        ns.tprint(`ERROR: Missing ${RUNNER_SCRIPT}. Run /angel/sync.js first.`);
         return;
     }
 
-    const network = buildNetworkTree(ns);
-    const candidates = getBackdoorCandidates(ns, network);
-
-    if (candidates.length === 0) {
-        ui.log("✅ No eligible servers need backdoor right now", "success");
+    if (ns.isRunning(RUNNER_SCRIPT, "home")) {
+        ns.tprint("Backdoor runner already active.");
         return;
     }
 
-    ui.log(`🌐 Network scanned: ${network.nodes.length} servers`, "info");
-    ui.log(`🎯 Eligible targets: ${candidates.length}`, "info");
+    const requiredRam = ns.getScriptRam(RUNNER_SCRIPT, "home");
+    if (requiredRam <= 0) {
+        ns.tprint(`ERROR: Unable to read RAM usage for ${RUNNER_SCRIPT}`);
+        return;
+    }
 
-    let attempted = 0;
-    let completed = 0;
+    const reclaimed = [];
+    let availableRam = getAvailableHomeRam(ns);
 
-    for (const target of candidates) {
-        attempted++;
-        const path = getPathToTarget(target.name, network.parentMap);
+    if (availableRam < requiredRam) {
+        ns.tprint(`Backdoor launcher: need ${requiredRam.toFixed(2)}GB, have ${availableRam.toFixed(2)}GB. Reclaiming RAM...`);
+        for (const script of RECLAIM_ORDER) {
+            if (availableRam >= requiredRam) break;
+            if (!ns.isRunning(script, "home")) continue;
 
-        if (!connectPath(ns, path)) {
-            ui.log(`✗ ${target.name}: connect path failed`, "warn");
-            continue;
-        }
-
-        try {
-            await ns.singularity.installBackdoor();
-            completed++;
-            ui.log(`✅ ${target.name} | req ${target.requiredHackingSkill}`, "success");
-        } catch (e) {
-            ui.log(`✗ ${target.name}: ${shortError(e)}`, "warn");
-        } finally {
-            ns.singularity.connect("home");
+            const stopped = ns.kill(script, "home");
+            if (stopped) {
+                reclaimed.push(script);
+                await ns.sleep(50);
+                availableRam = getAvailableHomeRam(ns);
+            }
         }
     }
 
-    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
-    ui.log(`🏁 Backdoor complete | Installed: ${completed}/${attempted}`, "success");
-    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
-}
-
-function hasSingularityAccess(ns) {
-    try {
-        ns.singularity.connect("home");
-        return true;
-    } catch (e) {
-        return false;
-    }
-}
-
-function buildNetworkTree(ns) {
-    const parentMap = new Map();
-    const visited = new Set(["home"]);
-    const queue = ["home"];
-    const nodes = [];
-
-    parentMap.set("home", null);
-
-    while (queue.length > 0) {
-        const current = queue.shift();
-        nodes.push(current);
-
-        const neighbors = ns.scan(current);
-        for (const neighbor of neighbors) {
-            if (visited.has(neighbor)) continue;
-            visited.add(neighbor);
-            parentMap.set(neighbor, current);
-            queue.push(neighbor);
+    if (availableRam < requiredRam) {
+        ns.tprint(`ERROR: Still insufficient RAM for backdoor runner (${availableRam.toFixed(2)}GB/${requiredRam.toFixed(2)}GB).`);
+        if (reclaimed.length > 0) {
+            ns.tprint(`Freed by stopping: ${reclaimed.join(", ")}`);
         }
+        return;
     }
 
-    return { nodes, parentMap };
-}
-
-function getBackdoorCandidates(ns, network) {
-    const playerHack = ns.getPlayer().skills.hacking;
-    const purchased = new Set(ns.getPurchasedServers());
-
-    const candidates = [];
-
-    for (const server of network.nodes) {
-        if (server === "home") continue;
-        if (purchased.has(server)) continue;
-
-        const info = ns.getServer(server);
-        if (!info.hasAdminRights) continue;
-        if (info.backdoorInstalled) continue;
-        if (info.requiredHackingSkill > playerHack) continue;
-
-        candidates.push({
-            name: server,
-            requiredHackingSkill: info.requiredHackingSkill,
-        });
+    const pid = ns.exec(RUNNER_SCRIPT, "home");
+    if (pid === 0) {
+        ns.tprint("ERROR: Failed to start backdoor runner.");
+        return;
     }
 
-    candidates.sort((a, b) => a.requiredHackingSkill - b.requiredHackingSkill || a.name.localeCompare(b.name));
-    return candidates;
-}
-
-function getPathToTarget(target, parentMap) {
-    const path = [];
-    let current = target;
-
-    while (current !== null && current !== undefined) {
-        path.push(current);
-        current = parentMap.get(current);
+    if (reclaimed.length > 0) {
+        ns.tprint(`Backdoor runner started (PID ${pid}). Freed RAM by stopping: ${reclaimed.join(", ")}`);
+    } else {
+        ns.tprint(`Backdoor runner started (PID ${pid}).`);
     }
-
-    path.reverse();
-    return path;
 }
 
-function connectPath(ns, path) {
-    if (!ns.singularity.connect("home")) return false;
-
-    for (let i = 1; i < path.length; i++) {
-        if (!ns.singularity.connect(path[i])) {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-function shortError(error) {
-    return String(error).replace(/\s+/g, " ").slice(0, 60);
+function getAvailableHomeRam(ns) {
+    return ns.getServerMaxRam("home") - ns.getServerUsedRam("home");
 }

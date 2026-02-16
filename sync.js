@@ -54,6 +54,7 @@ export async function main(ns) {
         "modules/dashboard.js",          // New: Real-time monitoring
         "modules/contracts.js",          // New: Coding contracts solver
         "modules/formulas.js",           // New: Formulas.exe farming
+        "modules/backdoorRunner.js",     // New: Full backdoor runner (launched by backdoor.js)
         
         // Tools
         "snapshot.js",                   // New: System state capture

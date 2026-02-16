@@ -21,6 +21,7 @@ export async function main(ns) {
     let lastNotify = 0;
     let currentPhase = 0;
     let phaseStableCount = 0; // Track phase stability for hysteresis
+    let resetPending = false;
 
     while (true) {
         try {
@@ -47,13 +48,14 @@ export async function main(ns) {
             printStatus(ns, currentPhase, activity);
 
             // Check for augment threshold (reset trigger)
-            if (config.augmentations.installOnThreshold && hasSingularityAccess(ns)) {
+            if (config.augmentations.installOnThreshold && hasSingularityAccess(ns) && !resetPending) {
                 const queued = getQueuedAugments(ns);
                 const queuedCost = getQueuedCost(ns, queued);
-                if (queued.length >= config.augmentations.minQueuedAugs || queuedCost >= config.augmentations.minQueuedCost) {
-                    ns.print(`[Orchest] 🔄 RESET TRIGGER: ${queued.length} augs queued (cost: $${queuedCost.toFixed(0)})`);
-                    ns.print(`[Orchest] Installing augments and restarting...`);
-                    ns.singularity.installAugmentations("/angel/angel.js");
+                const queuedEnough = queued.length >= config.augmentations.minQueuedAugs;
+                const costEnough = queuedCost >= config.augmentations.minQueuedCost;
+                if (queuedEnough || costEnough) {
+                    resetPending = true;
+                    await triggerAugReset(ns, queued.length, queuedCost);
                     return;
                 }
             }
@@ -264,6 +266,25 @@ function hasSingularityAccess(ns) {
     } catch (e) {
         return false;
     }
+}
+
+/**
+ * Countdown and install augments, then restart automation
+ */
+async function triggerAugReset(ns, queuedCount, queuedCost) {
+    const countdown = config.augmentations.resetCountdownSec ?? 10;
+    const restartScript = config.augmentations.resetScript || "/angel/start.js";
+    ns.tprint(`[Orchest] 🔄 RESET TRIGGER: ${queuedCount} augs queued (cost: $${queuedCost.toFixed(0)})`);
+    ns.tprint(`[Orchest] Installing augments in ${countdown}s... (restart: ${restartScript})`);
+    ns.print(`[Orchest] 🔄 RESET TRIGGER: ${queuedCount} augs queued (cost: $${queuedCost.toFixed(0)})`);
+    
+    for (let i = countdown; i > 0; i--) {
+        ns.print(`[Orchest] Resetting in ${i}s...`);
+        await ns.sleep(1000);
+    }
+    
+    ns.print("[Orchest] Installing augmentations and restarting...");
+    ns.singularity.installAugmentations(restartScript);
 }
 
 /**

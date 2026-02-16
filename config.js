@@ -195,8 +195,10 @@ export const config = {
         preBuyAugments: true,          // Queue augments before reset
         reserveMoneyForAugments: true,
         installOnThreshold: true,
-        minQueuedAugs: 10,
+        minQueuedAugs: 7,
         minQueuedCost: 5000000000,
+        resetScript: "/angel/start.js",
+        resetCountdownSec: 10,
         augmentPriority: [
             // Hacking augments
             "BitWire",

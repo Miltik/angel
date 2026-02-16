@@ -243,10 +243,19 @@ async function ensureModulesRunning(ns) {
     // XP Farm module - optional, starts after core modules to use spare RAM
     if (config.orchestrator.enableXPFarm) {
         const xpMode = config.xpFarm?.mode || "spare-home";
+        const homeRam = ns.getServerMaxRam("home");
+        const weakenRam = ns.getScriptRam(SCRIPTS.weaken, "home") || 1.75;
+        const maxSafeReserve = Math.max(0, homeRam - weakenRam);
+
+        const configuredReserve = Number(config.xpFarm?.reserveHomeRam ?? 2);
+        const configuredMinFree = Number(config.xpFarm?.minHomeFreeRamGb ?? 1);
+        const effectiveReserve = Math.min(Math.max(0, configuredReserve), maxSafeReserve);
+        const effectiveMinFree = Math.min(Math.max(0, configuredMinFree), maxSafeReserve);
+
         const xpArgs = [
             "--mode", xpMode,
-            "--reserve", String(config.xpFarm?.reserveHomeRam ?? 16),
-            "--minHomeFree", String(config.xpFarm?.minHomeFreeRamGb ?? 8),
+            "--reserve", String(effectiveReserve),
+            "--minHomeFree", String(effectiveMinFree),
             "--interval", String(config.xpFarm?.interval ?? 10000),
         ];
 

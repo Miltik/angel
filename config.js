@@ -399,8 +399,8 @@ export const config = {
     // XP farm settings
     xpFarm: {
         mode: "spare-home",        // spare-home | hyper
-        reserveHomeRam: 16,         // GB reserved on home for other modules
-        minHomeFreeRamGb: 8,        // Keep at least this much home RAM free
+        reserveHomeRam: 2,          // GB reserved on home for other modules
+        minHomeFreeRamGb: 1,        // Keep at least this much home RAM free
         interval: 10000,            // Loop interval in ms
         cleanHyper: true,           // In hyper mode, clean existing weaken workers before redeploy
         target: "",                // Optional fixed target (empty = auto)

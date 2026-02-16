@@ -239,8 +239,8 @@ function getDaemonStatus(ns) {
  */
 function getQueuedAugments(ns) {
     if (!hasSingularityAccess(ns)) return [];
-    const owned = ns.singularity.getOwnedAugmentations(false);
-    const installed = ns.singularity.getOwnedAugmentations(true);
+    const owned = ns.singularity.getOwnedAugmentations(true);
+    const installed = ns.singularity.getOwnedAugmentations(false);
     return owned.filter((aug) => !installed.includes(aug));
 }
 

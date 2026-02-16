@@ -6,6 +6,9 @@
 *~
 .idea/
 
+# Backups
+angel-safe/
+
 # Logs
 *.log
 npm-debug.log*

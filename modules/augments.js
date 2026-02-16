@@ -8,7 +8,7 @@ const PHASE_PORT = 7;
 export async function main(ns) {
     ns.disableLog("ALL");
     
-    const ui = createWindow("augments", "💊 Augmentations", 700, 500, ns);
+    const ui = createWindow("augments", "🧬 Augmentations", 700, 500, ns);
     ui.log("Augmentation module started - Phase-aware cascading", "info");
     
     // Check if we have SF4 (Singularity access)

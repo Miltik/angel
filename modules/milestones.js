@@ -17,7 +17,7 @@ const PHASE_PORT = 7;
 export async function main(ns) {
     ns.disableLog("ALL");
     
-    const ui = createWindow("milestones", "📚 Milestones & Orchestrator", 700, 500, ns);
+    const ui = createWindow("milestones", "🎯 Milestones & Orchestrator", 700, 500, ns);
     ui.log("Game Orchestrator started - Coordinating toward w0r1d_d43m0n", "info");
 
     let lastNotify = 0;

@@ -532,9 +532,13 @@ function displayEconomicsMetrics(ui, ns, money, player, moneyRate, xpRate) {
     ui.log(`💰 MONEY: ${formatMoney(money).padEnd(15)} | Rate: ${formatMoney(moneyRate)}/s | Daily: ${formatMoney(dailyRate)}`, "info");
     if (sourceBreakdown.mode === "live") {
         if (sourceBreakdown.entries.length > 0) {
+            const total = sourceBreakdown.entries.reduce((sum, entry) => sum + entry.value, 0);
             const line = sourceBreakdown.entries
                 .slice(0, 4)
-                .map(entry => `${entry.label} ${formatMoney(entry.value)}/s`)
+                .map(entry => {
+                    const share = total > 0 ? (entry.value / total) * 100 : 0;
+                    return `${entry.label} ${formatMoney(entry.value)}/s (${share.toFixed(1)}%)`;
+                })
                 .join(" | ");
             ui.log(`   📊 Income Sources (live): ${line}`, "info");
         } else {
@@ -542,9 +546,13 @@ function displayEconomicsMetrics(ui, ns, money, player, moneyRate, xpRate) {
         }
     } else if (sourceBreakdown.mode === "total") {
         if (sourceBreakdown.entries.length > 0) {
+            const total = sourceBreakdown.entries.reduce((sum, entry) => sum + entry.value, 0);
             const line = sourceBreakdown.entries
                 .slice(0, 4)
-                .map(entry => `${entry.label} ${formatMoney(entry.value)}`)
+                .map(entry => {
+                    const share = total > 0 ? (entry.value / total) * 100 : 0;
+                    return `${entry.label} ${formatMoney(entry.value)} (${share.toFixed(1)}%)`;
+                })
                 .join(" | ");
             ui.log(`   📊 Income Sources (since install): ${line}`, "info");
         }

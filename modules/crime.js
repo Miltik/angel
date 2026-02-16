@@ -17,51 +17,35 @@ const ACTIVITY_LOCK_TTL = 180000;
 
 /**
  * Read current game phase from orchestrator, with validation
+ * CRIME MODULE: Hardcoded to determine phase locally, ignore port 7 for early game
  */
 function readGamePhase(ns) {
-    const phasePortData = ns.peek(PHASE_PORT);
-    if (phasePortData === "NULL PORT DATA") {
-        // No phase signal yet - estimate based on player state
-        return estimatePhaseFromStats(ns);
-    }
-    
-    const phase = parseInt(phasePortData) || 0;
-    
-    // SAFETY CHECK: If port says phase 3+ but player is clearly early game, override
-    if (phase >= 3 && isEarlyGame(ns)) {
-        ns.print(`[PHASE OVERRIDE] Port said phase ${phase} but player is early game - using phase 0`);
-        return 0;
-    }
-    
-    return phase;
-}
-
-/**
- * Estimate phase from player stats if no orchestrator signal
- */
-function estimatePhaseFromStats(ns) {
-    const player = ns.getPlayer();
-    const money = ns.getServerMoneyAvailable("home") + player.money;
-    
-    // Bootstrap phase: < $10M
-    if (money < 10000000) return 0;
-    if (money < 100000000) return 1;
-    if (money < 500000000) return 2;
-    
-    // Past bootstrap - likely in gang/hacking phases
-    return 3;
-}
-
-/**
- * Check if character is clearly still early game
- */
-function isEarlyGame(ns) {
     const player = ns.getPlayer();
     const money = ns.getServerMoneyAvailable("home") + player.money;
     const hack = player.skills.hacking;
     
-    // Early game markers: Low money, low hacking
-    return money < 100000000 && hack < 300;
+    // CRIME MODULE PHASE LOGIC (overrides port 7):
+    // P0: Bootstrap - money < $10M
+    if (money < 10000000) {
+        ns.print(`[PHASE LOCAL] P0 (bootstrap: $${formatMoney(money)})`);
+        return 0;
+    }
+    
+    // P1: Early - money $10M-$100M OR hacking < 200
+    if (money < 100000000 || hack < 200) {
+        ns.print(`[PHASE LOCAL] P1 (early: $${formatMoney(money)}, hack ${hack})`);
+        return 1;
+    }
+    
+    // P2: Mid - money $100M-$500M
+    if (money < 500000000) {
+        ns.print(`[PHASE LOCAL] P2 (mid: $${formatMoney(money)})`);
+        return 2;
+    }
+    
+    // P3+: Late - money > $500M (hacking focused, crime module idles)
+    ns.print(`[PHASE LOCAL] P3+ (late: $${formatMoney(money)})`);
+    return 3;
 }
 
 export async function main(ns) {

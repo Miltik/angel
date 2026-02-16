@@ -103,5 +103,12 @@
     "width": 510,
     "height": 152,
     "minimized": false
+  },
+  "backdoor": {
+    "left": 135,
+    "top": 72,
+    "width": 642,
+    "height": 78,
+    "minimized": true
   }
 }

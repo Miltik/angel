@@ -27,11 +27,15 @@ export async function main(ns) {
         // Skip home and purchased servers - can't backdoor own servers
         if (server === "home") return false;
         
-        // Skip suspicious names
+        // Skip suspicious/location names
         if (server === "." || server === ".." || server.length === 0) return false;
         
         const srv = ns.getServer(server);
-        if (srv.purchasedByPlayer) return false; // Skip player-owned servers
+        if (srv.purchasedByPlayer) return false;
+        
+        // Only backdoor real hackable servers (not terminals/HQs)
+        // Real servers have server growth and base difficulty
+        if (!srv.serverGrowth || srv.serverGrowth === 0) return false;
         
         // Only include servers with backdoor support
         if (srv.backdoorInstalled === undefined) return false;

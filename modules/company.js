@@ -1,91 +1,28 @@
 /**
- * Company work automation module (phase-aware: active phases 1-2, skip 0 and 3+)
+ * Company work automation module - DEPRECATED
+ * Handling delegated to crime.js (merged Activity + Factions module)
  * @param {NS} ns
  */
 import { config, PORTS } from "/angel/config.js";
 
-const PHASE_PORT = 7; // Read game phase from orchestrator
-
-/**
- * Read current game phase from orchestrator
- */
-function readGamePhase(ns) {
-    return parseInt(ns.peek(PHASE_PORT)) || 0;
-}
-
 export async function main(ns) {
     ns.disableLog("ALL");
-    ns.ui.openTail();
-    ns.print("[Company] Module started");
+    ns.print("🏢 Company work handling delegated to crime.js (merged Activity module)");
+    ns.print("This module kept for compatibility but all activity logic is in crime.js");
 
     if (!hasSingularityAccess(ns)) {
-        ns.print("[Company] Singularity functions not available (need SF4)");
+        ns.print("Singularity functions not available (need SF4)");
         while (true) {
             await ns.sleep(60000);
         }
     }
 
-    const owner = "company";
-
+    // This module is now delegated to crime.js
     while (true) {
-        try {
-            const work = ns.singularity.getCurrentWork();
-            if (work && work.type === "FACTION") {
-                await ns.sleep(30000);
-                continue;
-            }
-
-            const desired = getDesiredActivity(ns);
-            if (desired !== "none" && desired !== "company") {
-                releaseLock(ns, owner);
-                await ns.sleep(30000);
-                continue;
-            }
-
-            // Company work is only active in phases 1-2
-            // Skip in phase 0 (too poor) and phases 3-4 (focus on hacking)
-            const gamePhase = readGamePhase(ns);
-            if (gamePhase === 0 || gamePhase >= 3) {
-                releaseLock(ns, owner);
-                await ns.sleep(30000);
-                continue;
-            }
-
-            const money = ns.getServerMoneyAvailable("home");
-            if (money >= config.company.onlyWhenMoneyBelow) {
-                releaseLock(ns, owner);
-                await ns.sleep(30000);
-                continue;
-            }
-
-            if (!claimLock(ns, owner, 60000)) {
-                await ns.sleep(5000);
-                continue;
-            }
-
-            if (work && work.type && work.type !== "COMPANY") {
-                await ns.sleep(5000);
-                continue;
-            }
-
-            let job = getCurrentJob(ns);
-            if (!job && config.company.autoApply) {
-                job = tryApplyForJob(ns);
-            }
-
-            if (job) {
-                ns.singularity.workForCompany(job.company, config.company.focus);
-                ns.print(`[Company] Working at ${job.company} (${job.position})`);
-            } else {
-                ns.print("[Company] No job found - waiting");
-            }
-
-            await ns.sleep(60000);
-        } catch (e) {
-            ns.print(`[Company] Error: ${e}`);
-            await ns.sleep(5000);
-        }
+        ns.print("Company module idle - see crime.js for Activity + Factions handling");
+        await ns.sleep(30000);
     }
+}
 }
 
 function hasSingularityAccess(ns) {

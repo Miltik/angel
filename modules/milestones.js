@@ -47,7 +47,7 @@ export async function main(ns) {
             ns.writePort(PORTS.ACTIVITY_MODE, activity);
 
             // Print comprehensive status
-            printStatus(ns, currentPhase, activity);
+            logStatusToDashboard(ui, ns, currentPhase, activity);
 
             // Check for augment threshold (reset trigger)
             if (config.augmentations.installOnThreshold && hasSingularityAccess(ns) && !resetPending) {
@@ -57,7 +57,7 @@ export async function main(ns) {
                 const costEnough = queuedCost >= config.augmentations.minQueuedCost;
                 if (queuedEnough || costEnough) {
                     resetPending = true;
-                    await triggerAugReset(ns, queued.length, queuedCost);
+                    await triggerAugReset(ns, ui, queued.length, queuedCost);
                     return;
                 }
             }
@@ -68,19 +68,19 @@ export async function main(ns) {
                 if (now - lastNotify >= config.milestones.notifyInterval) {
                     const daemon = getDaemonStatus(ns);
                     if (daemon.ready) {
-                        ns.print(`[Orchest] ✅ DAEMON READY: w0r1d_d43m0n requirements met (manual kill only)`);
+                        ui.log(`✅ DAEMON READY: w0r1d_d43m0n requirements met (manual kill only)`, "success");
                     } else {
                         const missing = [];
                         if (daemon.hackLevel < daemon.requiredLevel) missing.push(`Hacking +${daemon.requiredLevel - daemon.hackLevel}`);
                         if (!daemon.rooted) missing.push("Root w0r1d_d43m0n");
                         if (!daemon.programsOk) missing.push("Get all 5 programs");
-                        ns.print(`[Orchest] Status: ${missing.join(", ")}`);
+                        ui.log(`Status: ${missing.join(", ")}`, "info");
                     }
                     lastNotify = now;
                 }
             }
         } catch (e) {
-            ns.print(`[Orchest] Error: ${e}`);
+            ui.log(`Orchestrator error: ${e}`, "error");
         }
 
         await ns.sleep(config.milestones.loopDelay);
@@ -273,26 +273,25 @@ function hasSingularityAccess(ns) {
 /**
  * Countdown and install augments, then restart automation
  */
-async function triggerAugReset(ns, queuedCount, queuedCost) {
+async function triggerAugReset(ns, ui, queuedCount, queuedCost) {
     const countdown = config.augmentations.resetCountdownSec ?? 10;
     const restartScript = config.augmentations.resetScript || "/angel/start.js";
-    ns.tprint(`[Orchest] 🔄 RESET TRIGGER: ${queuedCount} augs queued (cost: $${queuedCost.toFixed(0)})`);
-    ns.tprint(`[Orchest] Installing augments in ${countdown}s... (restart: ${restartScript})`);
-    ns.print(`[Orchest] 🔄 RESET TRIGGER: ${queuedCount} augs queued (cost: $${queuedCost.toFixed(0)})`);
+    ui.log(`🔄 RESET TRIGGER: ${queuedCount} augs queued (cost: $${queuedCost.toFixed(0)})`, "warn");
+    ui.log(`Installing augments in ${countdown}s... (restart: ${restartScript})`, "warn");
     
     for (let i = countdown; i > 0; i--) {
-        ns.print(`[Orchest] Resetting in ${i}s...`);
+        ui.log(`Resetting in ${i}s...`, "debug");
         await ns.sleep(1000);
     }
     
-    ns.print("[Orchest] Installing augmentations and restarting...");
+    ui.log("Installing augmentations and restarting...", "info");
     ns.singularity.installAugmentations(restartScript);
 }
 
 /**
- * Print comprehensive status
+ * Log comprehensive status to dashboard
  */
-function printStatus(ns, phase, activity) {
+function logStatusToDashboard(ui, ns, phase, activity) {
     const player = ns.getPlayer();
     const money = ns.getServerMoneyAvailable("home");
     const phaseInfo = getPhaseInfo(phase);
@@ -300,21 +299,20 @@ function printStatus(ns, phase, activity) {
     const queued = getQueuedAugments(ns);
     const trainingTargets = config.training?.targetStats || { strength: 60, defense: 60, dexterity: 60, agility: 60 };
     
-    ns.print("[Orchest] ╔═══════════════════════════════════════╗");
-    ns.print("[Orchest] ║     GAME ORCHESTRATOR STATUS        ║");
-    ns.print("[Orchest] ╚═══════════════════════════════════════╝");
+    ui.log("═════════════════════════════════", "info");
+    ui.log("     GAME ORCHESTRATOR STATUS", "info");
+    ui.log("═════════════════════════════════", "info");
     
     const phaseEmoji = ["🌱", "📈", "🎯", "👾", "👑"][phase] || "❓";
-    ns.print(`[Orchest] Phase: ${phaseEmoji} ${phaseInfo.name.toUpperCase()}`);
-    ns.print(`[Orchest] Primary: ${phaseInfo.primaryActivity} | Current: ${activity || "idle"}`);
+    ui.log(`Phase: ${phaseEmoji} ${phaseInfo.name.toUpperCase()}`, "success");
+    ui.log(`Primary: ${phaseInfo.primaryActivity} | Current: ${activity || "idle"}`, "info");
     
-    ns.print(`[Orchest] Hacking: ${Math.floor(player.skills.hacking)} (target: ${phaseInfo.hackingTarget || "∞"})`);
-    ns.print(`[Orchest] Stats: STR ${Math.floor(player.skills.strength)}/${trainingTargets.strength}, DEF ${Math.floor(player.skills.defense)}/${trainingTargets.defense}, DEX ${Math.floor(player.skills.dexterity)}/${trainingTargets.dexterity}, AGI ${Math.floor(player.skills.agility)}/${trainingTargets.agility}`);
-    ns.print(`[Orchest] Money: $${formatMoney(money)} | Queued augs: ${queued.length}`);
+    ui.log(`Hacking: ${Math.floor(player.skills.hacking)} (target: ${phaseInfo.hackingTarget || "∞"})`, "info");
+    ui.log(`Stats: STR ${Math.floor(player.skills.strength)}/${trainingTargets.strength}, DEF ${Math.floor(player.skills.defense)}/${trainingTargets.defense}, DEX ${Math.floor(player.skills.dexterity)}/${trainingTargets.dexterity}, AGI ${Math.floor(player.skills.agility)}/${trainingTargets.agility}`, "info");
+    ui.log(`Money: $${formatMoney(money)} | Queued augs: ${queued.length}`, "info");
     
     const daemonStatus = daemon.ready ? "✅ READY" : `⏳ ${daemon.hackLevel}/${daemon.requiredLevel}`;
-    ns.print(`[Orchest] Daemon: ${daemonStatus}`);
-    ns.print("[Orchest]");
+    ui.log(`Daemon: ${daemonStatus}`, daemon.ready ? "success" : "warn");
 }
 
 /**

@@ -14,7 +14,8 @@
  * @param {NS} ns
  */
 import { config } from "/angel/config.js";
-import { formatMoney, log } from "/angel/utils.js";
+import { formatMoney } from "/angel/utils.js";
+import { createWindow } from "/angel/modules/uiManager.js";
 
 const PHASE_PORT = 7;
 let lastUpdate = 0;
@@ -24,24 +25,19 @@ let lastXp = 0;
 export async function main(ns) {
     ns.disableLog("ALL");
     
-    try {
-        ns.ui.openTail();
-    } catch (e) {
-        // Tail may not be available
-    }
-    
-    log(ns, "📊 Dashboard monitoring started - Real-time metrics", "INFO");
+    const ui = createWindow("dashboard", "📊 Dashboard", 900, 600);
+    ui.log("Dashboard monitoring started - Real-time metrics", "info");
     
     let loopCount = 0;
     while (true) {
         try {
             loopCount++;
-            await updateDashboard(ns);
+            await updateDashboard(ns, ui);
             
             // Update every 30 seconds for dashboard
             await ns.sleep(30000);
         } catch (e) {
-            log(ns, `📊 Error: ${e}`, "ERROR");
+            ui.log(`Error: ${e}`, "error");
             await ns.sleep(5000);
         }
     }
@@ -50,7 +46,7 @@ export async function main(ns) {
 /**
  * Update and display dashboard metrics
  */
-async function updateDashboard(ns) {
+async function updateDashboard(ns, ui) {
     const now = Date.now();
     const player = ns.getPlayer();
     const money = player.money + ns.getServerMoneyAvailable("home");
@@ -72,61 +68,61 @@ async function updateDashboard(ns) {
     
     try {
         // Display header
-        ns.print("");
-        ns.print("╔═══════════════════════════════════════════════════════════════╗");
-        ns.print("║            ANGEL AUTOMATION DASHBOARD                         ║");
-        ns.print("╚═══════════════════════════════════════════════════════════════╝");
-        ns.print("");
+        ui.clear();
+        ui.log("╔═══════════════════════════════════════════════════════════════╗", "info");
+        ui.log("║            ANGEL AUTOMATION DASHBOARD                         ║", "info");
+        ui.log("╚═══════════════════════════════════════════════════════════════╝", "info");
+        ui.log("", "info");
         
         // Game Phase
-        displayPhaseStatus(ns, currentPhase, phaseProgress, nextPhase);
-        ns.print("");
+        displayPhaseStatus(ui, currentPhase, phaseProgress, nextPhase);
+        ui.log("", "info");
         
         // Money and XP Rates
-        displayEconomicsMetrics(ns, money, player, moneyRate, xpRate);
-        ns.print("");
+        displayEconomicsMetrics(ui, money, player, moneyRate, xpRate);
+        ui.log("", "info");
         
         // Hacking Status
-        displayHackingStatus(ns, player);
-        ns.print("");
+        displayHackingStatus(ui, player, ns);
+        ui.log("", "info");
         
         // Gang Status (if available)
         if (ns.gang.inGang && ns.gang.inGang()) {
             try {
-                displayGangStatus(ns);
-                ns.print("");
+                displayGangStatus(ui, ns);
+                ui.log("", "info");
             } catch (e) {
-                log(ns, `📊 Gang display error: ${e}`, "DEBUG");
+                ui.log(`Gang display error: ${e}`, "debug");
             }
         }
         
         // Augmentation Status
         try {
-            displayAugmentationStatus(ns, player);
-            ns.print("");
+            displayAugmentationStatus(ui, ns, player);
+            ui.log("", "info");
         } catch (e) {
-            log(ns, `📊 Augment display error: ${e}`, "DEBUG");
+            ui.log(`Augment display error: ${e}`, "debug");
         }
         
         // Stock Status (if available)
         if (hasStockAccess(ns)) {
             try {
-                displayStockStatus(ns);
-                ns.print("");
+                displayStockStatus(ui, ns);
+                ui.log("", "info");
             } catch (e) {
-                log(ns, `📊 Stock display error: ${e}`, "DEBUG");
+                ui.log(`Stock display error: ${e}`, "debug");
             }
         }
         
         // Network Status
         try {
-            displayNetworkStatus(ns);
-            ns.print("");
+            displayNetworkStatus(ui, ns);
+            ui.log("", "info");
         } catch (e) {
-            log(ns, `📊 Network display error: ${e}`, "DEBUG");
+            ui.log(`Network display error: ${e}`, "debug");
         }
     } catch (e) {
-        log(ns, `📊 Dashboard update error: ${e.message || e}`, "ERROR");
+        ui.log(`Dashboard update error: ${e.message || e}`, "error");
         throw e;
     }
 }
@@ -134,7 +130,7 @@ async function updateDashboard(ns) {
 /**
  * Display game phase and transition progress
  */
-function displayPhaseStatus(ns, currentPhase, progress, nextPhase) {
+function displayPhaseStatus(ui, currentPhase, progress, nextPhase) {
     const phaseNames = ["Bootstrap", "Early", "Mid-Game", "Gang", "Late"];
     const currentName = phaseNames[currentPhase] || "Unknown";
     const nextName = phaseNames[nextPhase] || "Complete";
@@ -142,25 +138,25 @@ function displayPhaseStatus(ns, currentPhase, progress, nextPhase) {
     const progressBar = "█".repeat(Math.floor(progress * 20)) + 
                         "░".repeat(20 - Math.floor(progress * 20));
     
-    ns.print(`💎 PHASE: ${currentName.padEnd(12)} [${progressBar}] ${(progress * 100).toFixed(1)}%`);
-    ns.print(`   Next: ${nextName}`);
+    ui.log(`💎 PHASE: ${currentName.padEnd(12)} [${progressBar}] ${(progress * 100).toFixed(1)}%`, "info");
+    ui.log(`   Next: ${nextName}`, "info");
 }
 
 /**
  * Display money and XP generation rates
  */
-function displayEconomicsMetrics(ns, money, player, moneyRate, xpRate) {
+function displayEconomicsMetrics(ui, money, player, moneyRate, xpRate) {
     const monthlyRate = moneyRate * 3600 * 24 * 30; // Scale to monthly
     const dailyRate = moneyRate * 3600 * 24;
     
-    ns.print(`💰 MONEY: ${formatMoney(money).padEnd(15)} | Rate: ${formatMoney(moneyRate)}/s | Daily: ${formatMoney(dailyRate)}`);
-    ns.print(`📖 XP: Level ${player.skills.hacking} | Rate: ${xpRate.toFixed(2)} XP/s`);
+    ui.log(`💰 MONEY: ${formatMoney(money).padEnd(15)} | Rate: ${formatMoney(moneyRate)}/s | Daily: ${formatMoney(dailyRate)}`, "info");
+    ui.log(`📖 XP: Level ${player.skills.hacking} | Rate: ${xpRate.toFixed(2)} XP/s`, "info");
 }
 
 /**
  * Display hacking metrics
  */
-function displayHackingStatus(ns, player) {
+function displayHackingStatus(ui, player, ns) {
     const serverCount = countRootedServers(ns);
     const purchasedServers = countPurchasedServers(ns);
     const totalRam = calculateTotalRam(ns);
@@ -169,22 +165,22 @@ function displayHackingStatus(ns, player) {
     const ramBar = "▮".repeat(Math.floor((usedRam / totalRam) * 20)) + 
                    "▯".repeat(20 - Math.floor((usedRam / totalRam) * 20));
     
-    ns.print(`⚔️  HACKING: ${player.skills.hacking.toString().padStart(4)} (${(player.skills.hacking / 1000).toFixed(1)}k/1k)`);
-    ns.print(`🖥️  NETWORK: ${serverCount} rooted | ${purchasedServers} purchased`);
-    ns.print(`💾 RAM: ${ramBar} ${(usedRam / 1024).toFixed(1)}TB / ${(totalRam / 1024).toFixed(1)}TB`);
+    ui.log(`⚔️  HACKING: ${player.skills.hacking.toString().padStart(4)} (${(player.skills.hacking / 1000).toFixed(1)}k/1k)`, "info");
+    ui.log(`🖥️  NETWORK: ${serverCount} rooted | ${purchasedServers} purchased`, "info");
+    ui.log(`💾 RAM: ${ramBar} ${(usedRam / 1024).toFixed(1)}TB / ${(totalRam / 1024).toFixed(1)}TB`, "info");
 }
 
 /**
  * Display gang status
  */
-function displayGangStatus(ns) {
+function displayGangStatus(ui, ns) {
     try {
         const info = ns.gang.getGangInformation();
         const members = ns.gang.getMemberNames();
         const territory = (info.territory * 100).toFixed(1);
         
-        ns.print(`👾 GANG: ${info.faction} | Members: ${members.length} | Territory: ${territory}% | Power: ${info.power.toFixed(2)}`);
-        ns.print(`   Respect: ${formatMoney(info.respect)} | Wanted: ${info.wantedLevel.toFixed(0)} (×${info.wantedPenalty.toFixed(2)})`);
+        ui.log(`👾 GANG: ${info.faction} | Members: ${members.length} | Territory: ${territory}% | Power: ${info.power.toFixed(2)}`, "info");
+        ui.log(`   Respect: ${formatMoney(info.respect)} | Wanted: ${info.wantedLevel.toFixed(0)} (×${info.wantedPenalty.toFixed(2)})`, "info");
     } catch (e) {
         // Gang not available
     }
@@ -193,7 +189,7 @@ function displayGangStatus(ns) {
 /**
  * Display augmentation queue status
  */
-function displayAugmentationStatus(ns, player) {
+function displayAugmentationStatus(ui, ns, player) {
     const ownedCount = player.augmentations ? player.augmentations.length : 0;
     
     // Get queued augmentations
@@ -215,13 +211,13 @@ function displayAugmentationStatus(ns, player) {
     const resetThreshold = config.augmentations?.minQueuedAugs || 7;
     const status = queuedCount >= resetThreshold ? "🔴 READY FOR RESET" : "⏳ Building queue";
     
-    ns.print(`🧬 AUGMENTS: Installed ${ownedCount} | ${queuedText} | ${status} (threshold: ${resetThreshold})`);
+    ui.log(`🧬 AUGMENTS: Installed ${ownedCount} | ${queuedText} | ${status} (threshold: ${resetThreshold})`, "info");
 }
 
 /**
  * Display stock portfolio status
  */
-function displayStockStatus(ns) {
+function displayStockStatus(ui, ns) {
     try {
         const symbols = ns.stock.getSymbols();
         
@@ -248,7 +244,7 @@ function displayStockStatus(ns) {
         const gain = totalValue - totalInvested;
         const gainPct = totalInvested > 0 ? (gain / totalInvested * 100) : 0;
         
-        ns.print(`📈 STOCKS: ${holdings} holdings | Invested: ${formatMoney(totalInvested)} | Value: ${formatMoney(totalValue)} | Gain: ${formatMoney(gain)} (${gainPct.toFixed(1)}%)`);
+        ui.log(`📈 STOCKS: ${holdings} holdings | Invested: ${formatMoney(totalInvested)} | Value: ${formatMoney(totalValue)} | Gain: ${formatMoney(gain)} (${gainPct.toFixed(1)}%)`, "info");
     } catch (e) {
         // Stocks not available
     }
@@ -257,7 +253,7 @@ function displayStockStatus(ns) {
 /**
  * Display network and resource utilization
  */
-function displayNetworkStatus(ns) {
+function displayNetworkStatus(ui, ns) {
     const player = ns.getPlayer();
     const stats = [
         {name: "Strength", val: player.skills.strength},
@@ -267,7 +263,7 @@ function displayNetworkStatus(ns) {
     ];
     
     const statLine = stats.map(s => `${s.name}: ${s.val.toString().padStart(4)}`).join(" | ");
-    ns.print(`⚔️  COMBAT: ${statLine}`);
+    ui.log(`⚔️  COMBAT: ${statLine}`, "info");
 }
 
 /**

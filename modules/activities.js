@@ -193,6 +193,31 @@ async function processActivity(ns, gamePhase, ui) {
             ns.singularity.stopAction();
             ui.log(`🔁 Switching from ${currentWork.type} to faction rep grind`, "info");
         } else {
+            if (currentWork.type === "CRIME") {
+                const bestCrime = getBestCrime(ns);
+                const currentCrime = String(currentWork.crimeType || "");
+                const currentScore = getCrimeExpectedValue(ns, currentCrime);
+                const shouldUpgradeCrime =
+                    bestCrime.crime &&
+                    currentCrime &&
+                    bestCrime.crime !== currentCrime &&
+                    bestCrime.score > currentScore * 1.1;
+
+                if (shouldUpgradeCrime) {
+                    ns.singularity.stopAction();
+                    ui.log(`🔁 Upgrading crime: ${currentCrime} → ${bestCrime.crime}`, "info");
+                } else {
+                    const activityKey = `${currentWork.type}-${currentWork.crimeType || currentWork.factionName || currentWork.companyName || ""}`;
+                    const shouldLog = activityKey !== lastState.currentActivity || lastState.loopCount % 12 === 0;
+                    if (shouldLog) {
+                        const chance = ns.singularity.getCrimeChance(currentCrime);
+                        ui.log(`🔪 Crime in progress: ${currentCrime} (${(chance * 100).toFixed(1)}% success)`, "info");
+                        lastState.currentActivity = activityKey;
+                    }
+                    return;
+                }
+            }
+
         // Display what's in progress (only on change or periodically)
             const activityKey = `${currentWork.type}-${currentWork.crimeType || currentWork.factionName || currentWork.companyName || ""}`;
             const shouldLog = activityKey !== lastState.currentActivity || lastState.loopCount % 12 === 0;
@@ -575,65 +600,63 @@ async function doCompanyWork(ns, ui) {
 }
 
 /**
- * Select best crime based on profitability and tier
- * Prefers higher-tier crimes for better money, falls back to low-tier if success chance is too low
+ * Select best crime by expected value (money/time × success chance)
  */
 function selectCrime(ns) {
-    const crimesByTierDesc = [
-        "Heist",
-        "Assassination",
-        "Traffick Illegal Arms",
-        "Grand Theft Auto",
-        "Bond Forgery",
-        "Deal Drugs",
-        "Larceny",
-        "Mug Someone",
-        "Rob Store",
+    return getBestCrime(ns).crime || "Shoplift";
+}
+
+function getBestCrime(ns) {
+    const crimes = [
         "Shoplift",
+        "Rob Store",
+        "Mug someone",
+        "Larceny",
+        "Deal Drugs",
+        "Bond Forgery",
+        "Traffick illegal Arms",
+        "Homicide",
+        "Grand Theft Auto",
+        "Kidnap",
+        "Assassination",
+        "Heist",
     ];
 
     const minSuccessChance = config.crime?.minSuccessChance || 0.25;
+    let best = null;
+    let fallback = null;
 
-    // Highest available crime first: pick first crime that clears success threshold
-    for (const crime of crimesByTierDesc) {
+    for (const crime of crimes) {
         try {
+            const stats = ns.singularity.getCrimeStats(crime);
             const chance = ns.singularity.getCrimeChance(crime);
-            if (chance >= minSuccessChance) {
-                return crime;
-            }
-        } catch (e) {}
-    }
+            const score = (stats.money * chance) / Math.max(1, stats.time);
+            const record = { crime, score, chance };
 
-    // Fallback: pick highest success chance crime if no crime meets threshold
-    let fallbackBest = null;
-    let fallbackChance = 0;
-    for (const crime of crimesByTierDesc) {
-        try {
-            const chance = ns.singularity.getCrimeChance(crime);
-            if (chance > fallbackChance) {
-                fallbackChance = chance;
-                fallbackBest = crime;
+            if (!fallback || record.score > fallback.score) {
+                fallback = record;
             }
-        } catch (e) {}
-    }
 
-    if (fallbackBest) {
-        return fallbackBest;
-    }
-
-    const configuredCrimes = config.crime?.crimes;
-    if (Array.isArray(configuredCrimes) && configuredCrimes.length > 0) {
-        for (const crime of configuredCrimes) {
-            try {
-                ns.singularity.getCrimeChance(crime);
-                return crime;
-            } catch (e) {
-                // invalid/unavailable crime label
+            if (chance >= minSuccessChance && (!best || record.score > best.score)) {
+                best = record;
             }
+        } catch (e) {
+            // unavailable crime label
         }
     }
 
-    return "Shoplift";
+    return best || fallback || { crime: "Shoplift", score: 0, chance: 1 };
+}
+
+function getCrimeExpectedValue(ns, crime) {
+    try {
+        if (!crime) return 0;
+        const stats = ns.singularity.getCrimeStats(crime);
+        const chance = ns.singularity.getCrimeChance(crime);
+        return (stats.money * chance) / Math.max(1, stats.time);
+    } catch (e) {
+        return 0;
+    }
 }
 
 /**

@@ -37,12 +37,16 @@ export async function main(ns) {
 
     let loopCount = 0;
 
-    // Wait for phase 4 (very late game, close to daemon)
+    // Wait for phase 4 and combat readiness
     while (true) {
         const gamePhase = readGamePhase(ns);
-        if (gamePhase >= 4) break;
+        const combatReady = hasMinimumCombatStats(ns);
+        if (gamePhase >= 4 && combatReady) break;
         if (loopCount % 4 === 0) {
-            ui.log(`⏰ Waiting for phase 4 (currently P${gamePhase})`, "info");
+            const player = ns.getPlayer();
+            const minStats = config.bladeburner.minCombatStats ?? 75;
+            const combatText = `STR ${player.skills.strength}/${minStats}, DEF ${player.skills.defense}/${minStats}, DEX ${player.skills.dexterity}/${minStats}, AGI ${player.skills.agility}/${minStats}`;
+            ui.log(`⏰ Waiting for readiness (P${gamePhase}/4) | ${combatText}`, "info");
         }
         loopCount++;
         await ns.sleep(60000);
@@ -60,8 +64,8 @@ export async function main(ns) {
     while (true) {
         try {
             const gamePhase = readGamePhase(ns);
-            if (gamePhase < 4) {
-                ui.log("⏸️ Phase dropped below 4 - pausing operations", "warn");
+            if (gamePhase < 4 || !hasMinimumCombatStats(ns)) {
+                ui.log("⏸️ Readiness gate not met (phase/combat) - pausing operations", "warn");
                 await ns.sleep(60000);
                 continue;
             }
@@ -86,6 +90,15 @@ export async function main(ns) {
             await ns.sleep(5000);
         }
     }
+}
+
+function hasMinimumCombatStats(ns) {
+    const player = ns.getPlayer();
+    const minStats = config.bladeburner.minCombatStats ?? 75;
+    return player.skills.strength >= minStats &&
+           player.skills.defense >= minStats &&
+           player.skills.dexterity >= minStats &&
+           player.skills.agility >= minStats;
 }
 
 /**

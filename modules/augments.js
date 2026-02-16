@@ -210,6 +210,7 @@ async function augmentLoop(ns, ui) {
     const ownedCount = ns.singularity.getOwnedAugmentations(false).length;
     const installedCount = ns.singularity.getOwnedAugmentations(true).length;
     const queuedCount = ownedCount - installedCount;
+    const queueBoostTarget = config.augmentations.aggressiveQueueTarget ?? 3;
     
     lastState.loopCount++;
     
@@ -247,8 +248,19 @@ async function augmentLoop(ns, ui) {
     // Strategy: Priority focus (phases 0-2)
     const priority = getPriorityAugmentsInline(ns, available);
     if (priority.length > 0) {
-        await buyPriorityAugments(ns, priority, money, strategy, ui);
-        return;
+        const purchasedPriority = await buyPriorityAugments(ns, priority, money, strategy, ui);
+        if (purchasedPriority > 0) {
+            return;
+        }
+    }
+
+    // Queue boost mode: if queue is low, buy cheapest available to keep reset pipeline moving
+    if (queuedCount < queueBoostTarget) {
+        const boosted = await buyQueueBoostAugments(ns, available, money, strategy, ui);
+        if (boosted > 0) {
+            ui.log(`⚡ Queue boost active (${queuedCount}/${queueBoostTarget}) - purchased ${boosted}`, "success");
+            return;
+        }
     }
     
     // Fallback: Show next affordable aug
@@ -306,15 +318,18 @@ async function buyAllAvailable(ns, available, initialMoney, ui) {
 async function buyPriorityAugments(ns, priority, initialMoney, strategy, ui) {
     let money = initialMoney;
     let purchased = 0;
-    const spendThreshold = initialMoney * strategy.threshold;
+    const reserveMoney = config.augmentations.queueReserveMoney ?? 0;
+    const spendBudget = Math.max(0, Math.min(strategy.maxSpend, initialMoney - reserveMoney));
+    let spent = 0;
     
     for (const aug of priority) {
-        if (money >= aug.price && aug.price <= spendThreshold) {
+        if (money >= aug.price && spent + aug.price <= spendBudget) {
             const success = ns.singularity.purchaseAugmentation(aug.faction, aug.name);
             if (success) {
                 ui.log(`✅ Priority purchased: ${aug.name} for ${formatMoney(aug.price)}`, "success");
                 money = ns.getServerMoneyAvailable("home");
                 purchased++;
+                spent += aug.price;
                 lastState.lastPurchaseLoop = lastState.loopCount;
             }
         }
@@ -330,6 +345,35 @@ async function buyPriorityAugments(ns, priority, initialMoney, strategy, ui) {
             ui.log(`🎯 Next priority: ${nextAug.name} - Need ${formatMoney(needed)} more`, "info");
         }
     }
+
+    return purchased;
+}
+
+async function buyQueueBoostAugments(ns, available, initialMoney, strategy, ui) {
+    let money = initialMoney;
+    let purchased = 0;
+
+    const reserveMoney = config.augmentations.queueReserveMoney ?? 0;
+    const multiplier = config.augmentations.aggressiveQueueSpendMultiplier ?? 1.5;
+    const maxBoostSpend = Math.max(0, strategy.maxSpend * multiplier);
+    const spendBudget = Math.max(0, Math.min(maxBoostSpend, initialMoney - reserveMoney));
+    let spent = 0;
+
+    const candidates = [...available].sort((a, b) => a.price - b.price);
+    for (const aug of candidates) {
+        if (money >= aug.price && spent + aug.price <= spendBudget) {
+            const success = ns.singularity.purchaseAugmentation(aug.faction, aug.name);
+            if (success) {
+                ui.log(`✅ Queue boost purchased: ${aug.name} for ${formatMoney(aug.price)}`, "success");
+                money = ns.getServerMoneyAvailable("home");
+                purchased++;
+                spent += aug.price;
+                lastState.lastPurchaseLoop = lastState.loopCount;
+            }
+        }
+    }
+
+    return purchased;
 }
 
 /**

@@ -150,16 +150,20 @@ function assignTasks(ns, ui) {
 
     // Build task pool
     const taskPool = getTaskPool(availableTasks, info, gangPhase);
+    const wantedEmergency = isWantedEmergency(info);
+    const optimalReducers = getOptimalWantedReducers(members.length, info.wantedPenalty);
 
     // Assign members with role-based specialization
     const assigned = {};
     const roleAssignments = {};
+    let reducersAssigned = 0;
 
     for (const member of memberData) {
         // Determine which role this member should have
-        const role = assignRole(ns, member, memberData, info, gangPhase, taskPool, globalPhase);
+        const role = assignRole(ns, member, info, taskPool, globalPhase, reducersAssigned, optimalReducers, wantedEmergency);
         if (!roleAssignments[role]) roleAssignments[role] = [];
         roleAssignments[role].push(member.name);
+        if (role === "wantedReduction") reducersAssigned++;
 
         // Get task for this role
         const task = taskPool[role];
@@ -188,7 +192,7 @@ function assignTasks(ns, ui) {
         actualAssignments[actualTask] = (actualAssignments[actualTask] || 0) + 1;
     }
 
-    return { info, members, tasks: availableTasks, assigned: actualAssignments, gangPhase, globalPhase, roleAssignments };
+    return { info, members, tasks: availableTasks, assigned: actualAssignments, gangPhase, globalPhase, roleAssignments, wantedEmergency };
 }
 
 /**
@@ -263,11 +267,10 @@ function getTaskPool(availableTasks, info, gangPhase) {
  * 3. Otherwise → Money task (primary focus)
  * 4. Surplus members → Small group on warfare only if power advantage exists
  */
-function assignRole(ns, member, allMembers, info, gangPhase, taskPool, globalPhase) {
+function assignRole(ns, member, info, taskPool, globalPhase, reducersAssigned, optimalReducers, wantedEmergency) {
     const m = member.info;
     const trainUntil = 60;
     const isHacking = info.isHacking;
-    const memberCount = allMembers.length;
     
     // 1. Check if member still needs training
     const needsTraining = isHacking
@@ -278,17 +281,15 @@ function assignRole(ns, member, allMembers, info, gangPhase, taskPool, globalPha
         return "trainCombat";
     }
 
+    // Emergency mode: force all non-training members onto wanted reduction
+    if (wantedEmergency && taskPool.wantedReduction) {
+        return "wantedReduction";
+    }
+
     // 2. DYNAMICALLY calculate how many members should be on wanted reduction
     // This is the KEY NEW FEATURE - adapts to current wanted level
-    const optimalReducers = getOptimalWantedReducers(memberCount, info.wantedPenalty);
-    const currentReducers = allMembers.filter(m2 => {
-        const mInfo = ns.gang.getMemberInformation(m2.name);
-        const task = mInfo.task || "Unassigned";
-        return task === (isHacking ? "Vigilante Justice" : "Vigilante Justice");
-    }).length;
-    
     // If we haven't reached optimal reducer count, assign to vigilante
-    if (currentReducers < optimalReducers && taskPool.wantedReduction) {
+    if (reducersAssigned < optimalReducers && taskPool.wantedReduction) {
         return "wantedReduction";
     }
 
@@ -328,6 +329,11 @@ function assignRole(ns, member, allMembers, info, gangPhase, taskPool, globalPha
     return "moneyTask";
 }
 
+function isWantedEmergency(info) {
+    const threshold = config.gang.emergencyWantedPenalty ?? config.gang.criticalWantedPenalty ?? 0.9;
+    return info.wantedPenalty < threshold;
+}
+
 /**
  * Helper to find best task from candidates
  */
@@ -349,6 +355,11 @@ function manageTerritoryclashes(ns, ui) {
         const info = ns.gang.getGangInformation();
         const territory = info.territory || 50;
         const power = info.power || 1;
+
+        if (isWantedEmergency(info)) {
+            ns.gang.setTerritoryWarfareEngaged(false);
+            return;
+        }
         
         // Check enemy gangs power levels
         const otherGangs = ns.gang.getOtherGangInformation();
@@ -397,6 +408,7 @@ function printStatus(ns, summary, ui) {
     const gangPhase = summary.gangPhase || "unknown";
     const globalPhase = summary.globalPhase || 0;
     const roles = summary.roleAssignments || {};
+    const wantedEmergency = summary.wantedEmergency || false;
     
     // Calculate optimal wanted reducers for this state
     const optimalReducers = getOptimalWantedReducers(count, info.wantedPenalty);
@@ -405,7 +417,8 @@ function printStatus(ns, summary, ui) {
     const moneyPerSec = Math.floor(info.moneyGainRate * 5);
     
     // Determine if wanted level is in good range
-    const wantedStatus = info.wantedPenalty > 0.98 ? "✓ OPTIMAL" : 
+    const wantedStatus = wantedEmergency ? "🚨 EMERGENCY" :
+                         info.wantedPenalty > 0.98 ? "✓ OPTIMAL" : 
                          info.wantedPenalty > 0.95 ? "⚠️ ACTIVE" : 
                          "🔴 CRITICAL";
 

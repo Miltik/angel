@@ -203,6 +203,9 @@ export const config = {
         reserveMoneyForAugments: true,
         installOnThreshold: true,
         minQueuedAugs: 7,
+        aggressiveQueueTarget: 3,
+        aggressiveQueueSpendMultiplier: 1.5,
+        queueReserveMoney: 50000000,
         minQueuedCost: 5000000000,
         resetScript: "/angel/start.js",
         resetCountdownSec: 10,
@@ -355,6 +358,7 @@ export const config = {
         // Wanted level management
         minWantedPenalty: 0.9,          // Start peacekeeping when wanted below this
         criticalWantedPenalty: 0.8,     // Emergency peacekeeping below this
+        emergencyWantedPenalty: 0.9,    // Hard emergency: prioritize wanted reduction over all non-training tasks
         peacekeeperRatio: 0.3,          // Peacekeepers as % of gang when critical
         
         // Territory Warfare (respect building)
@@ -371,6 +375,7 @@ export const config = {
     bladeburner: {
         minSuccessChance: 0.6,
         staminaThreshold: 0.5,
+        minCombatStats: 75,
         loopDelay: 60000,
         contracts: [
             "Tracking",

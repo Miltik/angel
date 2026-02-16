@@ -52,6 +52,11 @@ export async function main(ns) {
         "modules/hacknet.js",
         "modules/milestones.js",
         "modules/dashboard.js",          // New: Real-time monitoring
+        "modules/contracts.js",          // New: Coding contracts solver
+        "modules/formulas.js",           // New: Formulas.exe farming
+        
+        // Tools
+        "snapshot.js",                   // New: System state capture
         
         // Workers
         "workers/hack.js",

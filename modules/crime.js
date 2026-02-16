@@ -38,9 +38,16 @@ export async function main(ns) {
 
     log(ns, "🎭 Singularity access confirmed", "SUCCESS");
 
+    let loopCount = 0;
     while (true) {
         try {
             const gamePhase = readGamePhase(ns);
+            loopCount++;
+
+            // Log phase periodically (every 3 iterations)
+            if (loopCount % 3 === 0) {
+                log(ns, `🎭 [LOOP] Phase: ${gamePhase}, Checking activity`, "DEBUG");
+            }
 
             // Faction management: ALWAYS ACTIVE (all phases)
             await manageFactions(ns);
@@ -50,6 +57,9 @@ export async function main(ns) {
                 await processActivity(ns, gamePhase);
             } else {
                 // Phases 3+: Activity module sleeps (hacking focus)
+                if (loopCount % 3 === 0) {
+                    log(ns, `🎭 [LOOP] Phase ${gamePhase} > 2, sleeping (hacking phase)`, "DEBUG");
+                }
                 await ns.sleep(30000);
             }
 
@@ -106,12 +116,13 @@ async function processActivity(ns, gamePhase) {
     // Check if already working on something
     const currentWork = ns.singularity.getCurrentWork();
     if (currentWork) {
-        log(ns, `🎭 [P${gamePhase}] Current: ${currentWork.type} (${currentWork.taskName || currentWork.factionName || ""})`, "DEBUG");
+        log(ns, `🎭 [P${gamePhase}] Current work: ${currentWork.type} (${currentWork.taskName || currentWork.factionName || ""})`, "DEBUG");
         return;
     }
 
     // Determine best activity for this phase
     const activity = chooseActivity(ns, gamePhase);
+    log(ns, `🎭 [P${gamePhase}] Activity chosen: ${activity}`, "INFO");
 
     if (activity === "none") {
         log(ns, `🎭 [P${gamePhase}] No activity needed`, "DEBUG");

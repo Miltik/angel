@@ -44,28 +44,29 @@ export async function main(ns) {
             const gamePhase = readGamePhase(ns);
             loopCount++;
 
-            // Log phase periodically (every 3 iterations)
-            if (loopCount % 3 === 0) {
-                log(ns, `🎭 [LOOP] Phase: ${gamePhase}, Checking activity`, "DEBUG");
-            }
+            // ALWAYS log every iteration for DEBUG
+            ns.print(`[LOOP ${loopCount}] Phase: ${gamePhase}, Checking activity...`);
 
             // Faction management: ALWAYS ACTIVE (all phases)
             await manageFactions(ns);
+            ns.print(`[LOOP ${loopCount}] After manageFactions`);
 
             // Activity work: ONLY PHASES 0-2
             if (gamePhase <= 2) {
+                ns.print(`[LOOP ${loopCount}] Phase <= 2, calling processActivity`);
                 await processActivity(ns, gamePhase);
+                ns.print(`[LOOP ${loopCount}] After processActivity`);
             } else {
                 // Phases 3+: Activity module sleeps (hacking focus)
-                if (loopCount % 3 === 0) {
-                    log(ns, `🎭 [LOOP] Phase ${gamePhase} > 2, sleeping (hacking phase)`, "DEBUG");
-                }
+                ns.print(`[LOOP ${loopCount}] Phase ${gamePhase} > 2, sleeping (hacking phase)`);
                 await ns.sleep(30000);
             }
 
+            ns.print(`[LOOP ${loopCount}] End of iteration, sleeping 5s`);
             await ns.sleep(5000);
         } catch (e) {
             log(ns, `🎭 Loop error: ${e}`, "ERROR");
+            ns.print(`[LOOP ERROR] ${e}`);
             await ns.sleep(5000);
         }
     }

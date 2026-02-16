@@ -208,6 +208,11 @@ export const config = {
         aggressiveQueueSpendMultiplier: 1.5,
         queueReserveMoney: 50000000,
         minQueuedCost: 5000000000,
+        resetMinQueuedAugsFloor: 5,    // Never reset below this queue count unless high-value override is met
+        resetMinRunMinutes: 20,        // Minimum run age before reset (unless high-value override)
+        resetStallMinutes: 8,          // Require queue progress to stall this long before resetting
+        resetRequireStall: true,       // Wait for queue growth to flatten before reset
+        resetHighValueCost: 25000000000, // Immediate reset override for very high queued value
         resetScript: "/angel/start.js",
         resetCountdownSec: 10,
         augmentPriority: [

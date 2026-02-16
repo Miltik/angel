@@ -32,6 +32,13 @@ let coordinatorState = {
     resetPending: false,
 };
 
+let resetHeuristicState = {
+    lastQueuedCount: 0,
+    lastQueuedCost: 0,
+    lastProgressTs: 0,
+    lastReasonLogTs: 0,
+};
+
 export async function main(ns) {
     ns.disableLog("ALL");
     
@@ -1029,16 +1036,80 @@ async function runCoordinatorFromDashboard(ns, ui) {
     ns.writePort(PORTS.ACTIVITY_MODE, activity);
 
     if (config.augmentations?.installOnThreshold && hasSingularityAccessForReset(ns) && !coordinatorState.resetPending) {
+        const now = Date.now();
         const queued = getQueuedAugmentsForReset(ns);
         const queuedCost = getQueuedCostForReset(ns, queued);
-        const queuedEnough = queued.length >= (config.augmentations?.minQueuedAugs ?? 7);
-        const costEnough = queuedCost >= (config.augmentations?.minQueuedCost ?? 0);
+        updateResetProgressState(queued.length, queuedCost, now);
 
-        if (queuedEnough || costEnough) {
+        const decision = shouldTriggerAdaptiveReset(ns, queued.length, queuedCost, now);
+
+        if (decision.shouldReset) {
             coordinatorState.resetPending = true;
+            ui.log(`🧠 RESET GATE: ${decision.reason}`, "warn");
             await triggerAugResetFromDashboard(ns, ui, queued.length, queuedCost);
+        } else if (decision.reason && now - resetHeuristicState.lastReasonLogTs > 60000) {
+            ui.log(`🧠 RESET GATE: Waiting - ${decision.reason}`, "info");
+            resetHeuristicState.lastReasonLogTs = now;
         }
     }
+}
+
+function updateResetProgressState(queuedCount, queuedCost, now) {
+    if (resetHeuristicState.lastProgressTs === 0) {
+        resetHeuristicState.lastProgressTs = now;
+    }
+
+    const countImproved = queuedCount > resetHeuristicState.lastQueuedCount;
+    const costImproved = queuedCost > resetHeuristicState.lastQueuedCost * 1.02;
+    if (countImproved || costImproved) {
+        resetHeuristicState.lastProgressTs = now;
+    }
+
+    resetHeuristicState.lastQueuedCount = queuedCount;
+    resetHeuristicState.lastQueuedCost = queuedCost;
+}
+
+function shouldTriggerAdaptiveReset(ns, queuedCount, queuedCost, now) {
+    const augCfg = config.augmentations || {};
+    const minQueuedAugs = augCfg.minQueuedAugs ?? 7;
+    const minQueuedCost = augCfg.minQueuedCost ?? 0;
+    const minQueuedFloor = augCfg.resetMinQueuedAugsFloor ?? Math.min(minQueuedAugs, 5);
+    const highValueCost = augCfg.resetHighValueCost ?? (minQueuedCost * 3);
+    const minRunMinutes = augCfg.resetMinRunMinutes ?? 20;
+    const stallMinutes = augCfg.resetStallMinutes ?? 8;
+    const requireStall = augCfg.resetRequireStall !== false;
+
+    const meetsBaseThreshold = queuedCount >= minQueuedAugs || queuedCost >= minQueuedCost;
+    if (!meetsBaseThreshold) {
+        return { shouldReset: false, reason: `base threshold not met (${queuedCount}/${minQueuedAugs} augs, ${formatMoney(queuedCost)}/${formatMoney(minQueuedCost)})` };
+    }
+
+    if (queuedCount < minQueuedFloor && queuedCost < highValueCost) {
+        return { shouldReset: false, reason: `queued augs below floor (${queuedCount}/${minQueuedFloor})` };
+    }
+
+    const resetInfo = ns.getResetInfo();
+    const runDurationMs = Math.max(0, now - Number(resetInfo?.lastAugReset || now));
+    const minRunMs = Math.max(0, minRunMinutes) * 60 * 1000;
+    if (runDurationMs < minRunMs && queuedCost < highValueCost) {
+        const minsLeft = Math.ceil((minRunMs - runDurationMs) / 60000);
+        return { shouldReset: false, reason: `run too fresh (${minsLeft}m until minimum runtime)` };
+    }
+
+    if (requireStall && queuedCost < highValueCost) {
+        const stallMs = Math.max(0, stallMinutes) * 60 * 1000;
+        const stalledFor = now - resetHeuristicState.lastProgressTs;
+        if (stalledFor < stallMs) {
+            const minsLeft = Math.ceil((stallMs - stalledFor) / 60000);
+            return { shouldReset: false, reason: `queue still improving (${minsLeft}m until stall window)` };
+        }
+    }
+
+    if (queuedCost >= highValueCost) {
+        return { shouldReset: true, reason: `high-value queue reached (${formatMoney(queuedCost)} >= ${formatMoney(highValueCost)})` };
+    }
+
+    return { shouldReset: true, reason: `threshold met after runtime/stall checks (${queuedCount} augs, ${formatMoney(queuedCost)})` };
 }
 
 function calculateGamePhaseWithHysteresis(ns, currentPhase) {

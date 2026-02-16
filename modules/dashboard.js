@@ -70,44 +70,65 @@ async function updateDashboard(ns) {
     const phaseProgress = getPhaseProgress(ns, currentPhase);
     const nextPhase = currentPhase < 4 ? currentPhase + 1 : 4;
     
-    // Display header
-    ns.print("");
-    ns.print("╔═══════════════════════════════════════════════════════════════╗");
-    ns.print("║            ANGEL AUTOMATION DASHBOARD                         ║");
-    ns.print("╚═══════════════════════════════════════════════════════════════╝");
-    ns.print("");
-    
-    // Game Phase
-    displayPhaseStatus(ns, currentPhase, phaseProgress, nextPhase);
-    ns.print("");
-    
-    // Money and XP Rates
-    displayEconomicsMetrics(ns, money, player, moneyRate, xpRate);
-    ns.print("");
-    
-    // Hacking Status
-    displayHackingStatus(ns, player);
-    ns.print("");
-    
-    // Gang Status (if available)
-    if (ns.gang.inGang && ns.gang.inGang()) {
-        displayGangStatus(ns);
+    try {
+        // Display header
         ns.print("");
-    }
-    
-    // Augmentation Status
-    displayAugmentationStatus(ns, player);
-    ns.print("");
-    
-    // Stock Status (if available)
-    if (hasStockAccess(ns)) {
-        displayStockStatus(ns);
+        ns.print("╔═══════════════════════════════════════════════════════════════╗");
+        ns.print("║            ANGEL AUTOMATION DASHBOARD                         ║");
+        ns.print("╚═══════════════════════════════════════════════════════════════╝");
         ns.print("");
+        
+        // Game Phase
+        displayPhaseStatus(ns, currentPhase, phaseProgress, nextPhase);
+        ns.print("");
+        
+        // Money and XP Rates
+        displayEconomicsMetrics(ns, money, player, moneyRate, xpRate);
+        ns.print("");
+        
+        // Hacking Status
+        displayHackingStatus(ns, player);
+        ns.print("");
+        
+        // Gang Status (if available)
+        if (ns.gang.inGang && ns.gang.inGang()) {
+            try {
+                displayGangStatus(ns);
+                ns.print("");
+            } catch (e) {
+                log(ns, `📊 Gang display error: ${e}`, "DEBUG");
+            }
+        }
+        
+        // Augmentation Status
+        try {
+            displayAugmentationStatus(ns, player);
+            ns.print("");
+        } catch (e) {
+            log(ns, `📊 Augment display error: ${e}`, "DEBUG");
+        }
+        
+        // Stock Status (if available)
+        if (hasStockAccess(ns)) {
+            try {
+                displayStockStatus(ns);
+                ns.print("");
+            } catch (e) {
+                log(ns, `📊 Stock display error: ${e}`, "DEBUG");
+            }
+        }
+        
+        // Network Status
+        try {
+            displayNetworkStatus(ns);
+            ns.print("");
+        } catch (e) {
+            log(ns, `📊 Network display error: ${e}`, "DEBUG");
+        }
+    } catch (e) {
+        log(ns, `📊 Dashboard update error: ${e.message || e}`, "ERROR");
+        throw e;
     }
-    
-    // Network Status
-    displayNetworkStatus(ns);
-    ns.print("");
 }
 
 /**
@@ -361,13 +382,24 @@ function calculateUsedRam(ns) {
  * Scan all servers
  */
 function scanAll(ns, server = "home", visited = new Set()) {
-    visited.add(server);
-    const neighbors = ns.scan(server);
-    for (const neighbor of neighbors) {
-        if (!visited.has(neighbor)) {
-            scanAll(ns, neighbor, visited);
+    try {
+        visited.add(server);
+        const neighbors = ns.scan(server);
+        
+        // Safety check for neighbors
+        if (!neighbors || !Array.isArray(neighbors)) {
+            return Array.from(visited);
         }
+        
+        for (const neighbor of neighbors) {
+            if (!visited.has(neighbor)) {
+                scanAll(ns, neighbor, visited);
+            }
+        }
+    } catch (e) {
+        // Scan failed, return what we have
     }
+    
     return Array.from(visited);
 }
 
@@ -376,7 +408,7 @@ function scanAll(ns, server = "home", visited = new Set()) {
  */
 function hasStockAccess(ns) {
     try {
-        return ns.stock.hasTIXAPIAccess && ns.stock.has4SDataTIXAPI && 
+        return ns.stock && ns.stock.hasTIXAPIAccess && ns.stock.has4SDataTIXAPI && 
                ns.stock.hasTIXAPIAccess() && ns.stock.has4SDataTIXAPI();
     } catch (e) {
         return false;

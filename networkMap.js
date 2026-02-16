@@ -209,10 +209,6 @@ export async function main(ns) {
         try {
             const allCards = document.querySelectorAll('.server-card');
             
-            if (lastState.loopCount === 1) {
-                ns.tprint(`🔍 Network Map: Found ${allCards.length} server cards`);
-            }
-            
             allCards.forEach((card) => {
                 const serverName = card.getAttribute('data-server');
                 if (!serverName) return;
@@ -224,13 +220,10 @@ export async function main(ns) {
                 // Attach new listener - just set pending connection
                 newCard.addEventListener('click', () => {
                     lastState.pendingConnection = serverName;
-                    console.log(`Click registered: ${serverName}`);
                 });
             });
         } catch (err) {
-            if (lastState.loopCount === 1) {
-                ns.tprint(`❌ Error attaching listeners: ${err.message}`);
-            }
+            // Silent fail
         }
         
         lastState.totalServers = total;

@@ -217,6 +217,18 @@ async function ensureModulesRunning(ns) {
         await ns.sleep(1500);
     }
     
+    // Coding Contracts solver - low RAM
+    if (config.orchestrator.enableContracts) {
+        await ensureModuleRunning(ns, SCRIPTS.contracts, "Contracts");
+        await ns.sleep(1500);
+    }
+    
+    // Formulas.exe farming - low RAM
+    if (config.orchestrator.enableFormulas) {
+        await ensureModuleRunning(ns, SCRIPTS.formulas, "Formulas");
+        await ns.sleep(1500);
+    }
+    
     // Network Map module - visualization
     if (config.orchestrator.enableNetworkMap) {
         await ensureModuleRunning(ns, SCRIPTS.networkMap, "Network Map");

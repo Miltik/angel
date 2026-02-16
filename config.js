@@ -153,8 +153,10 @@ export const config = {
         enableBladeburner: true,
         enableHacknet: true,
         enableMilestones: true,
-        enableDashboard: true,     // New: Real-time monitoring
+        enableDashboard: true,     // Real-time monitoring
         enableNetworkMap: true,    // Network visualization
+        enableContracts: true,     // Coding contracts solver
+        enableFormulas: true,      // Formulas.exe farming
     },
 
     // Hacking settings
@@ -438,6 +440,8 @@ export const SCRIPTS = {
     milestones: "/angel/modules/milestones.js",
     dashboard: "/angel/modules/dashboard.js",
     networkMap: "/angel/networkMap.js",
+    contracts: "/angel/modules/contracts.js",
+    formulas: "/angel/modules/formulas.js",
     
     // Workers (actual hacking scripts)
     hack: "/angel/workers/hack.js",

@@ -73,7 +73,7 @@ function checkDom() {
 }
 
 // Styles to inject - pure string, no DOM yet
-const CSS_STYLES = `.angel-window{position:fixed;background:#1e1e1e;color:#e0e0e0;border:1px solid #404040;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.5);font-family:'Courier New',monospace;font-size:12px;z-index:10000;display:flex;flex-direction:column;min-width:300px;min-height:150px}.angel-window-header{background:linear-gradient(135deg,#2c3e50,#34495e);color:#ecf0f1;padding:10px 12px;cursor:move;user-select:none;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #404040;border-radius:8px 8px 0 0;font-weight:bold}.angel-window-header-title{flex:1}.angel-window-header-buttons{display:flex;gap:8px}.angel-window-btn{background:#34495e;color:#ecf0f1;border:none;width:24px;height:24px;border-radius:4px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:background .2s}.angel-window-btn:hover{background:#3d5a73}.angel-window-content{flex:1;overflow-y:auto;padding:12px;scrollbar-width:thin;scrollbar-color:#404040 #1e1e1e}.angel-window-content::-webkit-scrollbar{width:8px}.angel-window-content::-webkit-scrollbar-track{background:#1e1e1e}.angel-window-content::-webkit-scrollbar-thumb{background:#404040;border-radius:4px}.angel-window-content::-webkit-scrollbar-thumb:hover{background:#555}.angel-window-resize{position:absolute;width:20px;height:20px;bottom:0;right:0;cursor:se-resize;background:linear-gradient(135deg,transparent 50%,#404040 50%);border-radius:0 0 8px 0}.angel-log-line{white-space:pre-wrap;word-break:break-word;margin:4px 0;line-height:1.4}.angel-log-info{color:#3498db}.angel-log-success{color:#2ecc71}.angel-log-warn{color:#f39c12}.angel-log-error{color:#e74c3c}.angel-log-debug{color:#95a5a6}`;
+const CSS_STYLES = `.angel-window{position:fixed;background:#1e1e1e;color:#e0e0e0;border:1px solid #404040;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.5);font-family:'Courier New',monospace;font-size:12px;z-index:10000;display:flex;flex-direction:column;min-width:300px;min-height:40px;transition:height 0.2s ease}.angel-window-header{background:linear-gradient(135deg,#2c3e50,#34495e);color:#ecf0f1;padding:10px 12px;cursor:move;user-select:none;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #404040;border-radius:8px 8px 0 0;font-weight:bold;flex-shrink:0}.angel-window-header-title{flex:1}.angel-window-header-buttons{display:flex;gap:8px}.angel-window-btn{background:#34495e;color:#ecf0f1;border:none;width:24px;height:24px;border-radius:4px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:background .2s}.angel-window-btn:hover{background:#3d5a73}.angel-window-content{flex:1;overflow-y:auto;padding:12px;scrollbar-width:thin;scrollbar-color:#404040 #1e1e1e}.angel-window-content::-webkit-scrollbar{width:8px}.angel-window-content::-webkit-scrollbar-track{background:#1e1e1e}.angel-window-content::-webkit-scrollbar-thumb{background:#404040;border-radius:4px}.angel-window-content::-webkit-scrollbar-thumb:hover{background:#555}.angel-window-resize{position:absolute;width:20px;height:20px;bottom:0;right:0;cursor:se-resize;background:linear-gradient(135deg,transparent 50%,#404040 50%);border-radius:0 0 8px 0}.angel-log-line{white-space:pre-wrap;word-break:break-word;margin:4px 0;line-height:1.4}.angel-log-info{color:#3498db}.angel-log-success{color:#2ecc71}.angel-log-warn{color:#f39c12}.angel-log-error{color:#e74c3c}.angel-log-debug{color:#95a5a6}`;
 
 let stylesInjected = false;
 
@@ -179,9 +179,39 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
         document.body.appendChild(container);
 
         // Setup event handlers
+        let minimizedState = { isMinimized: false, originalHeight: height };
+        
         minimizeBtn.onclick = () => {
-            content.style.display = content.style.display === "none" ? "block" : "none";
+            minimizedState.isMinimized = !minimizedState.isMinimized;
+            
+            if (minimizedState.isMinimized) {
+                // Save original height before minimizing
+                minimizedState.originalHeight = container.style.height || (height + "px");
+                // Collapse to just header + 1px border
+                container.style.height = "40px";
+                container.style.overflow = "hidden";
+                content.style.display = "none";
+                resize.style.display = "none";
+                minimizeBtn.textContent = "+";
+            } else {
+                // Restore
+                container.style.height = minimizedState.originalHeight;
+                container.style.overflow = "";
+                content.style.display = "block";
+                resize.style.display = "block";
+                minimizeBtn.textContent = "−";
+            }
+            
+            // Save state
+            saveWindowState(id, {
+                left: container.style.left,
+                top: container.style.top,
+                width: container.style.width,
+                height: container.style.height,
+                minimized: minimizedState.isMinimized
+            });
         };
+        
         closeBtn.onclick = () => {
             container.remove();
             WINDOWS.delete(id);
@@ -201,7 +231,8 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
                     left: container.style.left,
                     top: container.style.top,
                     width: container.style.width,
-                    height: container.style.height
+                    height: container.style.height,
+                    minimized: minimizedState.isMinimized
                 });
             };
             document.onmousemove = (e) => {
@@ -231,7 +262,8 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
                     left: container.style.left,
                     top: container.style.top,
                     width: container.style.width,
-                    height: container.style.height
+                    height: container.style.height,
+                    minimized: minimizedState.isMinimized
                 });
             };
             document.onmousemove = (e) => {
@@ -274,6 +306,17 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
         };
 
         WINDOWS.set(id, windowApi);
+        
+        // Restore minimized state if it was saved that way
+        if (savedState && savedState.minimized) {
+            minimizedState.isMinimized = true;
+            container.style.height = "40px";
+            container.style.overflow = "hidden";
+            content.style.display = "none";
+            resize.style.display = "none";
+            minimizeBtn.textContent = "+";
+        }
+        
         return windowApi;
 
     } catch (e) {

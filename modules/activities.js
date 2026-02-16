@@ -129,38 +129,32 @@ export async function main(ns) {
  */
 async function manageFactions(ns, ui) {
     const player = ns.getPlayer();
-    const currentFactions = player.factions;
+    const joinedFactions = new Set(player.factions || []);
     const invitations = ns.singularity.checkFactionInvitations();
 
     // Auto-join priority factions first
     if (config.factions?.autoJoinFactions && invitations.length > 0) {
         const priorityFactions = config.factions.priorityFactions || [];
         for (const faction of invitations) {
-            if (priorityFactions.includes(faction)) {
-                ns.singularity.joinFaction(faction);
-                ui.log(`✅ Joined priority faction: ${faction}`, "success");
+            if (priorityFactions.includes(faction) && !joinedFactions.has(faction)) {
+                const joined = ns.singularity.joinFaction(faction);
+                if (joined) {
+                    joinedFactions.add(faction);
+                    ui.log(`✅ Joined priority faction: ${faction}`, "success");
+                }
             }
         }
     }
-    
-    // Auto-join ANY faction that has augmentations we don't own
+
+    // Auto-join all remaining invitations (including backdoor-unlocked factions)
     if (config.factions?.autoJoinFactions && invitations.length > 0) {
-        const owned = ns.singularity.getOwnedAugmentations(true);
         for (const faction of invitations) {
-            // Skip if already joined
-            if (currentFactions.includes(faction)) continue;
-            
-            // Check if this faction has unowned augments
-            try {
-                const augments = ns.singularity.getAugmentationsFromFaction(faction);
-                const hasUnownedAugs = augments.some(aug => !owned.includes(aug));
-                
-                if (hasUnownedAugs) {
-                    ns.singularity.joinFaction(faction);
-                    ui.log(`✅ Joined faction (has augments): ${faction}`, "success");
-                }
-            } catch (e) {
-                // Faction might not be joinable yet, skip
+            if (joinedFactions.has(faction)) continue;
+
+            const joined = ns.singularity.joinFaction(faction);
+            if (joined) {
+                joinedFactions.add(faction);
+                ui.log(`✅ Joined faction: ${faction}`, "success");
             }
         }
     }

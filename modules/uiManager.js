@@ -224,8 +224,6 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
         if (savedState) {
             container.style.left = savedState.left + "px";
             container.style.top = savedState.top + "px";
-            container.style.width = savedState.width + "px";
-            container.style.height = savedState.height + "px";
         }
 
         // Header
@@ -268,8 +266,7 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
 
         // Setup event handlers
         let minimizedState = { isMinimized: false, originalHeight: height };
-        let sizeLocked = Boolean(savedState?.sizeLocked);
-        let autoSizeEnabled = !sizeLocked;
+        let autoSizeEnabled = true;
         let autoSizeScheduled = false;
 
         function fitToContent() {
@@ -336,7 +333,6 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
                 width: container.style.width,
                 height: container.style.height,
                 minimized: minimizedState.isMinimized,
-                sizeLocked,
             });
         };
         
@@ -361,7 +357,6 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
                     width: container.style.width,
                     height: container.style.height,
                     minimized: minimizedState.isMinimized,
-                    sizeLocked,
                 });
             };
             document.onmousemove = (e) => {
@@ -386,8 +381,7 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
                 resizeState.isResizing = false;
                 document.onmouseup = null;
                 document.onmousemove = null;
-                sizeLocked = true;
-                autoSizeEnabled = false;
+                autoSizeEnabled = true;
                 // Save window state after resize
                 saveWindowState(id, {
                     left: container.style.left,
@@ -395,7 +389,6 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
                     width: container.style.width,
                     height: container.style.height,
                     minimized: minimizedState.isMinimized,
-                    sizeLocked,
                 });
             };
             document.onmousemove = (e) => {

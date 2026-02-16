@@ -180,4 +180,3 @@ function getDynamicSpendRatio(gamePhase) {
         default: return 0.08;   // Early/mid: conservative
     }
 }
-}

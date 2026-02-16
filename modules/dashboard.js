@@ -24,6 +24,12 @@ let lastXp = 0;
 export async function main(ns) {
     ns.disableLog("ALL");
     
+    try {
+        ns.ui.openTail();
+    } catch (e) {
+        // Tail may not be available
+    }
+    
     log(ns, "📊 Dashboard monitoring started - Real-time metrics", "INFO");
     
     let loopCount = 0;

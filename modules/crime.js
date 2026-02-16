@@ -68,6 +68,11 @@ export async function main(ns) {
             const gamePhase = readGamePhase(ns);
             loopCount++;
 
+            // Show phase every 12 loops (~60 seconds)
+            if (loopCount % 12 === 1) {
+                ui.log(`--- Phase: ${gamePhase} ---`, "info");
+            }
+
             // Faction management: ALWAYS ACTIVE (all phases)
             await manageFactions(ns, ui);
 
@@ -141,11 +146,13 @@ async function processActivity(ns, gamePhase, ui) {
     const activity = chooseActivity(ns, gamePhase);
 
     if (activity === "none") {
+        ui.log(`[P${gamePhase}] No activity chosen`, "debug");
         return;
     }
 
     // Try to acquire activity lock (prevent conflicts)
     if (!claimLock(ns, ACTIVITY_OWNER, ACTIVITY_LOCK_TTL)) {
+        ui.log(`[P${gamePhase}] Activity lock held, skipping`, "debug");
         return;
     }
 
@@ -181,11 +188,13 @@ async function processFillerCrime(ns, gamePhase, ui) {
 
     // Try to acquire activity lock (only if free - don't wait)
     if (!claimLock(ns, ACTIVITY_OWNER, ACTIVITY_LOCK_TTL)) {
+        ui.log(`[P${gamePhase}] Filler: Lock held`, "debug");
         // Lock held by another module (faction work, etc), skip
         return;
     }
 
     try {
+        ui.log(`[P${gamePhase}] Filler: Committing crime`, "info");
         // Do a quick crime for stat padding
         await doCrime(ns, ui);
     } catch (err) {

@@ -107,6 +107,9 @@ export async function main(ns) {
 
             await ns.sleep(5000);
         } catch (e) {
+            if (String(e).includes("ScriptDeath")) {
+                return;
+            }
             ui.log(`❌ Loop error: ${e}`, "error");
             await ns.sleep(5000);
         }
@@ -241,6 +244,9 @@ async function processActivity(ns, gamePhase, ui) {
             await doCompanyWork(ns, ui);
         }
     } catch (err) {
+        if (String(err).includes("ScriptDeath")) {
+            return;
+        }
         ui.log(`❌ Error during ${activity}: ${err}`, "error");
     }
 
@@ -308,11 +314,6 @@ function hasAnyViableFactionWork(ns) {
     const owned = ns.singularity.getOwnedAugmentations(true);
 
     for (const faction of player.factions) {
-        // Skip gang-only factions (Netburners, NiteSec - can't gain rep from work)
-        if (faction === "NiteSec" || faction === "Netburners" || faction === "Bladeburners") {
-            continue;
-        }
-
         const augments = ns.singularity.getAugmentationsFromFaction(faction);
         
         // Check if ANY augment in this faction is unowned
@@ -423,9 +424,6 @@ async function doFactionWork(ns, ui) {
 
     // Filter to factions with actual unowned augments
     const factions = player.factions.filter(f => {
-        if (f === "NiteSec" || f === "Netburners" || f === "Bladeburners") {
-            return false;  // Skip gang-only factions
-        }
         const augments = ns.singularity.getAugmentationsFromFaction(f);
         return augments.some(aug => !owned.includes(aug));  // Must have unowned augs
     });

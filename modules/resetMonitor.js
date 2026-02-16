@@ -12,30 +12,29 @@ const MAX_HISTORY = 200;
 
 export function initializeResetMonitor(ns) {
     const now = Date.now();
-    const player = ns.getPlayer();
-    const playtime = Number(player.playtimeSinceLastAug || 0);
+    const lastAugResetEpoch = getLastAugResetEpoch(ns, now);
 
     const state = readJson(ns, STATE_FILE, {
         version: 1,
         currentRun: null,
-        lastSeenPlaytimeSinceAug: 0,
+        lastSeenAugResetEpoch: 0,
         lastHeartbeat: 0,
     });
 
-    const resetDetected = state.lastSeenPlaytimeSinceAug > 0 && playtime + 5000 < state.lastSeenPlaytimeSinceAug;
+    const resetDetected = state.lastSeenAugResetEpoch > 0 && lastAugResetEpoch !== state.lastSeenAugResetEpoch;
     const missingRun = !state.currentRun || typeof state.currentRun.startEpoch !== "number";
 
     if (resetDetected || missingRun) {
-        const runStartEpoch = now - playtime;
+        const runStartEpoch = lastAugResetEpoch;
         state.currentRun = {
             startEpoch: runStartEpoch,
             startedAt: new Date(runStartEpoch).toISOString(),
-            startHackLevel: Number(player.skills.hacking || 0),
+            startHackLevel: Number(ns.getPlayer().skills.hacking || 0),
             startCash: Number(ns.getServerMoneyAvailable("home") || 0),
         };
     }
 
-    state.lastSeenPlaytimeSinceAug = playtime;
+    state.lastSeenAugResetEpoch = lastAugResetEpoch;
     state.lastHeartbeat = now;
     writeJson(ns, STATE_FILE, state);
     return state;
@@ -44,8 +43,10 @@ export function initializeResetMonitor(ns) {
 export function recordResetSnapshot(ns, meta = {}) {
     const state = initializeResetMonitor(ns);
     const player = ns.getPlayer();
+    const now = Date.now();
+    const lastAugResetEpoch = getLastAugResetEpoch(ns, now);
 
-    const playtimeMs = Number(player.playtimeSinceLastAug || 0);
+    const playtimeMs = Math.max(0, now - lastAugResetEpoch);
     const finalCash = Number(ns.getServerMoneyAvailable("home") || 0);
     const finalHackLevel = Number(player.skills.hacking || 0);
     const purchasedAugs = getPurchasedAugmentsPendingReset(ns);
@@ -75,6 +76,19 @@ export function recordResetSnapshot(ns, meta = {}) {
     writeJson(ns, STATE_FILE, state);
 
     return summary;
+}
+
+function getLastAugResetEpoch(ns, fallbackNow = Date.now()) {
+    try {
+        const resetInfo = ns.getResetInfo();
+        const ts = Number(resetInfo?.lastAugReset || 0);
+        if (Number.isFinite(ts) && ts > 0) {
+            return ts;
+        }
+    } catch (e) {
+        // ignore and fallback
+    }
+    return fallbackNow;
 }
 
 export function getResetHistory(ns) {

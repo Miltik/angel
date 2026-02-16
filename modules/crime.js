@@ -120,6 +120,7 @@ async function processActivity(ns, gamePhase) {
 
     // Try to acquire activity lock (prevent conflicts)
     if (!claimLock(ns, ACTIVITY_OWNER, ACTIVITY_LOCK_TTL)) {
+        log(ns, `🎭 [P${gamePhase}] Lock held by another module, skipping`, "DEBUG");
         return;
     }
 
@@ -265,7 +266,8 @@ async function doTraining(ns) {
     }
 
     if (!target) {
-        await ns.sleep(30000);
+        log(ns, `🎭 Training: All stats maxed - doing crime instead`, "DEBUG");
+        await doCrime(ns);
         return;
     }
 
@@ -311,8 +313,8 @@ async function doFactionWork(ns) {
     });
 
     if (factions.length === 0) {
-        log(ns, `🎭 Faction: No factions with unowned augments - falling back to crime`, "DEBUG");
-        await ns.sleep(30000);
+        log(ns, `🎭 Faction: No valid factions - doing crime instead`, "DEBUG");
+        await doCrime(ns);
         return;
     }
 
@@ -329,8 +331,8 @@ async function doFactionWork(ns) {
     }
 
     if (!bestFaction || mostNeeded <= 0) {
-        log(ns, `🎭 Faction: All factions satisfied - falling back to crime`, "DEBUG");
-        await ns.sleep(30000);
+        log(ns, `🎭 Faction: All factions satisfied - doing crime instead`, "DEBUG");
+        await doCrime(ns);
         return;
     }
 
@@ -357,7 +359,8 @@ async function doCompanyWork(ns) {
     const threshold = config.company?.onlyWhenMoneyBelow || 200000000;
 
     if (money >= threshold) {
-        await ns.sleep(30000);
+        log(ns, `🎭 Company: Money above threshold (${formatMoney(money)}/${formatMoney(threshold)}) - doing crime instead`, "DEBUG");
+        await doCrime(ns);
         return;
     }
 
@@ -390,7 +393,9 @@ async function doCompanyWork(ns) {
     }
 
     if (!placed) {
-        log(ns, `🎭 Company: No positions available`, "WARN");
+        log(ns, `🎭 Company: No positions available - doing crime instead`, "WARN");
+        await doCrime(ns);
+        return;
     }
 
     await ns.sleep(180000);

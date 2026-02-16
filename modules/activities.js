@@ -18,6 +18,22 @@ const PHASE_PORT = 7;
 const ACTIVITY_OWNER = "activity";
 const ACTIVITY_LOCK_TTL = 180000;
 
+// State tracking
+let lastState = {
+    phase: null,
+    currentActivity: null,
+    currentCrime: null,
+    currentFaction: null,
+    loopCount: 0,
+    lastActivityChange: -10,
+    pendingInvites: null,
+    plannedActivity: null,
+    lastCrimeStarted: null,
+    lastTraining: null,
+    lastFaction: null,
+    lastCompany: null
+};
+
 /**
  * Read current game phase from orchestrator, with validation
  * CRIME MODULE: Hardcoded to determine phase locally, ignore port 7 for early game
@@ -51,28 +67,35 @@ export async function main(ns) {
     ns.disableLog("ALL");
     
     const ui = createWindow("activities", "� Activities", 700, 450, ns);
-    ui.log("Activities module started (P0-2 active, P3+ filler, all-phase factions)", "info");
+    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    ui.log("🎯 Activities automation initialized", "success");
+    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 
     if (!hasSingularityAccess(ns)) {
-        ui.log("Singularity access not available - need SF4", "warn");
+        ui.log("⚠️  Singularity access not available (need SF4) - waiting...", "warn");
         while (true) {
             await ns.sleep(60000);
         }
     }
 
-    ui.log("Singularity access confirmed", "success");
+    ui.log("✅ Singularity access confirmed", "success");
 
-    let loopCount = 0;
     while (true) {
         try {
             const gamePhase = readGamePhase(ns);
-            loopCount++;
+            lastState.loopCount++;
 
-            // Show phase every 12 loops (~60 seconds)
-            if (loopCount % 12 === 1) {
+            // Show phase transition or status every 12 loops (~60 seconds)
+            if (gamePhase !== lastState.phase) {
                 const player = ns.getPlayer();
                 const money = ns.getServerMoneyAvailable("home") + player.money;
-                ui.log(`--- Phase: ${gamePhase} (Money: $${(money / 1e9).toFixed(2)}B) ---`, "info");
+                ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+                ui.log(`📊 Phase ${gamePhase} | 💰 ${formatMoney(money)}`, "info");
+                lastState.phase = gamePhase;
+            } else if (lastState.loopCount % 12 === 1) {
+                const player = ns.getPlayer();
+                const money = ns.getServerMoneyAvailable("home") + player.money;
+                ui.log(`📊 P${gamePhase} status | 💰 ${formatMoney(money)}`, "info");
             }
 
             // Faction management: ALWAYS ACTIVE (all phases)
@@ -90,7 +113,7 @@ export async function main(ns) {
 
             await ns.sleep(5000);
         } catch (e) {
-            ui.log(`Loop error: ${e}`, "error");
+            ui.log(`❌ Loop error: ${e}`, "error");
             await ns.sleep(5000);
         }
     }
@@ -111,31 +134,16 @@ async function manageFactions(ns, ui) {
         for (const faction of invitations) {
             if (priorityFactions.includes(faction)) {
                 ns.singularity.joinFaction(faction);
-                ui.log(`Joined faction: ${faction}`, "success");
+                ui.log(`✅ Joined faction: ${faction}`, "success");
             }
         }
     }
 
-    // Display faction status and pending work
-    if (currentFactions.length > 0) {
-        const statusLines = [];
-        for (const faction of currentFactions) {
-            const rep = ns.singularity.getFactionRep(faction);
-            const repNeeded = getRepNeeded(ns, faction);
-            statusLines.push(`${faction}:${Math.floor(rep)}/${Math.floor(repNeeded)}`);
-        }
-        ui.log(`Factions: ${statusLines.join(" | ")}`, "debug");
-    }
-
-    // Show pending invitations
-    if (invitations.length > 0) {
-        ui.log(`Pending invitations: ${invitations.join(", ")}`, "warn");
-    }
-
-    // Check current work to see if faction work is happening
-    const currentWork = ns.singularity.getCurrentWork();
-    if (currentWork && currentWork.type === "FACTION") {
-        ui.log(`[Ongoing] Faction work: ${currentWork.factionName} (${currentWork.workType})`, "debug");
+    // Show pending invitations (only on change or periodically)
+    const inviteStr = invitations.join(",");
+    if (invitations.length > 0 && (inviteStr !== lastState.pendingInvites || lastState.loopCount % 24 === 0)) {
+        ui.log(`📬 Pending invitations: ${invitations.join(", ")}`, "warn");
+        lastState.pendingInvites = inviteStr;
     }
 }
 
@@ -147,19 +155,23 @@ async function processActivity(ns, gamePhase, ui) {
     // Check if already working on something
     const currentWork = ns.singularity.getCurrentWork();
     if (currentWork) {
-        // Display what's in progress and why we're skipping
-        if (currentWork.type === "CRIME") {
-            const crime = currentWork.crimeType;
-            const chance = ns.singularity.getCrimeChance(crime);
-            ui.log(`[P${gamePhase}] Crime in progress: ${crime} (${(chance * 100).toFixed(1)}%)`, "info");
-        } else if (currentWork.type === "FACTION") {
-            ui.log(`[P${gamePhase}] Faction work: ${currentWork.factionName} (${currentWork.workType})`, "info");
-        } else if (currentWork.type === "COMPANY") {
-            ui.log(`[P${gamePhase}] Company work: ${currentWork.companyName}`, "info");
-        } else if (currentWork.type === "UNIVERSITY" || currentWork.type === "GYM") {
-            ui.log(`[P${gamePhase}] Training: ${currentWork.type}`, "info");
-        } else {
-            ui.log(`[P${gamePhase}] Activity in progress: ${currentWork.type}`, "debug");
+        // Display what's in progress (only on change or periodically)
+        const activityKey = `${currentWork.type}-${currentWork.crimeType || currentWork.factionName || currentWork.companyName || ""}`;
+        const shouldLog = activityKey !== lastState.currentActivity || lastState.loopCount % 12 === 0;
+        
+        if (shouldLog) {
+            if (currentWork.type === "CRIME") {
+                const crime = currentWork.crimeType;
+                const chance = ns.singularity.getCrimeChance(crime);
+                ui.log(`🔪 Crime in progress: ${crime} (${(chance * 100).toFixed(1)}% success)`, "info");
+            } else if (currentWork.type === "FACTION") {
+                ui.log(`🤝 Faction work: ${currentWork.factionName} (${currentWork.workType})`, "info");
+            } else if (currentWork.type === "COMPANY") {
+                ui.log(`💼 Company work: ${currentWork.companyName}`, "info");
+            } else if (currentWork.type === "UNIVERSITY" || currentWork.type === "GYM") {
+                ui.log(`📚 Training: ${currentWork.type}`, "info");
+            }
+            lastState.currentActivity = activityKey;
         }
         return;
     }
@@ -168,18 +180,27 @@ async function processActivity(ns, gamePhase, ui) {
     const activity = chooseActivity(ns, gamePhase);
 
     if (activity === "none") {
-        ui.log(`[P${gamePhase}] No activity chosen`, "debug");
         return;
     }
 
     // Try to acquire activity lock (prevent conflicts)
     if (!claimLock(ns, ACTIVITY_OWNER, ACTIVITY_LOCK_TTL)) {
-        ui.log(`[P${gamePhase}] Activity lock held, skipping`, "debug");
         return;
     }
 
     try {
-        ui.log(`[P${gamePhase}] Starting: ${activity}`, "info");
+        // Only log when activity changes
+        if (activity !== lastState.plannedActivity || lastState.loopCount - lastState.lastActivityChange > 12) {
+            const activityEmoji = {
+                "crime": "🔪",
+                "training": "📚",
+                "faction": "🤝",
+                "company": "💼"
+            };
+            ui.log(`${activityEmoji[activity] || "🎯"} Starting: ${activity}`, "info");
+            lastState.plannedActivity = activity;
+            lastState.lastActivityChange = lastState.loopCount;
+        }
 
         if (activity === "crime") {
             await doCrime(ns, ui);
@@ -191,7 +212,7 @@ async function processActivity(ns, gamePhase, ui) {
             await doCompanyWork(ns, ui);
         }
     } catch (err) {
-        ui.log(`Error during ${activity}: ${err}`, "error");
+        ui.log(`❌ Error during ${activity}: ${err}`, "error");
     }
 
     releaseLock(ns, ACTIVITY_OWNER);
@@ -206,29 +227,28 @@ async function processFillerCrime(ns, gamePhase, ui) {
     const currentWork = ns.singularity.getCurrentWork();
     if (currentWork) {
         if (currentWork.type === "CRIME") {
-            // Display current crime progress
+            // Display current crime progress (only on change or periodically)
             const crime = currentWork.crimeType;
             const chance = ns.singularity.getCrimeChance(crime);
-            ui.log(`[P${gamePhase}] Crime in progress: ${crime} (${(chance * 100).toFixed(1)}%)`, "info");
-        } else {
-            ui.log(`[P${gamePhase}] Activity in progress: ${currentWork.type}`, "debug");
+            if (crime !== lastState.currentCrime || lastState.loopCount % 12 === 0) {
+                ui.log(`🔪 Filler crime: ${crime} (${(chance * 100).toFixed(1)}% success)`, "info");
+                lastState.currentCrime = crime;
+            }
         }
         return; // Already working on something, skip
     }
 
     // Try to acquire activity lock (only if free - don't wait)
     if (!claimLock(ns, ACTIVITY_OWNER, ACTIVITY_LOCK_TTL)) {
-        ui.log(`[P${gamePhase}] Filler skipped: Lock held`, "debug");
         // Lock held by another module (faction work, etc), skip
         return;
     }
 
     try {
-        ui.log(`[P${gamePhase}] Filler: Committing crime`, "info");
         // Do a quick crime for stat padding
         await doCrime(ns, ui);
     } catch (err) {
-        ui.log(`Error during filler crime: ${err}`, "error");
+        ui.log(`❌ Error during filler crime: ${err}`, "error");
     }
 
     releaseLock(ns, ACTIVITY_OWNER);
@@ -318,14 +338,22 @@ function hasAnyViableFactionWork(ns) {
 async function doCrime(ns, ui) {
     const crime = selectCrime(ns);
     if (!crime) {
-        ui.log(`Crime: No suitable crime found`, "warn");
+        if (lastState.loopCount % 24 === 0) {
+            ui.log(`⚠️  No suitable crime found`, "warn");
+        }
         await ns.sleep(5000);
         return;
     }
 
-    const stats = ns.singularity.getCrimeStats(crime);
     const duration = ns.singularity.commitCrime(crime, config.crime?.focus || "maximum");
-    ui.log(`Crime: ${crime} | Duration: ${(duration / 1000).toFixed(1)}s | %: ${(ns.singularity.getCrimeChance(crime) * 100).toFixed(0)}%`, "info");
+    const chance = ns.singularity.getCrimeChance(crime);
+    
+    // Only log if crime changed or periodically
+    if (crime !== lastState.lastCrimeStarted || lastState.loopCount - lastState.lastActivityChange > 12) {
+        ui.log(`🔪 Starting ${crime} | ${(duration / 1000).toFixed(1)}s | ${(chance * 100).toFixed(0)}% success`, "info");
+        lastState.lastCrimeStarted = crime;
+        lastState.lastActivityChange = lastState.loopCount;
+    }
     await ns.sleep(duration + 500);
 }
 
@@ -357,7 +385,6 @@ async function doTraining(ns, ui) {
     }
 
     if (!target) {
-        ui.log(`Training: All stats maxed - doing crime instead`, "debug");
         await doCrime(ns, ui);
         return;
     }
@@ -368,20 +395,26 @@ async function doTraining(ns, ui) {
         } catch (e) {}
     }
 
-    if (target.type === "university") {
-        ns.singularity.universityCourse(
-            config.training?.university || "Rothman University",
-            config.training?.course || "Algorithms",
-            config.training?.focus || "maximum"
-        );
-        ui.log(`Training: Hacking at ${config.training?.university || "University"}`, "info");
-    } else {
-        ns.singularity.gymWorkout(
-            config.training?.gym || "Powerhouse Gym",
-            target.stat,
-            config.training?.focus || "maximum"
-        );
-        ui.log(`Training: ${target.stat} at gym`, "info");
+    // Only log if training changed
+    const trainingKey = `${target.type}-${target.stat || "hacking"}`;
+    if (trainingKey !== lastState.lastTraining || lastState.loopCount - lastState.lastActivityChange > 12) {
+        if (target.type === "university") {
+            ns.singularity.universityCourse(
+                config.training?.university || "Rothman University",
+                config.training?.course || "Algorithms",
+                config.training?.focus || "maximum"
+            );
+            ui.log(`📚 Training hacking at ${config.training?.university || "University"}`, "info");
+        } else {
+            ns.singularity.gymWorkout(
+                config.training?.gym || "Powerhouse Gym",
+                target.stat,
+                config.training?.focus || "maximum"
+            );
+            ui.log(`💪 Training ${target.stat} at gym`, "info");
+        }
+        lastState.lastTraining = trainingKey;
+        lastState.lastActivityChange = lastState.loopCount;
     }
 
     await ns.sleep(180000);
@@ -404,7 +437,6 @@ async function doFactionWork(ns, ui) {
     });
 
     if (factions.length === 0) {
-        ui.log(`Faction: No valid factions - doing crime instead`, "debug");
         await doCrime(ns, ui);
         return;
     }
@@ -422,7 +454,6 @@ async function doFactionWork(ns, ui) {
     }
 
     if (!bestFaction || mostNeeded <= 0) {
-        ui.log(`Faction: All factions satisfied - doing crime instead`, "debug");
         await doCrime(ns, ui);
         return;
     }
@@ -435,8 +466,14 @@ async function doFactionWork(ns, ui) {
     }
 
     const workType = config.factions?.workType || "Hacking Contracts";
-    ns.singularity.workForFaction(bestFaction, workType);
-    ui.log(`Faction: Working for ${bestFaction} (${workType}) | Rep needed: ${Math.floor(mostNeeded)}`, "info");
+    
+    // Only log if faction changed
+    if (bestFaction !== lastState.lastFaction || lastState.loopCount - lastState.lastActivityChange > 12) {
+        ns.singularity.workForFaction(bestFaction, workType);
+        ui.log(`🤝 Working for ${bestFaction} (${workType}) | Rep needed: ${Math.floor(mostNeeded)}`, "info");
+        lastState.lastFaction = bestFaction;
+        lastState.lastActivityChange = lastState.loopCount;
+    }
 
     await ns.sleep(180000);
 }
@@ -450,7 +487,6 @@ async function doCompanyWork(ns, ui) {
     const threshold = config.company?.onlyWhenMoneyBelow || 200000000;
 
     if (money >= threshold) {
-        ui.log(`Company: Money above threshold (${formatMoney(money)}/${formatMoney(threshold)}) - doing crime instead`, "debug");
         await doCrime(ns, ui);
         return;
     }
@@ -476,7 +512,12 @@ async function doCompanyWork(ns, ui) {
         try {
             const success = ns.singularity.workForCompany(company, config.company?.focus || "maximum");
             if (success) {
-                ui.log(`Company: Working for ${company} | Money: ${formatMoney(money)}/${formatMoney(threshold)}`, "info");
+                // Only log if company changed
+                if (company !== lastState.lastCompany || lastState.loopCount - lastState.lastActivityChange > 12) {
+                    ui.log(`💼 Working for ${company} | ${formatMoney(money)}/${formatMoney(threshold)}`, "info");
+                    lastState.lastCompany = company;
+                    lastState.lastActivityChange = lastState.loopCount;
+                }
                 placed = true;
                 break;
             }
@@ -484,7 +525,9 @@ async function doCompanyWork(ns, ui) {
     }
 
     if (!placed) {
-        ui.log(`Company: No positions available - doing crime instead`, "warn");
+        if (lastState.loopCount % 24 === 0) {
+            ui.log(`⚠️  No positions available - doing crime instead`, "warn");
+        }
         await doCrime(ns, ui);
         return;
     }

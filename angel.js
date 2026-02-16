@@ -175,9 +175,9 @@ async function ensureModulesRunning(ns) {
         await ns.sleep(1500);
     }
 
-    // Crime module
-    if (config.orchestrator.enableCrime) {
-        await ensureModuleRunning(ns, SCRIPTS.crime, "Crime");
+    // Activities module (unified: crime, training, faction, company)
+    if (config.orchestrator.enableActivities) {
+        await ensureModuleRunning(ns, SCRIPTS.activities, "Activities");
         await ns.sleep(1500);
     }
 
@@ -274,7 +274,7 @@ export function stopAll(ns) {
         SCRIPTS.augments,
             SCRIPTS.milestones,
         SCRIPTS.programs,
-        SCRIPTS.crime,
+        SCRIPTS.activities,
         SCRIPTS.training,
         SCRIPTS.company,
         SCRIPTS.hacknet,
@@ -312,7 +312,7 @@ export function getSystemHealth(ns) {
         { name: "Augments", script: SCRIPTS.augments, enabled: config.orchestrator.enableAugments },
             { name: "Milestones", script: SCRIPTS.milestones, enabled: config.orchestrator.enableMilestones },
         { name: "Programs", script: SCRIPTS.programs, enabled: config.orchestrator.enablePrograms },
-        { name: "Crime", script: SCRIPTS.crime, enabled: config.orchestrator.enableCrime },
+        { name: "Activities", script: SCRIPTS.activities, enabled: config.orchestrator.enableActivities },
         { name: "Training", script: SCRIPTS.training, enabled: config.orchestrator.enableTraining },
         { name: "Company", script: SCRIPTS.company, enabled: config.orchestrator.enableCompany },
         { name: "Hacknet", script: SCRIPTS.hacknet, enabled: config.orchestrator.enableHacknet },

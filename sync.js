@@ -44,7 +44,7 @@ export async function main(ns) {
         "modules/servers.js",
         "modules/augments.js",
         "modules/programs.js",
-        "modules/crime.js",              // Unified: activity + faction management
+        "modules/activities.js",         // Unified: activity + faction management
         "modules/training.js",
         "modules/sleeves.js",
         "modules/stocks.js",

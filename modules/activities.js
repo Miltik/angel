@@ -1,6 +1,6 @@
 /**
- * ANGEL Activity + Faction Module
- * Unified singularity automation: crime, training, faction, company work
+ * ANGEL Activities Module
+ * Unified activity automation: crime, training, faction, company work
  * + Faction reputation management and augment tracking
  * 
  * Phase-aware dual-mode operation:
@@ -50,8 +50,8 @@ function readGamePhase(ns) {
 export async function main(ns) {
     ns.disableLog("ALL");
     
-    const ui = createWindow("crime", "🎭 Activity & Factions", 700, 450);
-    ui.log("Activity + Faction module started (P0-2 active, P3+ filler, all-phase factions)", "info");
+    const ui = createWindow("activities", "🎭 Activities", 700, 450);
+    ui.log("Activities module started (P0-2 active, P3+ filler, all-phase factions)", "info");
 
     if (!hasSingularityAccess(ns)) {
         ui.log("Singularity access not available - need SF4", "warn");

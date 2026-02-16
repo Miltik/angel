@@ -20,9 +20,11 @@ let backdoorState = {
 };
 
 let startupState = {
+    startTs: Date.now(),
     coreReady: false,
     lastBlockedLog: 0,
     blockedCoreModules: [],
+    lastDeferredLog: {},
 };
 
 export async function main(ns) {
@@ -67,6 +69,8 @@ function printBanner(ns) {
  * @param {NS} ns
  */
 async function initialize(ns) {
+    startupState.startTs = Date.now();
+
     log(ns, "Initializing ANGEL orchestrator...", "INFO");
     
     // Scan network
@@ -372,14 +376,31 @@ async function ensureModulesRunning(ns) {
         await ensureModuleRunning(ns, SCRIPTS.networkMap, "Network Map");
         await ns.sleep(1500);
     }
+
+    const startupElapsedMs = Math.max(0, Date.now() - (startupState.startTs || Date.now()));
+    const hackingDelayMs = Number(config.orchestrator?.startupHackingDelayMs ?? 15000);
+    const xpFarmDelayMs = Number(config.orchestrator?.startupXPFarmDelayMs ?? 30000);
     
     // Hacking module - start last as it consumes most RAM
     if (config.orchestrator.enableHacking) {
-        await ensureModuleRunning(ns, SCRIPTS.hacking, "Hacking");
+        if (startupElapsedMs >= hackingDelayMs) {
+            await ensureModuleRunning(ns, SCRIPTS.hacking, "Hacking");
+        } else if (shouldLogDeferredModule("hacking")) {
+            const remainingSec = Math.ceil((hackingDelayMs - startupElapsedMs) / 1000);
+            log(ns, `Deferring Hacking module startup for ${remainingSec}s to let core modules stabilize`, "INFO");
+        }
     }
 
     // XP Farm module - optional, starts after core modules to use spare RAM
     if (config.orchestrator.enableXPFarm) {
+        if (startupElapsedMs < xpFarmDelayMs) {
+            if (shouldLogDeferredModule("xpFarm")) {
+                const remainingSec = Math.ceil((xpFarmDelayMs - startupElapsedMs) / 1000);
+                log(ns, `Deferring XP Farm startup for ${remainingSec}s to prioritize startup stability`, "INFO");
+            }
+            return true;
+        }
+
         const xpMode = config.xpFarm?.mode || "spare-home";
         const homeRam = ns.getServerMaxRam("home");
         const weakenRam = ns.getScriptRam(SCRIPTS.weaken, "home") || 1.75;
@@ -408,6 +429,16 @@ async function ensureModulesRunning(ns) {
         await ensureModuleRunning(ns, SCRIPTS.xpFarm, "XP Farm", xpArgs);
     }
 
+    return true;
+}
+
+function shouldLogDeferredModule(moduleKey) {
+    const now = Date.now();
+    const last = Number(startupState.lastDeferredLog[moduleKey] || 0);
+    if (now - last < 15000) {
+        return false;
+    }
+    startupState.lastDeferredLog[moduleKey] = now;
     return true;
 }
 

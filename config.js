@@ -158,6 +158,8 @@ export const config = {
         enableFormulas: true,      // Formulas.exe farming
         enableXPFarm: true,        // Optional XP farming using spare/home RAM or hyper mode
         enableBackdoorAuto: true,  // Auto-run backdoor flow when new servers become eligible
+        startupHackingDelayMs: 20000, // Delay hacking module startup to let core modules settle
+        startupXPFarmDelayMs: 45000,  // Delay XP farm startup to avoid early RAM contention
     },
 
     // Hacking settings

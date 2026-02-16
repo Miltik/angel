@@ -189,6 +189,9 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
     try {
         injectStyles();
 
+        const requestedWidth = width;
+        const requestedHeight = height;
+
         // Create container
         const container = document.createElement("div");
         container.className = "angel-window";
@@ -247,6 +250,40 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
 
         // Setup event handlers
         let minimizedState = { isMinimized: false, originalHeight: height };
+        let autoSizeEnabled = !savedState;
+        let autoSizeScheduled = false;
+
+        function fitToContent() {
+            if (!autoSizeEnabled || minimizedState.isMinimized || container.style.display === "none") {
+                return;
+            }
+
+            const headerHeight = header.offsetHeight || 32;
+            const horizontalPadding = 32;
+            const verticalPadding = 24;
+
+            const targetWidth = Math.max(
+                320,
+                Math.min(requestedWidth, Math.ceil((content.scrollWidth || 0) + horizontalPadding))
+            );
+
+            const targetHeight = Math.max(
+                120,
+                Math.min(requestedHeight, Math.ceil((content.scrollHeight || 0) + headerHeight + verticalPadding))
+            );
+
+            container.style.width = `${targetWidth}px`;
+            container.style.height = `${targetHeight}px`;
+        }
+
+        function scheduleAutoSize() {
+            if (!autoSizeEnabled || autoSizeScheduled) return;
+            autoSizeScheduled = true;
+            requestAnimationFrame(() => {
+                autoSizeScheduled = false;
+                fitToContent();
+            });
+        }
         
         minimizeBtn.onclick = () => {
             minimizedState.isMinimized = !minimizedState.isMinimized;
@@ -328,6 +365,7 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
                 resizeState.isResizing = false;
                 document.onmouseup = null;
                 document.onmousemove = null;
+                autoSizeEnabled = false;
                 // Save window state after resize
                 saveWindowState(id, {
                     left: container.style.left,
@@ -358,14 +396,19 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
                 line.textContent = message;
                 content.appendChild(line);
                 content.scrollTop = content.scrollHeight;
+                scheduleAutoSize();
             },
             clear() { content.innerHTML = ""; },
-            update(html) { content.innerHTML = html; },
+            update(html) {
+                content.innerHTML = html;
+                scheduleAutoSize();
+            },
             append(html) {
                 const el = document.createElement("div");
                 el.innerHTML = html;
                 content.appendChild(el);
                 content.scrollTop = content.scrollHeight;
+                scheduleAutoSize();
             },
             toggle() {
                 content.style.display = content.style.display === "none" ? "block" : "none";
@@ -373,6 +416,7 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
             show() {
                 container.style.display = "flex";
                 persistVisibility(id, true);
+                scheduleAutoSize();
             },
             hide() {
                 container.style.display = "none";
@@ -397,6 +441,8 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
             resize.style.display = "none";
             minimizeBtn.textContent = "+";
         }
+
+        scheduleAutoSize();
         
         return windowApi;
 

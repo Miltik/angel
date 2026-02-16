@@ -217,6 +217,12 @@ async function ensureModulesRunning(ns) {
         await ns.sleep(1500);
     }
     
+    // Network Map module - visualization
+    if (config.orchestrator.enableNetworkMap) {
+        await ensureModuleRunning(ns, SCRIPTS.networkMap, "Network Map");
+        await ns.sleep(1500);
+    }
+    
     // Hacking module - start last as it consumes most RAM
     if (config.orchestrator.enableHacking) {
         await ensureModuleRunning(ns, SCRIPTS.hacking, "Hacking");

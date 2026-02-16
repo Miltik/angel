@@ -154,6 +154,7 @@ export const config = {
         enableHacknet: true,
         enableMilestones: true,
         enableDashboard: true,     // New: Real-time monitoring
+        enableNetworkMap: true,    // Network visualization
     },
 
     // Hacking settings
@@ -436,6 +437,7 @@ export const SCRIPTS = {
     hacknet: "/angel/modules/hacknet.js",
     milestones: "/angel/modules/milestones.js",
     dashboard: "/angel/modules/dashboard.js",
+    networkMap: "/angel/modules/networkMap.js",
     
     // Workers (actual hacking scripts)
     hack: "/angel/workers/hack.js",

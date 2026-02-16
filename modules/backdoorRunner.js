@@ -33,6 +33,7 @@ export async function main(ns) {
 
     let attempted = 0;
     let completed = 0;
+    let interrupted = false;
 
     for (const target of candidates) {
         attempted++;
@@ -48,15 +49,48 @@ export async function main(ns) {
             completed++;
             ui.log(`✅ ${target.name} | req ${target.requiredHackingSkill}`, "success");
         } catch (e) {
+            if (isScriptDeath(e)) {
+                interrupted = true;
+                break;
+            }
             ui.log(`✗ ${target.name}: ${shortError(e)}`, "warn");
         } finally {
-            ns.singularity.connect("home");
+            if (!interrupted) {
+                try {
+                    ns.singularity.connect("home");
+                } catch (e) {
+                    if (isScriptDeath(e)) {
+                        interrupted = true;
+                    }
+                }
+            }
         }
+
+        if (interrupted) {
+            break;
+        }
+    }
+
+    if (interrupted) {
+        safeLog(ui, "⚠️ Backdoor runner interrupted (ScriptDeath). Re-run /angel/backdoor.js to resume.", "warn");
+        return;
     }
 
     ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
     ui.log(`🏁 Backdoor complete | Installed: ${completed}/${attempted}`, "success");
     ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
+}
+
+function isScriptDeath(error) {
+    return String(error).includes("ScriptDeath");
+}
+
+function safeLog(ui, message, level = "info") {
+    try {
+        ui.log(message, level);
+    } catch (e) {
+        // Ignore logging failures when script is being terminated
+    }
 }
 
 function hasSingularityAccess(ns) {

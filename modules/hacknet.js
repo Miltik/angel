@@ -46,7 +46,6 @@ export async function main(ns) {
 
 function displayStatus(ns, ui) {
     const count = ns.hacknet.numNodes();
-    const production = ns.hacknet.getHashGainRate(count - 1, 1) * count; // Approximate
     const money = ns.getServerMoneyAvailable("home");
     const budget = Math.max(0, (money - config.hacknet.reserveMoney) * config.hacknet.maxSpendRatio);
     

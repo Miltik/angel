@@ -35,6 +35,15 @@ const SERVER_TYPES = {
 
 export async function main(ns) {
     ns.disableLog("ALL");
+    const flags = ns.flags([
+        ["rooted", false],
+        ["unrooted", false],
+        ["backdoored", false],
+        ["hackable", false],
+        ["pserv", false],
+        ["maxDepth", 8],
+    ]);
+    const maxDepth = Number(flags.maxDepth) || 8;
     
     // Server configuration
     const factionServers = [
@@ -76,14 +85,12 @@ export async function main(ns) {
         "Snowball Operations",
     ];
     
-    // Track server info
-    const serverInfo = new Map();
-    
     while (true) {
         ns.clearLog();
+        const serverInfo = new Map();
         
         // Get all servers
-        const allServers = getAllServersRecursive(ns, "home", serverInfo);
+        const rootServer = getAllServersRecursive(ns, "home", serverInfo);
         
         // Display header
         ns.print("╔════════════════════════════════════════════════════════════════╗");
@@ -94,12 +101,13 @@ export async function main(ns) {
         // Display legend
         ns.print("Legend:");
         ns.print(`  ✓ = Rooted        ★ = Backdoored    ⚡ = Admin        ◆ = Targeting    ○ = Unrooted`);
+        ns.print("Filters:");
+        ns.print(`  rooted=${flags.rooted} unrooted=${flags.unrooted} backdoored=${flags.backdoored} hackable=${flags.hackable} pserv=${flags.pserv}`);
         ns.print("");
         
         // Organize servers by type
-        const root = serverInfo.get("home");
-        if (root) {
-            displayServerTree(ns, root, "", serverInfo, factionServers, companyServers);
+        if (rootServer) {
+            displayServerTree(ns, rootServer, "", serverInfo, factionServers, companyServers, flags, maxDepth, 0, true);
         }
         
         // Display statistics
@@ -130,18 +138,23 @@ function getAllServersRecursive(ns, server, infoMap) {
     if (infoMap.has(server)) {
         return infoMap.get(server);
     }
-    
+    const srv = ns.getServer(server);
     const serverData = {
         name: server,
         children: [],
         hasRoot: ns.hasRootAccess(server),
-        hasBackdoor: ns.getServer(server).backdoorInstalled,
+        hasBackdoor: srv.backdoorInstalled,
+        isPurchased: srv.purchasedByPlayer,
+        portsRequired: srv.numOpenPortsRequired,
         canHack: canHackServer(ns, server),
         maxMoney: ns.getServerMaxMoney(server),
         currMoney: ns.getServerMoneyAvailable(server),
         minSecurity: ns.getServerMinSecurityLevel(server),
         currSecurity: ns.getServerSecurityLevel(server),
         requiredHackingLevel: ns.getServerRequiredHackingLevel(server),
+        growth: ns.getServerGrowth(server),
+        maxRam: ns.getServerMaxRam(server),
+        usedRam: ns.getServerUsedRam(server),
     };
     
     infoMap.set(server, serverData);
@@ -161,36 +174,43 @@ function getAllServersRecursive(ns, server, infoMap) {
 /**
  * Display server tree with hierarchy
  */
-function displayServerTree(ns, server, prefix, infoMap, factionServers, companyServers, depth = 0) {
-    if (depth > 6) return; // Limit depth
+function displayServerTree(ns, server, prefix, infoMap, factionServers, companyServers, flags, maxDepth, depth = 0, isLast = true) {
+    if (depth > maxDepth) return;
     
-    const isLastChild = !server.children || server.children.length === 0;
-    const connector = "├─";
+    const matches = matchesFilters(server, flags);
+    const childCandidates = server.children || [];
+    const renderChildren = childCandidates.filter(child => hasMatchingDescendant(child, flags, maxDepth, depth + 1));
+    const shouldRender = matches || renderChildren.length > 0 || server.name === "home";
+    if (!shouldRender) return;
+    
     const status = getServerStatus(server, factionServers, companyServers);
+    const connector = depth === 0 ? "" : (isLast ? "└─" : "├─");
+    const linePrefix = depth === 0 ? "" : prefix + connector + " ";
+    const typeTag = `[${status.type}]`;
+    const nameCol = server.name.padEnd(18);
     
-    // Color the output based on status
-    let displayLine = prefix + connector + " " + status.icon + " " + server.name.padEnd(18);
+    let displayLine = `${linePrefix}${status.icon} ${nameCol} ${typeTag}`;
     
-    // Add threat level if hackable
     if (server.canHack && server.maxMoney > 0) {
         const hackLevel = "L" + server.requiredHackingLevel.toString().padStart(4);
-        const moneyStr = formatMoney(server.currMoney) + " / " + formatMoney(server.maxMoney);
-        displayLine += ` ${hackLevel}  ${moneyStr.padEnd(20)}`;
-    } else if (server.name === "home") {
-        displayLine += " HOME SERVER";
-    } else if (factionServers.includes(server.name)) {
-        displayLine += " FACTION SERVER";
-    } else if (companyServers.includes(server.name)) {
-        displayLine += " COMPANY SERVER";
+        const moneyStr = formatMoney(server.currMoney) + "/" + formatMoney(server.maxMoney);
+        const moneyPct = formatPercent(server.currMoney, server.maxMoney).padStart(4);
+        const secDelta = (server.currSecurity - server.minSecurity).toFixed(1).padStart(5);
+        const growth = server.growth.toString().padStart(3);
+        displayLine += ` ${hackLevel} $${moneyStr.padEnd(17)} ${moneyPct}% S+${secDelta} G${growth}`;
+    } else if (server.maxRam > 0) {
+        const ramStr = formatRam(server.usedRam) + "/" + formatRam(server.maxRam);
+        displayLine += ` RAM ${ramStr}`;
     }
     
     ns.print(displayLine);
     
-    // Display children in tree format
-    if (server.children && server.children.length > 0) {
-        const newPrefix = prefix + (isLastChild ? "   " : "│  ");
-        for (let i = 0; i < server.children.length; i++) {
-            displayServerTree(ns, server.children[i], newPrefix, infoMap, factionServers, companyServers, depth + 1);
+    if (renderChildren.length > 0) {
+        const newPrefix = depth === 0 ? "" : prefix + (isLast ? "   " : "│  ");
+        for (let i = 0; i < renderChildren.length; i++) {
+            const child = renderChildren[i];
+            const childIsLast = i === renderChildren.length - 1;
+            displayServerTree(ns, child, newPrefix, infoMap, factionServers, companyServers, flags, maxDepth, depth + 1, childIsLast);
         }
     }
 }
@@ -217,7 +237,7 @@ function getServerStatus(server, factionServers, companyServers) {
             icon = STATUS_COLORS.rooted;
         }
         type = SERVER_TYPES.company;
-    } else if (server.name.startsWith("angel-") || server.name.startsWith("player-")) {
+    } else if (server.isPurchased) {
         icon = "⚙";
         type = SERVER_TYPES["player-server"];
     } else {
@@ -241,6 +261,40 @@ function canHackServer(ns, server) {
 }
 
 /**
+ * Check if a server matches active filters
+ */
+function matchesFilters(server, flags) {
+    const anyFilter = flags.rooted || flags.unrooted || flags.backdoored || flags.hackable || flags.pserv;
+    if (!anyFilter) return true;
+    
+    const checks = [];
+    if (flags.rooted) checks.push(server.hasRoot);
+    if (flags.unrooted) checks.push(!server.hasRoot);
+    if (flags.backdoored) checks.push(server.hasBackdoor);
+    if (flags.hackable) checks.push(server.canHack);
+    if (flags.pserv) checks.push(server.isPurchased);
+    
+    return checks.some(Boolean);
+}
+
+/**
+ * Check if a server or its descendants match filters
+ */
+function hasMatchingDescendant(server, flags, maxDepth, depth) {
+    if (depth > maxDepth) return false;
+    if (matchesFilters(server, flags)) return true;
+    if (!server.children || server.children.length === 0) return false;
+    
+    for (const child of server.children) {
+        if (hasMatchingDescendant(child, flags, maxDepth, depth + 1)) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+/**
  * Format money for display
  */
 function formatMoney(money) {
@@ -254,4 +308,20 @@ function formatMoney(money) {
     }
     
     return amount.toFixed(1) + units[unitIndex];
+}
+
+/**
+ * Format RAM values
+ */
+function formatRam(ram) {
+    return formatMoney(ram) + "GB";
+}
+
+/**
+ * Format percent with cap at 100
+ */
+function formatPercent(current, max) {
+    if (max <= 0) return "0";
+    const pct = Math.min(100, Math.floor((current / max) * 100));
+    return pct.toString();
 }

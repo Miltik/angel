@@ -146,7 +146,7 @@ function checkDom() {
 }
 
 // Styles to inject - pure string, no DOM yet
-const CSS_STYLES = `.angel-window{position:fixed;background:#1e1e1e;color:#e0e0e0;border:1px solid #404040;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.5);font-family:'Courier New',monospace;font-size:12px;z-index:10000;display:flex;flex-direction:column;min-width:300px;min-height:40px;transition:height 0.2s ease}.angel-window-header{background:linear-gradient(135deg,#2c3e50,#34495e);color:#ecf0f1;padding:10px 12px;cursor:move;user-select:none;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #404040;border-radius:8px 8px 0 0;font-weight:bold;flex-shrink:0}.angel-window-header-title{flex:1}.angel-window-header-buttons{display:flex;gap:8px}.angel-window-btn{background:#34495e;color:#ecf0f1;border:none;width:24px;height:24px;border-radius:4px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:background .2s}.angel-window-btn:hover{background:#3d5a73}.angel-window-content{flex:1;overflow-y:auto;padding:12px;scrollbar-width:thin;scrollbar-color:#404040 #1e1e1e}.angel-window-content::-webkit-scrollbar{width:8px}.angel-window-content::-webkit-scrollbar-track{background:#1e1e1e}.angel-window-content::-webkit-scrollbar-thumb{background:#404040;border-radius:4px}.angel-window-content::-webkit-scrollbar-thumb:hover{background:#555}.angel-window-resize{position:absolute;width:20px;height:20px;bottom:0;right:0;cursor:se-resize;background:linear-gradient(135deg,transparent 50%,#404040 50%);border-radius:0 0 8px 0}.angel-log-line{white-space:pre-wrap;word-break:break-word;margin:4px 0;line-height:1.4}.angel-log-info{color:#3498db}.angel-log-success{color:#2ecc71}.angel-log-warn{color:#f39c12}.angel-log-error{color:#e74c3c}.angel-log-debug{color:#95a5a6}`;
+const CSS_STYLES = `.angel-window{position:fixed;background:#1e1e1e;color:#e0e0e0;border:1px solid #404040;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.5);font-family:'Courier New',monospace;font-size:12px;z-index:10000;display:flex;flex-direction:column;min-width:280px;min-height:36px;transition:height 0.2s ease}.angel-window-header{background:linear-gradient(135deg,#2c3e50,#34495e);color:#ecf0f1;padding:7px 10px;cursor:move;user-select:none;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #404040;border-radius:8px 8px 0 0;font-weight:bold;flex-shrink:0}.angel-window-header-title{flex:1}.angel-window-header-buttons{display:flex;gap:6px}.angel-window-btn{background:#34495e;color:#ecf0f1;border:none;width:22px;height:22px;border-radius:4px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:background .2s}.angel-window-btn:hover{background:#3d5a73}.angel-window-content{flex:1;overflow-y:auto;padding:6px 8px;scrollbar-width:thin;scrollbar-color:#404040 #1e1e1e}.angel-window-content::-webkit-scrollbar{width:8px}.angel-window-content::-webkit-scrollbar-track{background:#1e1e1e}.angel-window-content::-webkit-scrollbar-thumb{background:#404040;border-radius:4px}.angel-window-content::-webkit-scrollbar-thumb:hover{background:#555}.angel-window-resize{position:absolute;width:16px;height:16px;bottom:0;right:0;cursor:se-resize;background:linear-gradient(135deg,transparent 50%,#404040 50%);border-radius:0 0 8px 0}.angel-log-line{white-space:pre-wrap;word-break:break-word;margin:2px 0;line-height:1.25}.angel-log-info{color:#3498db}.angel-log-success{color:#2ecc71}.angel-log-warn{color:#f39c12}.angel-log-error{color:#e74c3c}.angel-log-debug{color:#95a5a6}`;
 
 let stylesInjected = false;
 
@@ -275,17 +275,18 @@ export function createWindow(id, title, width = 600, height = 400, ns = null) {
             }
 
             const headerHeight = header.offsetHeight || 32;
-            const horizontalPadding = 32;
-            const verticalPadding = 24;
+            const horizontalPadding = 16;
+            const verticalPadding = 12;
+            const resizeHandlePad = 10;
 
             const targetWidth = Math.max(
-                320,
+                280,
                 Math.min(requestedWidth, Math.ceil((content.scrollWidth || 0) + horizontalPadding))
             );
 
             const targetHeight = Math.max(
-                120,
-                Math.min(requestedHeight, Math.ceil((content.scrollHeight || 0) + headerHeight + verticalPadding))
+                78,
+                Math.min(requestedHeight, Math.ceil((content.scrollHeight || 0) + headerHeight + verticalPadding + resizeHandlePad))
             );
 
             container.style.width = `${targetWidth}px`;

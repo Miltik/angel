@@ -13,7 +13,6 @@ let lastState = {
     rootedServers: 0,
     backdooredServers: 0,
     loopCount: 0,
-    clickHandler: null,
 };
 
 /**
@@ -160,7 +159,7 @@ export async function main(ns) {
                 const statusClass = getStatusClass(info);
                 const icon = getServerIcon(serverName, factionServers, companyServers, info);
                 
-                html += `<div class="server-card ${statusClass} ${serverType}" data-server="${serverName}">`;
+                html += `<div class="server-card ${statusClass} ${serverType}" onclick="window.connectToServer('${serverName}')">`;
                 html += `<div class="server-icon">${icon}</div>`;
                 html += `<div class="server-name">${serverName}</div>`;
                 
@@ -188,23 +187,10 @@ export async function main(ns) {
         // Update the window content
         ui.update(html);
         
-        // Attach click handlers to server cards after content is updated
-        if (ui.contentEl) {
-            // Remove old listener if exists to avoid duplicates
-            if (lastState.clickHandler) {
-                ui.contentEl.removeEventListener('click', lastState.clickHandler);
-            }
-            
-            // Create and store the handler
-            lastState.clickHandler = async (e) => {
-                const card = e.target.closest('.server-card');
-                if (!card) return;
-                
-                const serverName = card.getAttribute('data-server');
-                if (!serverName) return;
-                
+        // Set up global connect function (only once)
+        if (!window.connectToServer) {
+            window.connectToServer = async (serverName) => {
                 try {
-                    // Connect to the server
                     const success = await ns.singularity.connect(serverName);
                     if (success) {
                         ns.tprint(`✅ Connected to ${serverName}`);
@@ -215,9 +201,6 @@ export async function main(ns) {
                     ns.tprint(`⚠️ Connect error: ${err.message}`);
                 }
             };
-            
-            // Attach the handler
-            ui.contentEl.addEventListener('click', lastState.clickHandler);
         }
         
         lastState.totalServers = total;

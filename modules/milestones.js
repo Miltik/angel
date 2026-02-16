@@ -11,6 +11,7 @@
  */
 import { config, PORTS } from "/angel/config.js";
 import { createWindow } from "/angel/modules/uiManager.js";
+import { initializeResetMonitor, recordResetSnapshot } from "/angel/modules/resetMonitor.js";
 
 const PHASE_PORT = 7;
 
@@ -29,6 +30,9 @@ export async function main(ns) {
 
     while (true) {
         try {
+            // Keep reset monitor heartbeat fresh
+            initializeResetMonitor(ns);
+
             // Calculate current game phase with hysteresis to prevent oscillation
             const newPhase = calculateGamePhaseWithHysteresis(ns, currentPhase, phaseStableCount);
             if (newPhase !== currentPhase) {
@@ -285,6 +289,16 @@ async function triggerAugReset(ns, ui, queuedCount, queuedCost) {
     for (let i = countdown; i > 0; i--) {
         ui.log(`Resetting in ${i}s...`, "debug");
         await ns.sleep(1000);
+    }
+
+    try {
+        const summary = recordResetSnapshot(ns, {
+            trigger: "augment-threshold",
+            restartScript,
+        });
+        ui.log(`🧾 Reset recorded | Time: ${summary.durationLabel} | Cash: $${summary.finalCash.toFixed(0)} | Hack: ${summary.finalHackLevel} | Augs: ${summary.purchasedAugCount}`, "info");
+    } catch (e) {
+        ui.log(`⚠️ Reset monitor write failed: ${String(e).slice(0, 60)}`, "warn");
     }
     
     ui.log("Installing augmentations and restarting...", "info");

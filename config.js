@@ -309,7 +309,7 @@ export const config = {
     // Milestone coordinator settings
     milestones: {
         mode: "balanced",
-        loopDelay: 30000,
+        loopDelay: 5000,
         notifyDaemon: true,
         notifyInterval: 300000,
     },

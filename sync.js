@@ -55,10 +55,12 @@ export async function main(ns) {
         "modules/contracts.js",          // New: Coding contracts solver
         "modules/formulas.js",           // New: Formulas.exe farming
         "modules/backdoorRunner.js",     // New: Full backdoor runner (launched by backdoor.js)
+        "modules/resetMonitor.js",       // New: Persistent reset tracking utility
         
         // Tools
         "snapshot.js",                   // New: System state capture
         "angel-ram.js",                  // New: RAM calculator
+        "resetMonitor.js",               // New: Reset history viewer
         
         // Workers
         "workers/hack.js",

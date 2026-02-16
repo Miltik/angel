@@ -173,7 +173,7 @@ function displayGangStatus(ns) {
  * Display augmentation queue status
  */
 function displayAugmentationStatus(ns, player) {
-    const ownedCount = player.augmentations.length;
+    const ownedCount = player.augmentations ? player.augmentations.length : 0;
     
     // Get queued augmentations
     let queuedCount = 0;
@@ -181,9 +181,13 @@ function displayAugmentationStatus(ns, player) {
         // This is a workaround - check if singularity is available
         const purchased = ns.singularity.getOwnedAugmentations(true); // pending vs installed
         const installed = ns.singularity.getOwnedAugmentations(false); // all
-        queuedCount = installed.length - purchased.length;
+        
+        // Safety check - ensure we have arrays
+        if (Array.isArray(purchased) && Array.isArray(installed)) {
+            queuedCount = installed.length - purchased.length;
+        }
     } catch (e) {
-        // Singularity not available
+        // Singularity not available or error getting augs
     }
     
     const queuedText = queuedCount > 0 ? `QUEUED: ${queuedCount}` : "No queue";
@@ -199,13 +203,19 @@ function displayAugmentationStatus(ns, player) {
 function displayStockStatus(ns) {
     try {
         const symbols = ns.stock.getSymbols();
+        
+        // Safety check for symbols
+        if (!symbols || !Array.isArray(symbols)) {
+            return;
+        }
+        
         let totalInvested = 0;
         let totalValue = 0;
         let holdings = 0;
         
         for (const sym of symbols) {
             const pos = ns.stock.getPosition(sym);
-            if (pos[0] > 0) {
+            if (pos && pos[0] > 0) {
                 holdings++;
                 const invested = pos[0] * pos[1]; // shares × avg price
                 const current = pos[0] * ns.stock.getBidPrice(sym); // current value
@@ -288,8 +298,13 @@ function readGamePhase(ns) {
  * Count rooted servers
  */
 function countRootedServers(ns) {
-    const all = scanAll(ns);
-    return all.filter(s => ns.hasRootAccess(s)).length;
+    try {
+        const all = scanAll(ns);
+        if (!all || !Array.isArray(all)) return 0;
+        return all.filter(s => ns.hasRootAccess(s)).length;
+    } catch (e) {
+        return 0;
+    }
 }
 
 /**
@@ -297,7 +312,8 @@ function countRootedServers(ns) {
  */
 function countPurchasedServers(ns) {
     try {
-        return ns.getPurchasedServers().length;
+        const purchased = ns.getPurchasedServers();
+        return purchased && Array.isArray(purchased) ? purchased.length : 0;
     } catch (e) {
         return 0;
     }
@@ -307,28 +323,38 @@ function countPurchasedServers(ns) {
  * Calculate total RAM available
  */
 function calculateTotalRam(ns) {
-    const all = scanAll(ns);
-    let total = 0;
-    for (const server of all) {
-        if (ns.hasRootAccess(server)) {
-            total += ns.getServerMaxRam(server);
+    try {
+        const all = scanAll(ns);
+        if (!all || !Array.isArray(all)) return 0;
+        let total = 0;
+        for (const server of all) {
+            if (ns.hasRootAccess(server)) {
+                total += ns.getServerMaxRam(server);
+            }
         }
+        return total;
+    } catch (e) {
+        return 0;
     }
-    return total;
 }
 
 /**
  * Calculate used RAM
  */
 function calculateUsedRam(ns) {
-    const all = scanAll(ns);
-    let total = 0;
-    for (const server of all) {
-        if (ns.hasRootAccess(server)) {
-            total += ns.getServerUsedRam(server);
+    try {
+        const all = scanAll(ns);
+        if (!all || !Array.isArray(all)) return 0;
+        let total = 0;
+        for (const server of all) {
+            if (ns.hasRootAccess(server)) {
+                total += ns.getServerUsedRam(server);
+            }
         }
+        return total;
+    } catch (e) {
+        return 0;
     }
-    return total;
 }
 
 /**

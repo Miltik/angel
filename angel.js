@@ -343,18 +343,16 @@ async function ensureModulesRunning(ns) {
         await ns.sleep(1500);
     }
     
-    // Dashboard module - monitoring (low RAM)
-    if (config.orchestrator.enableDashboard) {
-        const started = await ensureModuleRunning(ns, SCRIPTS.dashboard, "Dashboard");
-        if (!started) blockedCoreModules.push("Dashboard");
-        coreReady = coreReady && started;
-        await ns.sleep(1500);
-    }
-
     startupState.blockedCoreModules = blockedCoreModules;
 
     if (!coreReady) {
         return false;
+    }
+
+    // Dashboard module - monitoring (optional, non-blocking)
+    if (config.orchestrator.enableDashboard) {
+        await ensureModuleRunning(ns, SCRIPTS.dashboard, "Dashboard");
+        await ns.sleep(1500);
     }
     
     // Coding Contracts solver - low RAM

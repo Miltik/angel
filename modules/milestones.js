@@ -11,7 +11,6 @@
  */
 import { config, PORTS } from "/angel/config.js";
 import { createWindow } from "/angel/modules/uiManager.js";
-import { initializeResetMonitor, recordResetSnapshot } from "/angel/modules/resetMonitor.js";
 
 const PHASE_PORT = 7;
 
@@ -26,13 +25,9 @@ export async function main(ns) {
     let lastNotify = 0;
     let currentPhase = 0;
     let phaseStableCount = 0; // Track phase stability for hysteresis
-    let resetPending = false;
 
     while (true) {
         try {
-            // Keep reset monitor heartbeat fresh
-            initializeResetMonitor(ns);
-
             // Calculate current game phase with hysteresis to prevent oscillation
             const newPhase = calculateGamePhaseWithHysteresis(ns, currentPhase, phaseStableCount);
             if (newPhase !== currentPhase) {
@@ -55,19 +50,6 @@ export async function main(ns) {
 
             // Print comprehensive status
             logStatusToDashboard(ui, ns, currentPhase, activity);
-
-            // Check for augment threshold (reset trigger)
-            if (config.augmentations.installOnThreshold && hasSingularityAccess(ns) && !resetPending) {
-                const queued = getQueuedAugments(ns);
-                const queuedCost = getQueuedCost(ns, queued);
-                const queuedEnough = queued.length >= config.augmentations.minQueuedAugs;
-                const costEnough = queuedCost >= config.augmentations.minQueuedCost;
-                if (queuedEnough || costEnough) {
-                    resetPending = true;
-                    await triggerAugReset(ns, ui, queued.length, queuedCost);
-                    return;
-                }
-            }
 
             // Notify of daemon readiness (every 5 min)
             if (config.milestones.notifyDaemon) {
@@ -254,18 +236,6 @@ function getQueuedAugments(ns) {
 }
 
 /**
- * Get total cost of queued augmentations
- */
-function getQueuedCost(ns, queued) {
-    if (!hasSingularityAccess(ns)) return 0;
-    let total = 0;
-    for (const aug of queued) {
-        total += ns.singularity.getAugmentationPrice(aug);
-    }
-    return total;
-}
-
-/**
  * Check if singularity functions are available
  */
 function hasSingularityAccess(ns) {
@@ -275,34 +245,6 @@ function hasSingularityAccess(ns) {
     } catch (e) {
         return false;
     }
-}
-
-/**
- * Countdown and install augments, then restart automation
- */
-async function triggerAugReset(ns, ui, queuedCount, queuedCost) {
-    const countdown = config.augmentations.resetCountdownSec ?? 10;
-    const restartScript = config.augmentations.resetScript || "/angel/start.js";
-    ui.log(`🔄 RESET TRIGGER: ${queuedCount} augs queued (cost: $${queuedCost.toFixed(0)})`, "warn");
-    ui.log(`Installing augments in ${countdown}s... (restart: ${restartScript})`, "warn");
-    
-    for (let i = countdown; i > 0; i--) {
-        ui.log(`Resetting in ${i}s...`, "debug");
-        await ns.sleep(1000);
-    }
-
-    try {
-        const summary = recordResetSnapshot(ns, {
-            trigger: "augment-threshold",
-            restartScript,
-        });
-        ui.log(`🧾 Reset recorded | Time: ${summary.durationLabel} | Cash: $${summary.finalCash.toFixed(0)} | Hack: ${summary.finalHackLevel} | Augs: ${summary.purchasedAugCount}`, "info");
-    } catch (e) {
-        ui.log(`⚠️ Reset monitor write failed: ${String(e).slice(0, 60)}`, "warn");
-    }
-    
-    ui.log("Installing augmentations and restarting...", "info");
-    ns.singularity.installAugmentations(restartScript);
 }
 
 /**

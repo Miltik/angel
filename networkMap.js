@@ -13,7 +13,7 @@ let lastState = {
     rootedServers: 0,
     backdooredServers: 0,
     loopCount: 0,
-    clickHandlerAttached: false,
+    clickHandler: null,
 };
 
 /**
@@ -188,9 +188,15 @@ export async function main(ns) {
         // Update the window content
         ui.update(html);
         
-        // Attach click handlers to server cards (only once)
-        if (!lastState.clickHandlerAttached && ui.contentEl) {
-            ui.contentEl.addEventListener('click', async (e) => {
+        // Attach click handlers to server cards after content is updated
+        if (ui.contentEl) {
+            // Remove old listener if exists to avoid duplicates
+            if (lastState.clickHandler) {
+                ui.contentEl.removeEventListener('click', lastState.clickHandler);
+            }
+            
+            // Create and store the handler
+            lastState.clickHandler = async (e) => {
                 const card = e.target.closest('.server-card');
                 if (!card) return;
                 
@@ -208,8 +214,10 @@ export async function main(ns) {
                 } catch (err) {
                     ns.tprint(`⚠️ Connect error: ${err.message}`);
                 }
-            });
-            lastState.clickHandlerAttached = true;
+            };
+            
+            // Attach the handler
+            ui.contentEl.addEventListener('click', lastState.clickHandler);
         }
         
         lastState.totalServers = total;

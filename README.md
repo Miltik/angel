@@ -115,6 +115,16 @@ Edit `config.js` to customize ANGEL's behavior:
 run /angel/modules/hacking.js
 ```
 
+### Max Profit Module (`modules/maxprofit.js`)
+- Aggressively farms profit using every rooted/purchased server and available home RAM.
+- Prioritizes high-profit targets and dispatches worker scripts (`hack.js`, `grow.js`, `weaken.js`).
+- Designed as a manual, standalone tool — do NOT add this to your auto-start/bootstrap.
+
+**Run manually:**
+```
+run /angel/modules/maxprofit.js
+```
+
 ### Server Management Module (`modules/servers.js`)
 - Automatically roots new servers as they become accessible
 - Purchases new servers when funds are available

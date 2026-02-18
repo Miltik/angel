@@ -41,6 +41,7 @@ export async function main(ns) {
         // Modules
         "modules/uiManager.js",          // New: DOM UI framework
         "modules/hacking.js",
+        "modules/maxprofit.js",
         "modules/servers.js",
         "modules/augments.js",
         "modules/programs.js",

@@ -1,6 +1,5 @@
 import { createWindow } from "/angel/modules/uiManager.js";
 import { formatMoney } from "/angel/utils.js";
-import { buyPriority, buyAllAffordable } from "/angel/modules/augments.js";
 
 /**
  * Standalone aggressive gang manager.
@@ -11,8 +10,28 @@ import { buyPriority, buyAllAffordable } from "/angel/modules/augments.js";
  */
 export async function main(ns) {
     ns.disableLog("ALL");
+    // Runtime flags and simple standalone config (overrides via CLI args)
+    const FLAGS = parseFlags(ns.args);
+
+    const CONFIG = {
+        maxSpendPerCycle: FLAGS['max-spend-per-cycle'] ?? Infinity,
+        maxSpendPerMember: FLAGS['max-spend-per-member'] ?? Infinity,
+        actionsPerLoop: FLAGS['actions-per-loop'] ?? 4,
+        minEquipROI: FLAGS['min-equip-roi'] ?? 1e-7,
+        ascendROIHighProducer: FLAGS['ascend-roi-high'] ?? 1.5,
+        ascendROILowProducer: FLAGS['ascend-roi-low'] ?? 1.25,
+        trainingCutoff: FLAGS['training-cutoff'] ?? 60,
+        purchaseCooldownMs: FLAGS['purchase-cooldown-ms'] ?? 1000,
+        telemetryFile: "angel/maxgang.log",
+        dryRun: FLAGS['dry-run'] === true,
+        verbose: FLAGS['verbose'] === true,
+        noSpend: FLAGS['no-spend'] === true,
+        allIn: FLAGS['all-in'] === true,
+    };
+
     const ui = createWindow("maxgang", "👑 Max Gang Domination", 800, 520, ns);
-    ui.log("MaxGang: aggressive gang manager loaded (manual run only)", "info");
+    ui.log(`MaxGang: aggressive gang manager loaded (manual run only)`, "info");
+    if (CONFIG.dryRun) ui.log("--dry-run enabled: no purchases or ascensions will be executed", "warn");
 
     while (true) {
         try {
@@ -27,13 +46,16 @@ export async function main(ns) {
 
 
             // Ascend members using ROI modeling
-            await considerAscension(ns, ui);
+            await considerAscension(ns, ui, CONFIG);
 
-            // Buy role-optimized equipment for members
-            buyEquipmentForAll(ns, ui);
+            // Buy role-optimized equipment for members (batched)
+            await buyEquipmentForAll(ns, ui, CONFIG);
+
+            // Attempt to buy augmentations (standalone logic)
+            await tryBuyAugments(ns, ui, CONFIG);
 
             // Assign optimal tasks with per-member scoring
-            assignAllTasks(ns, ui);
+            assignAllTasks(ns, ui, CONFIG);
 
             // Manage territory warfare engagement
             manageWarfare(ns, ui);
@@ -57,23 +79,31 @@ function recruitAll(ns, ui) {
     }
 }
 
-async function considerAscension(ns, ui) {
+async function considerAscension(ns, ui, CONFIG) {
     const members = ns.gang.getMemberNames();
     for (const name of members) {
         try {
             const result = ns.gang.getAscensionResult(name);
             if (!result) continue;
-            // ROI modeling: estimate effective stat before/after for role
+
             const member = ns.gang.getMemberInformation(name);
             const roleScoreBefore = effectiveMemberScore(member, null);
             const roleScoreAfter = effectiveMemberScore(member, result);
             const roi = roleScoreAfter / Math.max(1e-6, roleScoreBefore);
 
-            // Dynamic threshold: require at least 1.25x improvement OR absolute gains
-            if (roi >= 1.25 || Object.values(result).some(g => g >= 10)) {
-                const asc = ns.gang.ascendMember(name);
+            const gangInfo = ns.gang.getGangInformation();
+            const moneyPerSec = gangInfo.moneyGainRate || 0;
+            const memberShare = estimateMemberMoneyShare(ns, member, gangInfo);
+            const highProducer = memberShare * moneyPerSec > 1e5;
+            const requiredROI = highProducer ? CONFIG.ascendROIHighProducer : CONFIG.ascendROILowProducer;
+
+            if ((roi >= requiredROI || Object.values(result).some(g => g >= 10)) && !CONFIG.dryRun) {
+                ns.gang.ascendMember(name);
                 ui.log(`Ascended ${name} (ROI ${roi.toFixed(2)}) -> +${Object.entries(result).map(([k,v])=>`${k}:${v.toFixed(2)}`).join(', ')}`,'success');
-                await ns.sleep(120);
+                await logAction(ns, CONFIG.telemetryFile, { action: 'ascend', member: name, roi, result });
+                await ns.sleep(CONFIG.purchaseCooldownMs);
+            } else if (CONFIG.verbose) {
+                ui.log(`Skip ascend ${name} (ROI ${roi.toFixed(2)} < ${requiredROI})`, 'debug');
             }
         } catch (e) {
             // ignore
@@ -81,43 +111,170 @@ async function considerAscension(ns, ui) {
     }
 }
 
-function buyEquipmentForAll(ns, ui) {
-    const members = ns.gang.getMemberNames();
-    if (members.length === 0) return;
-    // Build list of purchasable equipment
-    let equipment = ns.gang.getEquipmentNames();
-    equipment.sort((a,b) => ns.gang.getEquipmentCost(a) - ns.gang.getEquipmentCost(b));
+// =====================
+// Augment purchases (standalone, simple)
+// =====================
 
-    for (const member of members) {
-        const info = ns.gang.getMemberInformation(member);
-        // Determine role preference based on member stats
-        const role = determineRoleForMember(info);
+async function tryBuyAugments(ns, ui, CONFIG) {
+    // Only operate if Singularity API available
+    try {
+        ns.singularity.getFactionRep; // may throw
+    } catch (e) {
+        if (CONFIG && CONFIG.verbose) ui.log('Singularity API not available; skipping aug buys', 'debug');
+        return;
+    }
 
-        for (const item of equipment) {
-            try {
-                if (info.upgrades.includes(item)) continue;
-                const cost = ns.gang.getEquipmentCost(item);
+    const player = ns.getPlayer();
+    const owned = ns.singularity.getOwnedAugmentations(true);
+    const priorities = [
+        'BitWire',
+        'Artificial Bio-neural Network Implant',
+        'Artificial Synaptic Potentiation'
+    ];
 
-                // Try to read equipment stats; some API versions support this
-                let stats = null;
-                try { stats = ns.gang.getEquipmentStats(item); } catch (e) { stats = null; }
+    const candidates = [];
+    for (const faction of player.factions) {
+        const augs = ns.singularity.getAugmentationsFromFaction(faction);
+        const rep = ns.singularity.getFactionRep(faction);
+        for (const aug of augs) {
+            if (owned.includes(aug)) continue;
+            const price = ns.singularity.getAugmentationPrice(aug);
+            const repReq = ns.singularity.getAugmentationRepReq(aug);
+            if (rep >= repReq) candidates.push({ name: aug, faction, price });
+        }
+    }
 
-                // If stats available, prefer items that boost role-relevant stats
-                if (stats) {
-                    const boost = equipmentRoleBoost(stats, role);
-                    if (boost <= 0) continue; // skip gear that doesn't help the role
-                }
+    // Prefer priority augs first
+    candidates.sort((a,b) => {
+        const ap = priorities.includes(a.name) ? 0 : 1;
+        const bp = priorities.includes(b.name) ? 0 : 1;
+        if (ap !== bp) return ap - bp;
+        return a.price - b.price;
+    });
 
-                // Purchase (no reserve — running manually with full access)
-                const ok = ns.gang.purchaseEquipment(member, item);
-                if (ok) ui.log(`Bought ${item} for ${member} (${formatMoney(cost)})`,'debug');
-            } catch (e) {
-                // ignore failures
+    for (const c of candidates) {
+        const money = ns.getServerMoneyAvailable('home');
+        if (money < c.price) break;
+        if (CONFIG.dryRun || CONFIG.noSpend) {
+            ui.log(`[dry-run] Would purchase aug ${c.name} from ${c.faction} for ${formatMoney(c.price)}`, 'info');
+        } else {
+            const ok = ns.singularity.purchaseAugmentation(c.faction, c.name);
+            if (ok) {
+                ui.log(`Purchased augmentation ${c.name} from ${c.faction} for ${formatMoney(c.price)}`, 'success');
+                await logAction(ns, CONFIG.telemetryFile, { action: 'aug-purchase', name: c.name, faction: c.faction, price: c.price });
+                await ns.sleep(CONFIG.purchaseCooldownMs);
             }
         }
     }
 }
 
+// =====================
+// Utility helpers
+// =====================
+
+function parseFlags(args) {
+    const out = {};
+    for (const a of args || []) {
+        if (typeof a !== 'string') continue;
+        if (a.startsWith('--')) {
+            const eq = a.indexOf('=');
+            if (eq === -1) out[a.slice(2)] = true;
+            else {
+                const k = a.slice(2, eq);
+                const v = a.slice(eq+1);
+                const num = Number(v);
+                out[k] = isNaN(num) ? v : num;
+            }
+        }
+    }
+    return out;
+}
+
+function estimateEquipmentBenefit(role, stats, memberInfo) {
+    // Use equipmentRoleBoost as proxy; scale to approximate contribution
+    const boost = equipmentRoleBoost(stats, role);
+    // Favor items that synergize with current weak stats
+    return boost * 100;
+}
+
+function estimateMemberMoneyShare(ns, member, gangInfo) {
+    const members = ns.gang.getMemberNames();
+    let total = 0;
+    const scores = {};
+    for (const m of members) {
+        const info = ns.gang.getMemberInformation(m);
+        const score = effectiveMemberScore(info, null);
+        scores[m] = score;
+        total += score;
+    }
+    const myScore = scores[member.name || member] || effectiveMemberScore(member, null);
+    return total > 0 ? myScore / total : 0;
+}
+
+async function logAction(ns, file, obj) {
+    try {
+        const line = JSON.stringify({ ts: Date.now(), ...obj }) + '\n';
+        await ns.write(file, line, 'a');
+    } catch (e) {
+        // ignore
+    }
+}
+
+async function buyEquipmentForAll(ns, ui, CONFIG) {
+    const members = ns.gang.getMemberNames();
+    // Build list of purchasable equipment
+    let equipment = ns.gang.getEquipmentNames();
+
+    // Prepare action counters and spend tracking for this cycle
+    let cycleSpend = 0;
+    let actions = 0;
+
+    // Sort equipment by cost-benefit (we'll compute per-member)
+    for (const member of members) {
+        if (actions >= CONFIG.actionsPerLoop) break;
+        const info = ns.gang.getMemberInformation(member);
+        const role = determineRoleForMember(info);
+
+        // Get list of candidate items not yet owned
+        const candidates = equipment.filter(it => !info.upgrades.includes(it));
+
+        // Score each candidate by marginal benefit / cost for this member
+        const scored = [];
+        for (const item of candidates) {
+            try {
+                const cost = ns.gang.getEquipmentCost(item);
+                let stats = null;
+                try { stats = ns.gang.getEquipmentStats(item); } catch (e) { stats = null; }
+                const benefit = estimateEquipmentBenefit(role, stats || {}, info);
+                const roi = benefit / Math.max(1, cost);
+                scored.push({ item, cost, benefit, roi });
+            } catch (e) { /* skip */ }
+        }
+
+        // Choose best candidate above threshold
+        scored.sort((a,b) => b.roi - a.roi);
+        for (const s of scored) {
+            if (actions >= CONFIG.actionsPerLoop) break;
+            if (cycleSpend + s.cost > CONFIG.maxSpendPerCycle && !CONFIG.allIn) break;
+            if (s.cost > CONFIG.maxSpendPerMember && !CONFIG.allIn) continue;
+            if (s.roi < CONFIG.minEquipROI) break;
+
+            // Execute purchase
+            if (CONFIG.noSpend || CONFIG.dryRun) {
+                ui.log(`[dry-run] Would buy ${s.item} for ${member} (${formatMoney(s.cost)}) ROI:${s.roi.toExponential(2)}`,'info');
+            } else {
+                const ok = ns.gang.purchaseEquipment(member, s.item);
+                if (ok) {
+                    cycleSpend += s.cost;
+                    actions++;
+                    ui.log(`Bought ${s.item} for ${member} (${formatMoney(s.cost)}) ROI:${s.roi.toExponential(2)}`,'success');
+                    await logAction(ns, CONFIG.telemetryFile, { action: 'buy', member, item: s.item, cost: s.cost, roi: s.roi });
+                    await ns.sleep(CONFIG.purchaseCooldownMs);
+                }
+            }
+        }
+    }
+}
 function assignAllTasks(ns, ui) {
     const info = ns.gang.getGangInformation();
     const members = ns.gang.getMemberNames();
@@ -281,17 +438,4 @@ function equipmentRoleBoost(stats, role) {
 }
 
 // Periodically attempt augmentation purchases (uses augment module helpers)
-async function tryBuyAugments(ns, ui) {
-    try {
-        // Buy priority augs first
-        const bought = buyPriority(ns);
-        if (bought > 0) ui.log(`Purchased ${bought} priority augment(s) via augments module`, 'success');
-        else {
-            // If nothing high-priority, consider buying all affordable
-            const all = buyAllAffordable(ns);
-            if (all > 0) ui.log(`Purchased ${all} affordable augment(s) via augments module`, 'success');
-        }
-    } catch (e) {
-        // ignore if singularity not available
-    }
-}
+// (Legacy aug helper removed; use standalone tryBuyAugments above.)

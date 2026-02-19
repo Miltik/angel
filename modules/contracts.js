@@ -21,17 +21,41 @@ export async function main(ns) {
     ui.log("📋 Coding Contracts solver initialized", "success");
     ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     
-    // Best-effort guard: avoid running multiple instances on the same host
+    // Stronger single-instance lock: file-based + process check on this host
+    const LOCK_FILE = "/angel/contracts.lock";
     try {
-        const procs = ns.ps("home") || [];
-        const same = procs.filter(p => p.filename && (p.filename.endsWith("/modules/contracts.js") || p.filename.endsWith("modules/contracts.js") || p.filename.endsWith("contracts.js")));
-        if (same.length > 1) {
-            ui.log(`⚠️ Another contracts instance detected on home (${same.length}). Exiting to avoid conflicts.`, "warn");
-            return;
+        // If a lock file exists, read it and see if that pid is still running
+        if (ns.fileExists(LOCK_FILE, ns.getHostname())) {
+            try {
+                const contents = ns.read(LOCK_FILE);
+                const info = JSON.parse(contents || '{}');
+                const host = info.host || ns.getHostname();
+                const pid = Number(info.pid) || 0;
+                if (pid > 0) {
+                    const procs = ns.ps(host) || [];
+                    if (procs.find(p => p && p.pid === pid)) {
+                        ui.log(`⚠️ Existing contracts instance detected (pid ${pid} on ${host}). Exiting to avoid conflicts.`, "warn");
+                        return;
+                    }
+                }
+            } catch (e) {
+                // ignore malformed lock file
+            }
         }
+
+        // Create/overwrite lock file with current pid and host
+        const me = (typeof ns.getRunningScript === 'function') ? ns.getRunningScript() : null;
+        const myPid = me && me.pid ? me.pid : 0;
+        const lockObj = { pid: myPid, host: ns.getHostname(), ts: Date.now() };
+        ns.write(LOCK_FILE, JSON.stringify(lockObj), "w");
     } catch (e) {
-        // ignore — this is a best-effort guard
+        // best-effort only
     }
+
+    // Ensure lock cleanup on graceful exit
+    const removeLock = () => {
+        try { if (ns.fileExists(LOCK_FILE, ns.getHostname())) ns.rm(LOCK_FILE); } catch (e) { }
+    };
     while (true) {
         try {
             lastState.loopCount++;
@@ -53,10 +77,16 @@ export async function main(ns) {
 async function solveAllContracts(ns, ui) {
     let count = 0;
     const servers = getAllServers(ns);
+    ui.log(`🔎 Scanning ${servers.length} servers for contracts...`, "info");
+    let totalContracts = 0;
     
     for (const server of servers) {
         try {
             const contracts = ns.codingcontract.listContracts(server);
+            if (contracts && contracts.length > 0) {
+                ui.log(`📄 ${contracts.length} contract(s) found on ${server}: ${contracts.join(', ')}`, "info");
+            }
+            totalContracts += (contracts ? contracts.length : 0);
             
             for (const contractName of contracts) {
                 const contractType = ns.codingcontract.getContractType(contractName, server);
@@ -165,6 +195,7 @@ async function solveAllContracts(ns, ui) {
             // Silently skip servers with no contracts or access issues
         }
     }
+    ui.log(`🔎 Scan complete — found ${totalContracts} contract(s) across ${servers.length} servers`, "info");
     
     return count;
 }

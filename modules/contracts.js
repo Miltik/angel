@@ -82,7 +82,13 @@ async function solveAllContracts(ns, ui) {
     
     for (const server of servers) {
         try {
-            const contracts = ns.codingcontract.listContracts(server);
+            // Some builds don't provide a listContracts helper; list files and filter .cct files instead
+            let contracts = [];
+            try {
+                contracts = ns.ls(server).filter(f => f && f.endsWith('.cct'));
+            } catch (e) {
+                contracts = [];
+            }
             if (contracts && contracts.length > 0) {
                 ui.log(`📄 ${contracts.length} contract(s) found on ${server}: ${contracts.join(', ')}`, "info");
             }

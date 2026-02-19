@@ -1,5 +1,6 @@
 import { createWindow } from "/angel/modules/uiManager.js";
 import { formatMoney } from "/angel/utils.js";
+import { buyPriority, buyAllAffordable } from "/angel/modules/augments.js";
 
 /**
  * Standalone aggressive gang manager.
@@ -24,13 +25,14 @@ export async function main(ns) {
             // Recruit available members
             recruitAll(ns, ui);
 
-            // Ascend members aggressively when beneficial
+
+            // Ascend members using ROI modeling
             await considerAscension(ns, ui);
 
-            // Buy equipment for members
+            // Buy role-optimized equipment for members
             buyEquipmentForAll(ns, ui);
 
-            // Assign optimal tasks (money/respect/training/warfare)
+            // Assign optimal tasks with per-member scoring
             assignAllTasks(ns, ui);
 
             // Manage territory warfare engagement
@@ -61,15 +63,17 @@ async function considerAscension(ns, ui) {
         try {
             const result = ns.gang.getAscensionResult(name);
             if (!result) continue;
+            // ROI modeling: estimate effective stat before/after for role
+            const member = ns.gang.getMemberInformation(name);
+            const roleScoreBefore = effectiveMemberScore(member, null);
+            const roleScoreAfter = effectiveMemberScore(member, result);
+            const roi = roleScoreAfter / Math.max(1e-6, roleScoreBefore);
 
-            // If any stat gain is >= 1.5x (50% increase) or absolute gain >= 10,
-            // consider ascending to get long-term dominance.
-            const shouldAscend = Object.values(result).some(gain => gain >= 1.5 || gain >= 10);
-            if (shouldAscend) {
+            // Dynamic threshold: require at least 1.25x improvement OR absolute gains
+            if (roi >= 1.25 || Object.values(result).some(g => g >= 10)) {
                 const asc = ns.gang.ascendMember(name);
-                ui.log(`Ascended ${name} -> +${Object.entries(result).map(([k,v])=>`${k}:${v.toFixed(2)}`).join(', ')}`,'success');
-                // Small delay to avoid spamming game
-                await ns.sleep(100);
+                ui.log(`Ascended ${name} (ROI ${roi.toFixed(2)}) -> +${Object.entries(result).map(([k,v])=>`${k}:${v.toFixed(2)}`).join(', ')}`,'success');
+                await ns.sleep(120);
             }
         } catch (e) {
             // ignore
@@ -80,24 +84,36 @@ async function considerAscension(ns, ui) {
 function buyEquipmentForAll(ns, ui) {
     const members = ns.gang.getMemberNames();
     if (members.length === 0) return;
-
-    // Build list of purchasable equipment (sorted by price ascending)
+    // Build list of purchasable equipment
     let equipment = ns.gang.getEquipmentNames();
     equipment.sort((a,b) => ns.gang.getEquipmentCost(a) - ns.gang.getEquipmentCost(b));
 
-    // Reserve some cash to avoid draining empire (10% of money)
-    const money = ns.getServerMoneyAvailable('home');
-    const reserve = Math.max(0, money * 0.10);
-
     for (const member of members) {
+        const info = ns.gang.getMemberInformation(member);
+        // Determine role preference based on member stats
+        const role = determineRoleForMember(info);
+
         for (const item of equipment) {
             try {
+                if (info.upgrades.includes(item)) continue;
                 const cost = ns.gang.getEquipmentCost(item);
-                if (ns.gang.getMemberInformation(member).upgrades.includes(item)) continue;
-                if (ns.getServerMoneyAvailable('home') - cost < reserve) break;
+
+                // Try to read equipment stats; some API versions support this
+                let stats = null;
+                try { stats = ns.gang.getEquipmentStats(item); } catch (e) { stats = null; }
+
+                // If stats available, prefer items that boost role-relevant stats
+                if (stats) {
+                    const boost = equipmentRoleBoost(stats, role);
+                    if (boost <= 0) continue; // skip gear that doesn't help the role
+                }
+
+                // Purchase (no reserve — running manually with full access)
                 const ok = ns.gang.purchaseEquipment(member, item);
                 if (ok) ui.log(`Bought ${item} for ${member} (${formatMoney(cost)})`,'debug');
-            } catch (e) { break; }
+            } catch (e) {
+                // ignore failures
+            }
         }
     }
 }
@@ -108,41 +124,78 @@ function assignAllTasks(ns, ui) {
     const tasks = ns.gang.getTaskNames().filter(t => t !== 'Unassigned');
     if (members.length === 0 || tasks.length === 0) return;
 
-    // Prioritize money and respect depending on current state
-    const wantMoney = shouldPrioritizeMoney(info);
-    const wantRespect = !wantMoney;
+    // Build per-member scoring for all tasks and pick best
+    const taskPool = tasks;
 
-    // Determine best tasks
-    const moneyTasks = chooseTasks(ns, tasks, ['Human Trafficking','Trafficking','Fraudulent Counterfeiting','Cyberterrorism','Armed Robbery','Strongarm Civilians']);
-    const respectTasks = chooseTasks(ns, tasks, ['Vigilante Justice','Terrorism','Assassinate','Kidnapping']);
-    const trainTasks = chooseTasks(ns, tasks, ['Train Combat','Train Hacking','Train Charisma']);
-    const warfareTask = tasks.includes('Territory Warfare') ? 'Territory Warfare' : null;
-
-    // Simple distribution: ensure wanted management, then money/respect, then train
-    let idx = 0;
     for (const member of members) {
         const m = ns.gang.getMemberInformation(member);
-        // If stats low, train
-        const needsTrain = (m.str < 60 || m.def < 60 || m.agi < 60 || m.dex < 60 || m.hack < 60);
-        if (needsTrain && trainTasks.length) {
-            ns.gang.setMemberTask(member, trainTasks[0]);
+
+        // If training required (very low stat), enforce training
+        const needsHeavyTrain = (m.str < 40 || m.def < 40 || m.agi < 40 || m.dex < 40 || m.hack < 40);
+        if (needsHeavyTrain && tasks.includes('Train Combat')) {
+            ns.gang.setMemberTask(member, 'Train Combat');
             continue;
         }
 
-        // Ensure wanted reduction if penalty too low
-        if (info.wantedPenalty < 0.95 && tasks.includes('Vigilante Justice')) {
-            ns.gang.setMemberTask(member, 'Vigilante Justice');
-            continue;
+        // Score tasks
+        let best = null;
+        let bestScore = -Infinity;
+        for (const task of taskPool) {
+            const score = scoreTaskForMember(ns, m, task, info);
+            if (score > bestScore) {
+                bestScore = score;
+                best = task;
+            }
         }
 
-        // Assign money or respect
-        if (wantMoney && moneyTasks.length) ns.gang.setMemberTask(member, moneyTasks[idx % moneyTasks.length]);
-        else if (wantRespect && respectTasks.length) ns.gang.setMemberTask(member, respectTasks[idx % respectTasks.length]);
-        else if (warfareTask && Math.random() < 0.12) ns.gang.setMemberTask(member, warfareTask);
-        else if (moneyTasks.length) ns.gang.setMemberTask(member, moneyTasks[idx % moneyTasks.length]);
-
-        idx++;
+        if (best) ns.gang.setMemberTask(member, best);
     }
+}
+
+/** Score how well a task fits a member given current gang state */
+function scoreTaskForMember(ns, memberInfo, task, gangInfo) {
+    // Heuristic mapping of tasks to which stats they leverage and goals
+    const stat = pickStatForTask(task);
+    let statValue = memberInfo[stat] || 0;
+
+    // Base score is the stat value
+    let score = statValue;
+
+    // Boost for tasks that address current gang needs
+    if (task === 'Vigilante Justice') {
+        // If wanted penalty low, prioritize
+        if (gangInfo.wantedPenalty < 0.95) score *= 1.6;
+        else score *= 0.9;
+    }
+
+    if (task === 'Territory Warfare') {
+        // Only consider warfare if we have power advantage vs somebody
+        const other = ns.gang.getOtherGangInformation();
+        let bestAdv = 0;
+        for (const v of Object.values(other)) {
+            const adv = gangInfo.power / (v.power + 0.1);
+            bestAdv = Math.max(bestAdv, adv);
+        }
+        score *= Math.max(0.5, Math.min(2, bestAdv));
+    }
+
+    // Slight randomness to avoid lockstep
+    score *= (0.95 + Math.random() * 0.1);
+    return score;
+
+}
+
+function pickStatForTask(task) {
+    const hackTasks = ['Train Hacking','Hack','Cyberterrorism','Fraudulent Counterfeiting'];
+    const combatTasks = ['Train Combat','Human Trafficking','Trafficking','Armed Robbery','Strongarm Civilians','Kidnapping','Terrorism','Assassinate'];
+    const dexTasks = ['Strongarm Civilians','Assassinate'];
+
+    if (hackTasks.includes(task)) return 'hack';
+    if (dexTasks.includes(task)) return 'dex';
+    if (combatTasks.includes(task)) return 'str';
+    if (task === 'Vigilante Justice') return 'def';
+    if (task === 'Territory Warfare') return 'power';
+    return 'str';
 }
 
 function shouldPrioritizeMoney(info) {
@@ -164,17 +217,22 @@ function manageWarfare(ns, ui) {
     try {
         const info = ns.gang.getGangInformation();
         const other = ns.gang.getOtherGangInformation();
-        let powerAdv = 0;
-        for (const [k,v] of Object.entries(other)) {
-            const adv = info.power / (v.power + 0.1);
-            powerAdv = Math.max(powerAdv, adv);
+        // Choose best enemy target: prefer gangs with high territory but low power
+        let bestTarget = null;
+        let bestScore = 0;
+        for (const [name, data] of Object.entries(other)) {
+            const powerAdv = info.power / (data.power + 0.1);
+            const score = data.territory * Math.max(0.1, powerAdv);
+            if (score > bestScore) {
+                bestScore = score;
+                bestTarget = { name, data, powerAdv };
+            }
         }
 
-        if (powerAdv > 1.25 && info.territory < 95) {
+        // Engage when best target exists and advantage >=1.15 or we're dominant
+        if ((bestTarget && bestTarget.powerAdv >= 1.15 && info.territory < 95) || info.territory >= 95) {
             ns.gang.setTerritoryWarfareEngaged(true);
-            ui.log('Engaging territory warfare (power advantage)', 'info');
-        } else if (info.territory >= 95) {
-            ns.gang.setTerritoryWarfareEngaged(true);
+            ui.log(`Engaging warfare vs ${bestTarget ? bestTarget.name : 'opponents'} (adv ${bestTarget ? bestTarget.powerAdv.toFixed(2) : 'N/A'})`, 'info');
         } else {
             ns.gang.setTerritoryWarfareEngaged(false);
         }
@@ -185,4 +243,55 @@ function printSummary(ns, ui) {
     const info = ns.gang.getGangInformation();
     const members = ns.gang.getMemberNames().length;
     ui.log(`Members: ${members} | Money/s: ${formatMoney(info.moneyGainRate)} | Respect: ${formatMoney(info.respect)} | Territory: ${info.territory.toFixed(1)}%`, 'info');
+}
+
+// =====================
+// Helper utilities
+// =====================
+
+function effectiveMemberScore(member, ascResult) {
+    // Compute an aggregate effective stat score; if ascResult provided, apply multipliers
+    const stats = ['str','def','dex','agi','hack'];
+    let total = 0;
+    for (const s of stats) {
+        const base = member[s] || 0;
+        const mult = ascResult && ascResult[s] ? ascResult[s] : 1;
+        total += base * mult;
+    }
+    return total;
+}
+
+function determineRoleForMember(memberInfo) {
+    // Choose role by highest stat among core stats
+    const stats = { str: memberInfo.str, def: memberInfo.def, dex: memberInfo.dex, agi: memberInfo.agi, hack: memberInfo.hack };
+    const sorted = Object.entries(stats).sort((a,b) => b[1] - a[1]);
+    const top = sorted[0][0];
+    if (top === 'hack') return 'hacker';
+    if (top === 'def' || top === 'str') return 'fighter';
+    return 'general';
+}
+
+function equipmentRoleBoost(stats, role) {
+    // Simple heuristic: sum boosts to relevant stats
+    let boost = 0;
+    if (role === 'hacker') boost += (stats.hacking_exp || 0) + (stats.hacking_chance || 0);
+    if (role === 'fighter') boost += (stats.str || 0) + (stats.def || 0) + (stats.agi || 0) + (stats.dex || 0);
+    if (role === 'general') boost += (stats.str || 0) + (stats.hack || 0);
+    return boost;
+}
+
+// Periodically attempt augmentation purchases (uses augment module helpers)
+async function tryBuyAugments(ns, ui) {
+    try {
+        // Buy priority augs first
+        const bought = buyPriority(ns);
+        if (bought > 0) ui.log(`Purchased ${bought} priority augment(s) via augments module`, 'success');
+        else {
+            // If nothing high-priority, consider buying all affordable
+            const all = buyAllAffordable(ns);
+            if (all > 0) ui.log(`Purchased ${all} affordable augment(s) via augments module`, 'success');
+        }
+    } catch (e) {
+        // ignore if singularity not available
+    }
 }

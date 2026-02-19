@@ -21,6 +21,17 @@ export async function main(ns) {
     ui.log("📋 Coding Contracts solver initialized", "success");
     ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     
+    // Best-effort guard: avoid running multiple instances on the same host
+    try {
+        const procs = ns.ps("home") || [];
+        const same = procs.filter(p => p.filename && (p.filename.endsWith("/modules/contracts.js") || p.filename.endsWith("modules/contracts.js") || p.filename.endsWith("contracts.js")));
+        if (same.length > 1) {
+            ui.log(`⚠️ Another contracts instance detected on home (${same.length}). Exiting to avoid conflicts.`, "warn");
+            return;
+        }
+    } catch (e) {
+        // ignore — this is a best-effort guard
+    }
     while (true) {
         try {
             lastState.loopCount++;
@@ -127,12 +138,26 @@ async function solveAllContracts(ns, ui) {
                 }
                 
                 if (solution !== null && solution !== undefined) {
-                    const reward = ns.codingcontract.attempt(solution, contractName, server);
-                    if (reward) {
-                        ui.log(`✅ ${contractType} on ${server}: ${reward}`, "success");
-                        lastState.contractsSolved++;
-                        lastState.totalRewards += parseInt(reward.match(/\$[\d,]+/) ? parseInt(reward.match(/\$[\d,]+/)[0].replace(/[$,]/g, "")) : 0);
-                        count++;
+                    try {
+                        const attemptResult = ns.codingcontract.attempt(solution, contractName, server);
+                        if (attemptResult) {
+                            // Normalize reward to a number (some builds return a number, others a string)
+                            let rewardMoney = 0;
+                            if (typeof attemptResult === 'number') {
+                                rewardMoney = attemptResult;
+                            } else if (typeof attemptResult === 'string') {
+                                const m = attemptResult.match(/\$?([\d,]+)/);
+                                if (m) rewardMoney = parseInt(m[1].replace(/,/g, ''));
+                            }
+
+                            ui.log(`✅ ${contractType} on ${server}: ${rewardMoney ? rewardMoney : attemptResult}`, "success");
+                            lastState.contractsSolved++;
+                            lastState.totalRewards += Number.isFinite(rewardMoney) ? rewardMoney : 0;
+                            count++;
+                        }
+                    } catch (e) {
+                        // Don't let a single failed attempt crash the whole solver
+                        ui.log(`❌ Attempt error for ${contractType} on ${server}: ${e}`, "error");
                     }
                 }
             }
@@ -191,18 +216,14 @@ function solveSpiralizeMatrix(matrix) {
     return result;
 }
 
-function solveArrayJumping([numLeaps, maxJump]) {
-    const n = numLeaps;
-    const reachable = new Array(n).fill(false);
-    reachable[0] = true;
+function solveArrayJumping(arr) {
+    // arr is an array where each value is max jump length from that index
+    if (!Array.isArray(arr) || arr.length === 0) return 0;
     let furthest = 0;
-    for (let i = 0; i < n; i++) {
-        if (!reachable[i]) break;
-        furthest = Math.max(furthest, i + maxJump);
-        for (let j = i + 1; j <= Math.min(furthest, n - 1); j++) {
-            reachable[j] = true;
-        }
-        if (furthest >= n - 1) return 1;
+    for (let i = 0; i < arr.length; i++) {
+        if (i > furthest) return 0;
+        furthest = Math.max(furthest, i + Number(arr[i] || 0));
+        if (furthest >= arr.length - 1) return 1;
     }
     return 0;
 }
@@ -343,27 +364,43 @@ function solveBfsGrid(grid) {
 }
 
 function solveSanitizeParens(s) {
-    const results = new Set();
-    const backtrack = (str, open, close, index) => {
-        if (index === s.length) {
-            if (open === 0 && close === 0) results.add(str);
-            return;
+    // Remove the minimum number of invalid parentheses using BFS
+    const isValid = (str) => {
+        let bal = 0;
+        for (const ch of str) {
+            if (ch === '(') bal++;
+            else if (ch === ')') {
+                if (bal === 0) return false;
+                bal--;
+            }
         }
-        if (s[index] !== '(' && s[index] !== ')') {
-            backtrack(str + s[index], open, close, index + 1);
-        } else {
-            if (s[index] === '(' && open > 0) backtrack(str + '(', open - 1, close, index + 1);
-            if (s[index] === ')' && close > 0) backtrack(str + ')', open, close - 1, index + 1);
-            backtrack(str, open, close, index + 1);
-        }
+        return bal === 0;
     };
-    let open = 0, close = 0;
-    for (const c of s) {
-        if (c === '(') open++;
-        else if (c === ')') close = Math.max(close, open) - (open > 0 ? 1 : 0);
+
+    const res = new Set();
+    const visited = new Set();
+    const queue = [s];
+    visited.add(s);
+    let found = false;
+
+    while (queue.length) {
+        const cur = queue.shift();
+        if (isValid(cur)) {
+            res.add(cur);
+            found = true;
+        }
+        if (found) continue;
+        for (let i = 0; i < cur.length; i++) {
+            if (cur[i] !== '(' && cur[i] !== ')') continue;
+            const next = cur.slice(0, i) + cur.slice(i + 1);
+            if (!visited.has(next)) {
+                visited.add(next);
+                queue.push(next);
+            }
+        }
     }
-    backtrack("", open, close, 0);
-    return Array.from(results);
+
+    return Array.from(res);
 }
 
 function solveMathExpressions([num, target]) {
@@ -371,7 +408,8 @@ function solveMathExpressions([num, target]) {
     const backtrack = (expr, index) => {
         if (index === num.length) {
             try {
-                if (eval(expr) === target) results.add(expr);
+                const val = evaluateExpression(expr);
+                if (!Number.isNaN(val) && val === target) results.add(expr);
             } catch (e) { }
             return;
         }
@@ -383,23 +421,124 @@ function solveMathExpressions([num, target]) {
     return Array.from(results);
 }
 
+function evaluateExpression(expr) {
+    // Shunting-yard algorithm to safely evaluate +, -, * and parentheses
+    if (typeof expr !== 'string' || expr.length === 0) return NaN;
+    const precedence = (op) => (op === '*' ? 2 : (op === '+' || op === '-') ? 1 : 0);
+    const applyOp = (ops, vals) => {
+        const op = ops.pop();
+        const b = vals.pop();
+        const a = vals.pop();
+        switch (op) {
+            case '+': vals.push(a + b); break;
+            case '-': vals.push(a - b); break;
+            case '*': vals.push(a * b); break;
+            default: vals.push(NaN);
+        }
+    };
+
+    const ops = [];
+    const vals = [];
+    let i = 0;
+    while (i < expr.length) {
+        const ch = expr[i];
+        if (ch === ' ') { i++; continue; }
+        // number (may be multi-digit)
+        if (ch >= '0' && ch <= '9') {
+            let j = i;
+            while (j < expr.length && expr[j] >= '0' && expr[j] <= '9') j++;
+            vals.push(Number(expr.slice(i, j)));
+            i = j;
+            continue;
+        }
+        if (ch === '(') { ops.push(ch); i++; continue; }
+        if (ch === ')') {
+            while (ops.length && ops[ops.length - 1] !== '(') applyOp(ops, vals);
+            ops.pop(); i++; continue;
+        }
+        // operator: handle unary minus
+        if ((ch === '+' || ch === '-' || ch === '*')) {
+            // unary minus if at start or after another operator or after '('
+            if (ch === '-' && (i === 0 || ['+', '-', '*', '('].includes(expr[i - 1]))) {
+                // parse negative number
+                let j = i + 1;
+                while (j < expr.length && expr[j] >= '0' && expr[j] <= '9') j++;
+                const num = Number(expr.slice(i, j));
+                if (!Number.isNaN(num)) {
+                    vals.push(num);
+                    i = j; continue;
+                }
+            }
+            while (ops.length && precedence(ops[ops.length - 1]) >= precedence(ch)) applyOp(ops, vals);
+            ops.push(ch);
+            i++; continue;
+        }
+        // unknown char
+        return NaN;
+    }
+    while (ops.length) applyOp(ops, vals);
+    return vals.length ? vals[vals.length - 1] : NaN;
+}
+
 function solveHammingEncode(num) {
-    let binary = num.toString(2);
-    const result = [];
-    for (let i = 0; i < binary.length; i++) result[2 ** Math.floor(Math.log2(i + 1)) - 1 + i] = binary[i];
-    return result.join("") + "0";
+    // Encode integer to Hamming (parity) encoded binary string
+    let data = Number(num).toString(2);
+    // Insert parity bits at positions 1,2,4,8,... (1-based)
+    const res = [];
+    let dataIdx = 0;
+    let totalLen = data.length;
+    // Determine number of parity bits needed
+    let r = 0;
+    while ((1 << r) < (totalLen + r + 1)) r++;
+    const outLen = totalLen + r;
+    for (let i = 1; i <= outLen; i++) {
+        if ((i & (i - 1)) === 0) {
+            res[i - 1] = '0'; // placeholder for parity
+        } else {
+            res[i - 1] = data[dataIdx++] || '0';
+        }
+    }
+    // Compute parity bits
+    for (let i = 0; i < r; i++) {
+        const pos = 1 << i;
+        let parity = 0;
+        for (let j = pos; j <= outLen; j += pos * 2) {
+            for (let k = j; k < j + pos && k <= outLen; k++) {
+                if (k === pos) continue;
+                if (res[k - 1] === '1') parity ^= 1;
+            }
+        }
+        res[pos - 1] = parity ? '1' : '0';
+    }
+    return res.join('');
 }
 
 function solveHammingDecode(bin) {
-    const bits = bin.split("").map(Number);
-    let error = 0;
-    for (let i = 0; i < Math.log2(bits.length); i++) {
-        let sum = 0;
-        for (let j = 0; j < bits.length; j++) if ((j + 1) & (1 << i)) sum ^= bits[j];
-        error |= sum << i;
+    // Decode Hamming encoded binary string back to integer
+    const bits = bin.split("").map(b => (b === '1' ? 1 : 0));
+    const n = bits.length;
+    // find number of parity bits r
+    let r = 0;
+    while ((1 << r) <= n) r++;
+    // detect error
+    let errorPos = 0;
+    for (let i = 0; i < r; i++) {
+        let parity = 0;
+        const pos = 1 << i;
+        for (let j = 1; j <= n; j++) {
+            if (j & pos) parity ^= bits[j - 1];
+        }
+        if (parity) errorPos |= pos;
     }
-    if (error) bits[error - 1] ^= 1;
-    return parseInt(bits.filter((_, i) => (i + 1) & ((i + 1) - 1)).join(""), 2);
+    if (errorPos) {
+        bits[errorPos - 1] = bits[errorPos - 1] ^ 1;
+    }
+    // extract data bits (positions that are not powers of two)
+    const dataBits = [];
+    for (let i = 1; i <= n; i++) {
+        if ((i & (i - 1)) !== 0) dataBits.push(bits[i - 1]);
+    }
+    return parseInt(dataBits.join(''), 2) || 0;
 }
 
 function solveRLE(s) {
@@ -414,41 +553,57 @@ function solveRLE(s) {
 }
 
 function solveLZDecompress(encoded) {
-    const dict = {};
-    for (let i = 0; i < 256; i++) dict[i] = String.fromCharCode(i);
-    const data = encoded.split("").map(c => c.charCodeAt(0));
-    let result = dict[data[0]];
-    let dictSize = 256;
-    for (let i = 1; i < data.length; i++) {
-        const code = data[i];
-        result += (code < dictSize ? dict[code] : dict[dictSize - 1] + dict[dictSize - 1][0]);
-        dict[dictSize] = result.slice(-1 * (result.length - (i === 1 ? 1 : 0)));
-        dictSize++;
+    // Try to handle the common contract format: array of [index, char] pairs
+    try {
+        if (typeof encoded === 'string') return encoded;
+        if (Array.isArray(encoded)) {
+            const dict = [''];
+            let out = '';
+            for (const pair of encoded) {
+                if (!Array.isArray(pair) || pair.length < 2) continue;
+                const idx = Number(pair[0]);
+                const ch = String(pair[1]);
+                const entry = (idx === 0 ? '' : dict[idx]) + ch;
+                out += entry;
+                dict.push(entry);
+            }
+            return out;
+        }
+    } catch (e) {
+        return '';
     }
-    return result;
+    return '';
 }
 
 function solveCaesarCipher([text, shift]) {
-    return text.split("").map(c => {
-        if (c.match(/[a-z]/i)) {
-            const code = c.charCodeAt(0);
-            const start = code >= 65 ? 65 : 97;
-            return String.fromCharCode(start + (code - start + shift) % 26);
+    shift = ((shift % 26) + 26) % 26;
+    const out = [];
+    for (const ch of text) {
+        const code = ch.charCodeAt(0);
+        if (code >= 65 && code <= 90) {
+            out.push(String.fromCharCode(65 + (code - 65 + shift) % 26));
+        } else if (code >= 97 && code <= 122) {
+            out.push(String.fromCharCode(97 + (code - 97 + shift) % 26));
+        } else {
+            out.push(ch);
         }
-        return c;
-    }).join("");
+    }
+    return out.join('');
 }
 
 function solveVigenereCipher([text, key]) {
     let result = "";
     for (let i = 0, j = 0; i < text.length; i++) {
         const c = text[i];
-        if (!c.match(/[a-z]/i)) result += c;
-        else {
-            const code = c.charCodeAt(0);
-            const shift = key[(j++) % key.length].charCodeAt(0) - 65;
-            const start = code >= 65 ? 65 : 97;
-            result += String.fromCharCode(start + (code - start + shift) % 26);
+        const code = c.charCodeAt(0);
+        if (code >= 65 && code <= 90) {
+            const shift = key[(j++) % key.length].toUpperCase().charCodeAt(0) - 65;
+            result += String.fromCharCode(65 + (code - 65 + shift) % 26);
+        } else if (code >= 97 && code <= 122) {
+            const shift = key[(j++) % key.length].toLowerCase().charCodeAt(0) - 97;
+            result += String.fromCharCode(97 + (code - 97 + shift) % 26);
+        } else {
+            result += c;
         }
     }
     return result;

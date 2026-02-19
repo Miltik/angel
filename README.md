@@ -125,6 +125,16 @@ run /angel/modules/hacking.js
 run /angel/modules/maxprofit.js
 ```
 
+### Max Gang Module (`modules/maxgang.js`)
+- Full-featured standalone gang manager: recruits, trains, ascends, equips,
+  assigns tasks, and manages territory warfare to maximize dominance.
+- Aggressive by design — intended to be started manually and run alone.
+
+**Run manually:**
+```
+run /angel/modules/maxgang.js
+```
+
 ### Server Management Module (`modules/servers.js`)
 - Automatically roots new servers as they become accessible
 - Purchases new servers when funds are available

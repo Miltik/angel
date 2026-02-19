@@ -119,6 +119,9 @@ async function solveAllContracts(ns, ui) {
                                 return (Array.isArray(data) && data.length > 100000);
                             case "Spiralize Matrix":
                                 return (Array.isArray(data) && data.length && data[0] && (data.length * data[0].length > 20000));
+                            case "Find All Valid Math Expressions":
+                                // This contract can be extremely expensive; skip by default to avoid freezing
+                                return true;
                             default:
                                 return false;
                         }

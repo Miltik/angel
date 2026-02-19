@@ -55,6 +55,7 @@ export async function main(ns) {
         "modules/dashboard.js",          // New: Real-time monitoring
         "modules/uiLauncher.js",         // New: Clickable window visibility launcher
         "modules/contracts.js",          // New: Coding contracts solver
+        "modules/find_contracts.js",     // New: helper to list .cct files across servers
         "modules/formulas.js",           // New: Formulas.exe farming
         "modules/backdoorRunner.js",     // New: Full backdoor runner (launched by backdoor.js)
         "modules/resetMonitor.js",       // New: Persistent reset tracking utility

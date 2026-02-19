@@ -99,6 +99,8 @@ async function solveAllContracts(ns, ui) {
             totalContracts += (contracts ? contracts.length : 0);
             
             for (const contractName of contracts) {
+                const contractType = ns.codingcontract.getContractType(contractName, server);
+                const contractData = ns.codingcontract.getData(contractName, server);
                 // Safety guards: skip extremely large/expensive contract inputs to avoid long hangs
                 try {
                     const expensiveSkip = (type, data) => {
@@ -122,15 +124,13 @@ async function solveAllContracts(ns, ui) {
                         }
                     };
 
-                    if (expensiveSkip(contractName, contractData)) {
-                        ui.log(`⏭️ Skipping ${contractName} on ${server} (input too large)`, "warn");
+                    if (expensiveSkip(contractType, contractData)) {
+                        ui.log(`⏭️ Skipping ${contractType} on ${server} (input too large)`, "warn");
                         continue;
                     }
                 } catch (e) {
                     // ignore guard errors — proceed to attempt solving
                 }
-                const contractType = ns.codingcontract.getContractType(contractName, server);
-                const contractData = ns.codingcontract.getData(contractName, server);
                 
                 let solution = null;
                 

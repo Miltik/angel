@@ -56,21 +56,25 @@ export async function main(ns) {
     const removeLock = () => {
         try { if (ns.fileExists(LOCK_FILE, ns.getHostname())) ns.rm(LOCK_FILE); } catch (e) { }
     };
-    while (true) {
-        try {
-            lastState.loopCount++;
-            const solved = await solveAllContracts(ns, ui);
-            
-            // Log periodically
-            if (lastState.loopCount % 10 === 0) {
-                ui.log(`✅ Contracts solved: ${lastState.contractsSolved} | Rewards: ${formatMoney(lastState.totalRewards)}`, "info");
+    try {
+        while (true) {
+            try {
+                lastState.loopCount++;
+                const solved = await solveAllContracts(ns, ui);
+
+                // Log periodically
+                if (lastState.loopCount % 10 === 0) {
+                    ui.log(`✅ Contracts solved: ${lastState.contractsSolved} | Rewards: ${formatMoney(lastState.totalRewards)}`, "info");
+                }
+
+                await ns.sleep(30000);  // Check every 30 seconds
+            } catch (e) {
+                ui.log(`❌ Error: ${e.message}`, "error");
+                await ns.sleep(5000);
             }
-            
-            await ns.sleep(30000);  // Check every 30 seconds
-        } catch (e) {
-            ui.log(`❌ Error: ${e.message}`, "error");
-            await ns.sleep(5000);
         }
+    } finally {
+        removeLock();
     }
 }
 
@@ -95,6 +99,36 @@ async function solveAllContracts(ns, ui) {
             totalContracts += (contracts ? contracts.length : 0);
             
             for (const contractName of contracts) {
+                // Safety guards: skip extremely large/expensive contract inputs to avoid long hangs
+                try {
+                    const expensiveSkip = (type, data) => {
+                        switch (type) {
+                            case "Find All Valid Math Expressions":
+                                return (!data || !Array.isArray(data) || String(data[0]).length > 12);
+                            case "Total Ways to Sum":
+                                return (typeof data === 'number' && data > 300);
+                            case "Compression II: LZ Decompression":
+                                return (Array.isArray(data) && data.length > 20000);
+                            case "HammingCodes: Integer to Encoded Binary":
+                                return (String(Number(data)).length > 100);
+                            case "HammingCodes: Encoded Binary to Integer":
+                                return (typeof data === 'string' && data.length > 2048);
+                            case "Array Jumping Game":
+                                return (Array.isArray(data) && data.length > 100000);
+                            case "Spiralize Matrix":
+                                return (Array.isArray(data) && data.length && data[0] && (data.length * data[0].length > 20000));
+                            default:
+                                return false;
+                        }
+                    };
+
+                    if (expensiveSkip(contractName, contractData)) {
+                        ui.log(`⏭️ Skipping ${contractName} on ${server} (input too large)`, "warn");
+                        continue;
+                    }
+                } catch (e) {
+                    // ignore guard errors — proceed to attempt solving
+                }
                 const contractType = ns.codingcontract.getContractType(contractName, server);
                 const contractData = ns.codingcontract.getData(contractName, server);
                 

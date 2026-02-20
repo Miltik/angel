@@ -84,6 +84,13 @@ export async function main(ns) {
         return Math.floor(free / ramPer);
     }
 
+    function totalAvailableThreads(script) {
+        const hosts = getUsableHosts();
+        let total = 0;
+        for (const h of hosts) total += availableThreadsOn(h, script);
+        return total;
+    }
+
     function distributeAndExec(script, threads, target) {
         if (threads <= 0) return 0;
         const hosts = getUsableHosts().sort((a,b)=> (ns.getServerMaxRam(b)-ns.getServerMaxRam(a)));
@@ -143,12 +150,19 @@ export async function main(ns) {
             const maxMoney = ns.getServerMaxMoney(target);
 
             // If security too high, weaken
-            if (sec > minSec + 2) {
+            if (sec > minSec + 0.5) {
                 const secDiff = sec - minSec;
-                const reducePerThread = ns.weakenAnalyze(1);
+                const reducePerThread = ns.weakenAnalyze(1) || 0.05;
                 const needed = Math.ceil(secDiff / reducePerThread);
-                const launched = distributeAndExec(weakenWorker, needed, target);
-                ns.print(`weaken: target=${target} needed=${needed} launched=${launched}`);
+                const avail = totalAvailableThreads(weakenWorker);
+                const toLaunch = Math.max(0, Math.min(needed, avail));
+                if (toLaunch <= 0) {
+                    // Nothing can be launched right now; wait a short time and retry
+                    await ns.sleep(5000);
+                    continue;
+                }
+                const launched = distributeAndExec(weakenWorker, toLaunch, target);
+                ns.print(`weaken: target=${target} needed=${needed} avail=${avail} launched=${launched}`);
                 await ns.sleep(1000 + ns.getWeakenTime(target));
                 continue;
             }
@@ -172,9 +186,18 @@ export async function main(ns) {
             const totalSecInc = hackSecInc + growSecInc;
             const weakenThreads = Math.ceil(totalSecInc / ns.weakenAnalyze(1));
 
-            const l1 = distributeAndExec(weakenWorker, weakenThreads, target);
-            const l2 = distributeAndExec(growWorker, growThreads, target);
-            const l3 = distributeAndExec(hackWorker, hackThreads, target);
+            // Cap threads to what is actually available so we don't stall forever.
+            const availWeaken = totalAvailableThreads(weakenWorker);
+            const availGrow = totalAvailableThreads(growWorker);
+            const availHack = totalAvailableThreads(hackWorker);
+
+            const wLaunch = Math.max(0, Math.min(weakenThreads, availWeaken));
+            const gLaunch = Math.max(0, Math.min(growThreads, availGrow));
+            const hLaunch = Math.max(0, Math.min(hackThreads, availHack));
+
+            const l1 = distributeAndExec(weakenWorker, wLaunch, target);
+            const l2 = distributeAndExec(growWorker, gLaunch, target);
+            const l3 = distributeAndExec(hackWorker, hLaunch, target);
 
             ns.print(`cycle: hackThreads=${hackThreads} grow=${growThreads} weaken=${weakenThreads} launched=${l1+l2+l3}`);
 

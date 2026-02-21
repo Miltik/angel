@@ -37,6 +37,9 @@ export async function main(ns) {
         "networkMap.js",
         "backdoor.js",
         "xpFarm.js",
+
+        // Tools
+        "recursive-nuke.js", // Recursive nuke script
         
         // Modules
         "modules/uiManager.js",          // New: DOM UI framework

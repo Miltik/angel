@@ -1,7 +1,10 @@
-// karma.js
-// Simple script to display karma level
-
-// Replace this with actual karma retrieval logic if needed
-const karma = 42;
-
-console.log(`Your karma level is: ${karma}`);
+/**
+ * karma.js
+ * Simple Bitburner script to display your karma level
+ * @param {NS} ns
+ */
+export async function main(ns) {
+	// Retrieve the player's karma
+	const karma = ns.heart.break();
+	ns.tprint(`Your karma level is: ${karma}`);
+}

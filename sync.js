@@ -37,6 +37,7 @@ export async function main(ns) {
         "networkMap.js",
         "backdoor.js",
         "xpFarm.js",
+        "karma.js", // Karma display script
 
         // Tools
         "recursive-nuke.js", // Recursive nuke script

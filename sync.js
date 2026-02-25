@@ -72,6 +72,7 @@ export async function main(ns) {
         "angel-ram.js",                  // New: RAM calculator
         "early-hack.js",
         "resetMonitor.js",               // New: Reset history viewer
+        "corpManager.js",                // Standalone Corporation Management Script
         
         // Workers
         "workers/hack.js",

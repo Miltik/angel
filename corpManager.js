@@ -33,11 +33,16 @@ export async function main(ns) {
         ns.tprint(`Division '${divisionName}' created.`);
     }
 
-    // 3. Expand to all cities and hire employees
+    // 3. Expand to all cities, hire employees, and ensure warehouse exists
     for (const city of cityList) {
         if (!ns.corporation.getDivision(divisionName).cities.includes(city)) {
             ns.corporation.expandCity(divisionName, city);
             ns.tprint(`Expanded '${divisionName}' to ${city}.`);
+        }
+        // Ensure warehouse exists before any further actions
+        if (!ns.corporation.getWarehouse(divisionName, city)) {
+            ns.corporation.purchaseWarehouse(divisionName, city);
+            ns.tprint(`Purchased warehouse for '${divisionName}' in ${city}.`);
         }
         // Hire employees and assign jobs
         while (ns.corporation.getOffice(divisionName, city).numEmployees < 3) {
@@ -46,15 +51,9 @@ export async function main(ns) {
         ns.corporation.setAutoJobAssignment(divisionName, city, "Operations", 1);
         ns.corporation.setAutoJobAssignment(divisionName, city, "Engineer", 1);
         ns.corporation.setAutoJobAssignment(divisionName, city, "Business", 1);
-    }
-
-    // 4. Upgrade warehouses and offices
-    for (const city of cityList) {
-        if (!ns.corporation.getOffice(divisionName, city).size >= 3) {
-            ns.corporation.upgradeOfficeSize(divisionName, city, 3);
-        }
-        if (!ns.corporation.getWarehouse(divisionName, city)) {
-            ns.corporation.purchaseWarehouse(divisionName, city);
+        // Upgrade office size and warehouse
+        if (ns.corporation.getOffice(divisionName, city).size < 3) {
+            ns.corporation.upgradeOfficeSize(divisionName, city, 3 - ns.corporation.getOffice(divisionName, city).size);
         }
         ns.corporation.upgradeWarehouse(divisionName, city, 1);
     }

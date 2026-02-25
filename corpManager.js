@@ -43,6 +43,8 @@ export async function main(ns) {
         if (!ns.corporation.getWarehouse(divisionName, city)) {
             ns.corporation.purchaseWarehouse(divisionName, city);
             ns.tprint(`Purchased warehouse for '${divisionName}' in ${city}.`);
+            // Wait for warehouse to be registered
+            await ns.sleep(100);
         }
         // Hire employees and assign jobs
         while (ns.corporation.getOffice(divisionName, city).numEmployees < 3) {

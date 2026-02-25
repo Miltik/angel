@@ -60,8 +60,13 @@ export async function main(ns) {
 
     // 5. Start making money: Sell max
     for (const city of cityList) {
-        ns.corporation.sellMaterial(divisionName, city, "Food", "MAX", "MP");
-        ns.corporation.sellMaterial(divisionName, city, "Plants", "MAX", "MP");
+        // Only sell if warehouse exists
+        if (ns.corporation.getWarehouse(divisionName, city)) {
+            ns.corporation.sellMaterial(divisionName, city, "Food", "MAX", "MP");
+            ns.corporation.sellMaterial(divisionName, city, "Plants", "MAX", "MP");
+        } else {
+            ns.tprint(`Skipping sellMaterial in ${city}: No warehouse for ${divisionName}`);
+        }
     }
 
     // 6. Research upgrades

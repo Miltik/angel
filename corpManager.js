@@ -41,10 +41,24 @@ export async function main(ns) {
         }
         // Ensure warehouse exists before any further actions
         if (!ns.corporation.getWarehouse(divisionName, city)) {
+            // Wait until enough money for warehouse purchase
+            let warehouseCost = ns.corporation.getPurchaseWarehouseCost(divisionName, city);
+            while (ns.corporation.getCorporation().funds < warehouseCost) {
+                ns.tprint(`Waiting for funds to purchase warehouse in ${city} ($${ns.formatNumber(warehouseCost)} needed, $${ns.formatNumber(ns.corporation.getCorporation().funds)} available)...`);
+                await ns.sleep(5000);
+            }
             ns.corporation.purchaseWarehouse(divisionName, city);
             ns.tprint(`Purchased warehouse for '${divisionName}' in ${city}.`);
-            // Wait for warehouse to be registered
-            await ns.sleep(100);
+            // Wait and retry until warehouse is registered
+            let retries = 10;
+            while (!ns.corporation.getWarehouse(divisionName, city) && retries > 0) {
+                await ns.sleep(200);
+                retries--;
+            }
+            if (!ns.corporation.getWarehouse(divisionName, city)) {
+                ns.tprint(`ERROR: Warehouse for '${divisionName}' in ${city} not registered after purchase.`);
+                continue;
+            }
         }
         // Hire employees and assign jobs
         while (ns.corporation.getOffice(divisionName, city).numEmployees < 3) {
@@ -55,6 +69,11 @@ export async function main(ns) {
         ns.corporation.setAutoJobAssignment(divisionName, city, "Business", 1);
         // Upgrade office size and warehouse
         if (ns.corporation.getOffice(divisionName, city).size < 3) {
+            let upgradeCost = ns.corporation.getUpgradeOfficeCost(divisionName, city, 3 - ns.corporation.getOffice(divisionName, city).size);
+            while (ns.corporation.getCorporation().funds < upgradeCost) {
+                ns.tprint(`Waiting for funds to upgrade office in ${city} ($${ns.formatNumber(upgradeCost)} needed, $${ns.formatNumber(ns.corporation.getCorporation().funds)} available)...`);
+                await ns.sleep(5000);
+            }
             ns.corporation.upgradeOfficeSize(divisionName, city, 3 - ns.corporation.getOffice(divisionName, city).size);
         }
         ns.corporation.upgradeWarehouse(divisionName, city, 1);

@@ -74,6 +74,7 @@ export async function main(ns) {
         "resetMonitor.js",               // New: Reset history viewer
         "corpManager.js",                // Standalone Corporation Management Script
         "share-all.js",                  // Share all free RAM to current faction
+        "share.js",                      // Worker script for share-all.js
         
         // Workers
         "workers/hack.js",

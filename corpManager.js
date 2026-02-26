@@ -33,60 +33,62 @@ export async function main(ns) {
         ns.tprint(`Division '${divisionName}' created.`);
     }
 
-    // 3. Expand to all cities, hire employees, and ensure warehouse exists
+    // 3. Expand to all cities, hire employees, and manage only cities with a warehouse
+    let managedCities = [];
     for (const city of cityList) {
         if (!ns.corporation.getDivision(divisionName).cities.includes(city)) {
             ns.corporation.expandCity(divisionName, city);
             ns.tprint(`Expanded '${divisionName}' to ${city}.`);
         }
-        // Ensure warehouse exists before any further actions
+        // Try to ensure warehouse exists
         if (!ns.corporation.getWarehouse(divisionName, city)) {
-            // Wait until enough money for warehouse purchase
             let warehouseCost = ns.corporation.getPurchaseWarehouseCost(divisionName, city);
-            while (ns.corporation.getCorporation().funds < warehouseCost) {
-                ns.tprint(`Waiting for funds to purchase warehouse in ${city} ($${ns.formatNumber(warehouseCost)} needed, $${ns.formatNumber(ns.corporation.getCorporation().funds)} available)...`);
-                await ns.sleep(5000);
-            }
-            ns.corporation.purchaseWarehouse(divisionName, city);
-            ns.tprint(`Purchased warehouse for '${divisionName}' in ${city}.`);
-            // Wait and retry until warehouse is registered
-            let retries = 10;
-            while (!ns.corporation.getWarehouse(divisionName, city) && retries > 0) {
-                await ns.sleep(200);
-                retries--;
-            }
-            if (!ns.corporation.getWarehouse(divisionName, city)) {
-                ns.tprint(`ERROR: Warehouse for '${divisionName}' in ${city} not registered after purchase.`);
-                continue;
+            if (ns.corporation.getCorporation().funds >= warehouseCost) {
+                ns.corporation.purchaseWarehouse(divisionName, city);
+                ns.tprint(`Purchased warehouse for '${divisionName}' in ${city}.`);
+                let retries = 10;
+                while (!ns.corporation.getWarehouse(divisionName, city) && retries > 0) {
+                    await ns.sleep(200);
+                    retries--;
+                }
             }
         }
-        // Hire employees and assign jobs
-        while (ns.corporation.getOffice(divisionName, city).numEmployees < 3) {
-            ns.corporation.hireEmployee(divisionName, city);
-        }
-        ns.corporation.setAutoJobAssignment(divisionName, city, "Operations", 1);
-        ns.corporation.setAutoJobAssignment(divisionName, city, "Engineer", 1);
-        ns.corporation.setAutoJobAssignment(divisionName, city, "Business", 1);
-        // Upgrade office size and warehouse
-        if (ns.corporation.getOffice(divisionName, city).size < 3) {
-            let upgradeCost = ns.corporation.getUpgradeOfficeCost(divisionName, city, 3 - ns.corporation.getOffice(divisionName, city).size);
-            while (ns.corporation.getCorporation().funds < upgradeCost) {
-                ns.tprint(`Waiting for funds to upgrade office in ${city} ($${ns.formatNumber(upgradeCost)} needed, $${ns.formatNumber(ns.corporation.getCorporation().funds)} available)...`);
-                await ns.sleep(5000);
+        // Only manage city if warehouse exists
+        if (ns.corporation.getWarehouse(divisionName, city)) {
+            managedCities.push(city);
+            // Hire employees and assign jobs
+            while (ns.corporation.getOffice(divisionName, city).numEmployees < 3) {
+                ns.corporation.hireEmployee(divisionName, city);
             }
-            ns.corporation.upgradeOfficeSize(divisionName, city, 3 - ns.corporation.getOffice(divisionName, city).size);
+            ns.corporation.setAutoJobAssignment(divisionName, city, "Operations", 1);
+            ns.corporation.setAutoJobAssignment(divisionName, city, "Engineer", 1);
+            ns.corporation.setAutoJobAssignment(divisionName, city, "Business", 1);
+            // Upgrade office size and warehouse
+            if (ns.corporation.getOffice(divisionName, city).size < 3) {
+                let upgradeCost = ns.corporation.getUpgradeOfficeCost(divisionName, city, 3 - ns.corporation.getOffice(divisionName, city).size);
+                while (ns.corporation.getCorporation().funds < upgradeCost) {
+                    ns.tprint(`Waiting for funds to upgrade office in ${city} ($${ns.formatNumber(upgradeCost)} needed, $${ns.formatNumber(ns.corporation.getCorporation().funds)} available)...`);
+                    await ns.sleep(5000);
+                }
+                ns.corporation.upgradeOfficeSize(divisionName, city, 3 - ns.corporation.getOffice(divisionName, city).size);
+            }
+            ns.corporation.upgradeWarehouse(divisionName, city, 1);
+        } else {
+            ns.tprint(`No warehouse in ${city}. City will not be managed until warehouse is available.`);
         }
-        ns.corporation.upgradeWarehouse(divisionName, city, 1);
     }
 
     // 5. Start making money: Sell max
-    for (const city of cityList) {
-        // Only sell if warehouse exists
-        if (ns.corporation.getWarehouse(divisionName, city)) {
+    for (const city of managedCities) {
+        try {
             ns.corporation.sellMaterial(divisionName, city, "Food", "MAX", "MP");
+        } catch (e) {
+            ns.tprint(`Error selling Food in ${city}: ${e}`);
+        }
+        try {
             ns.corporation.sellMaterial(divisionName, city, "Plants", "MAX", "MP");
-        } else {
-            ns.tprint(`Skipping sellMaterial in ${city}: No warehouse for ${divisionName}`);
+        } catch (e) {
+            ns.tprint(`Error selling Plants in ${city}: ${e}`);
         }
     }
 
@@ -104,29 +106,55 @@ export async function main(ns) {
     }
 
     // 7. Expand to a product division (e.g., Tobacco)
+    let productManagedCities = [];
     if (!ns.corporation.getCorporation().divisions.includes(productDivision)) {
         ns.corporation.expandIndustry("Tobacco", productDivision);
         ns.tprint(`Division '${productDivision}' created.`);
-        for (const city of cityList) {
+    }
+    for (const city of cityList) {
+        if (!ns.corporation.getDivision(productDivision).cities.includes(city)) {
             ns.corporation.expandCity(productDivision, city);
-            if (!ns.corporation.getWarehouse(productDivision, city)) {
+        }
+        if (!ns.corporation.getWarehouse(productDivision, city)) {
+            let warehouseCost = ns.corporation.getPurchaseWarehouseCost(productDivision, city);
+            if (ns.corporation.getCorporation().funds >= warehouseCost) {
                 ns.corporation.purchaseWarehouse(productDivision, city);
+                ns.tprint(`Purchased warehouse for '${productDivision}' in ${city}.`);
+                let retries = 10;
+                while (!ns.corporation.getWarehouse(productDivision, city) && retries > 0) {
+                    await ns.sleep(200);
+                    retries--;
+                }
             }
+        }
+        if (ns.corporation.getWarehouse(productDivision, city)) {
+            productManagedCities.push(city);
+        } else {
+            ns.tprint(`No warehouse in ${city} for ${productDivision}. City will not be managed until warehouse is available.`);
         }
     }
 
     // 8. Make products in the product division
     for (let i = 0; i < productNames.length; ++i) {
         if (ns.corporation.getDivision(productDivision).products.length <= i) {
-            ns.corporation.makeProduct(productDivision, cityList[0], productNames[i], 1e9, 1e9);
-            ns.tprint(`Started making product: ${productNames[i]}`);
+            // Use first managed city for product creation
+            if (productManagedCities.length > 0) {
+                ns.corporation.makeProduct(productDivision, productManagedCities[0], productNames[i], 1e9, 1e9);
+                ns.tprint(`Started making product: ${productNames[i]}`);
+            } else {
+                ns.tprint(`No managed city with warehouse for ${productDivision}. Cannot make product: ${productNames[i]}`);
+            }
         }
     }
 
     // 9. Sell products
     for (const product of ns.corporation.getDivision(productDivision).products) {
-        for (const city of cityList) {
-            ns.corporation.sellProduct(productDivision, city, product, "MAX", "MP", false);
+        for (const city of productManagedCities) {
+            try {
+                ns.corporation.sellProduct(productDivision, city, product, "MAX", "MP", false);
+            } catch (e) {
+                ns.tprint(`Error selling product ${product} in ${city}: ${e}`);
+            }
         }
     }
 

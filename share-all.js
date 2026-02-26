@@ -6,8 +6,14 @@
  * @param {NS} ns
  */
 export async function main(ns) {
-    // Get the current working faction
-    const faction = ns.getPlayer().currentWorkFactionName;
+    // Get the current working faction (more reliable)
+    let faction = "";
+    if (ns.singularity && typeof ns.singularity.getCurrentWork === "function") {
+        const work = ns.singularity.getCurrentWork();
+        faction = work && work.factionName ? work.factionName : "";
+    } else {
+        faction = ns.getPlayer().currentWorkFactionName;
+    }
     if (!faction) {
         ns.tprint("ERROR: You are not currently working for any faction.");
         return;

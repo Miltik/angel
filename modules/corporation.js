@@ -286,11 +286,20 @@ function ensureDivision(ns, industry, divisionName, budget, settings, ui) {
         return budget;
     }
 
-    const cost = safeNumber(() => corpCall(ns, "getExpandIndustryCost", industry), Number.POSITIVE_INFINITY);
+    // Try to get industry data for cost, fallback to getExpandIndustryCost
+    let cost = Number.POSITIVE_INFINITY;
+    try {
+        const industryData = corpCall(ns, "getIndustryData", industry);
+        cost = Number(industryData.startingCost || 0);
+    } catch {
+        // Fallback to getExpandIndustryCost if getIndustryData doesn't exist
+        cost = safeNumber(() => corpCall(ns, "getExpandIndustryCost", industry), Number.POSITIVE_INFINITY);
+    }
     
-    if (!Number.isFinite(cost)) {
-        ui.log(`❌ Cannot get expansion cost for ${industry}`, "error");
-        return budget;
+    if (!Number.isFinite(cost) || cost === 0) {
+        ui.log(`❌ Cannot determine expansion cost for ${industry} (got: ${cost})`, "error");
+        ui.log(`   Trying with estimated cost of 70b...`, "info");
+        cost = 70e9; // Fallback: typical Agriculture expansion cost
     }
 
     const funds = safeNumber(() => corpCall(ns, "getCorporation").funds, 0);

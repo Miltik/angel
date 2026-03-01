@@ -180,7 +180,14 @@ function corpCall(ns, method, ...args) {
         case "getResearchCost": return corp.getResearchCost(args[0], args[1]);
         case "research": return corp.research(args[0], args[1]);
         case "getUnlockUpgradeCost": return corp.getUnlockUpgradeCost(args[0]);
-        case "unlockUpgrade": return corp.unlockUpgrade(args[0]);
+        case "unlockUpgrade":
+            if (typeof corp.unlockUpgrade === "function") {
+                return corp.unlockUpgrade(args[0]);
+            }
+            if (typeof corp.purchaseUnlock === "function") {
+                return corp.purchaseUnlock(args[0]);
+            }
+            throw new Error("Corporation unlock method unavailable (expected unlockUpgrade or purchaseUnlock)");
         default:
             throw new Error(`Corporation method unsupported: ${method}`);
     }

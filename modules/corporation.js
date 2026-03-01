@@ -36,7 +36,7 @@ export async function main(ns) {
     ui.log(`Settings:`, "info");
     ui.log(`  Primary: ${settings.primaryIndustry}/${settings.primaryDivision} in ${settings.primaryCity}`, "info");
     ui.log(`  Multi-city: ${settings.expandToAllCities ? "enabled" : "disabled (focus single city first)"}`, "info");
-    ui.log(`  Products: ${settings.enableProducts ? "enabled" : "disabled"} | Budget/cycle: 20%`, "info");
+    ui.log(`  Products: ${settings.enableProducts ? "enabled" : "disabled"} | Budget/cycle: 30%`, "info");
 
     while (true) {
         try {
@@ -85,8 +85,8 @@ function getSettings() {
     return {
         ...(config.corporation || {}),
         loopDelayMs: Number(config.corporation?.loopDelayMs ?? 5000),
-        maxSpendRatioPerCycle: Number(config.corporation?.maxSpendRatioPerCycle ?? 0.2),
-        minimumCashBuffer: Number(config.corporation?.minimumCashBuffer ?? 10e9),
+        maxSpendRatioPerCycle: Number(config.corporation?.maxSpendRatioPerCycle ?? 0.3),
+        minimumCashBuffer: Number(config.corporation?.minimumCashBuffer ?? 5e9),
         autoCreate: Boolean(config.corporation?.autoCreate ?? false),
         corporationName: String(config.corporation?.corporationName ?? "AngelCorp"),
         createWithSeedCapital: Boolean(config.corporation?.createWithSeedCapital ?? true),
@@ -104,10 +104,10 @@ function getSettings() {
         multiCityExpansionMinFunds: Number(config.corporation?.multiCityExpansionMinFunds ?? 500e9),
         multiCityExpansionMinRevenue: Number(config.corporation?.multiCityExpansionMinRevenue ?? 5e9),
         multiCityExpansionMinEmployees: Number(config.corporation?.multiCityExpansionMinEmployees ?? 30),
-        minOfficeSizePrimary: Number(config.corporation?.minOfficeSizePrimary ?? 30),
-        minOfficeSizeProduct: Number(config.corporation?.minOfficeSizeProduct ?? 30),
-        minWarehouseLevelPrimary: Number(config.corporation?.minWarehouseLevelPrimary ?? 10),
-        minWarehouseLevelProduct: Number(config.corporation?.minWarehouseLevelProduct ?? 10),
+        minOfficeSizePrimary: Number(config.corporation?.minOfficeSizePrimary ?? 9),
+        minOfficeSizeProduct: Number(config.corporation?.minOfficeSizeProduct ?? 15),
+        minWarehouseLevelPrimary: Number(config.corporation?.minWarehouseLevelPrimary ?? 3),
+        minWarehouseLevelProduct: Number(config.corporation?.minWarehouseLevelProduct ?? 5),
         enableProducts: Boolean(config.corporation?.enableProducts ?? true),
         enableSecondaryProduct: Boolean(config.corporation?.enableSecondaryProduct ?? false),
         productStartFunds: Number(config.corporation?.productStartFunds ?? 300e9),
@@ -404,14 +404,28 @@ function ensureWarehouse(ns, divisionName, city, minLevel, budget, settings, ui)
     const warehouse = safeValue(() => corpCall(ns, "getWarehouse", divisionName, city), null);
     if (warehouse && warehouse.level < minLevel) {
         const levelsNeeded = minLevel - warehouse.level;
-        const upgradeCost = safeNumber(
+        const fullCost = safeNumber(
             () => corpCall(ns, "getUpgradeWarehouseCost", divisionName, city, levelsNeeded),
             Number.POSITIVE_INFINITY
         );
-        if (canSpend(ns, upgradeCost, budget, settings.minimumCashBuffer)) {
+        
+        // Try to upgrade to target, but if can't afford, upgrade incrementally (1 level at a time)
+        let actualLevels = levelsNeeded;
+        let cost = fullCost;
+        
+        if (!canSpend(ns, fullCost, budget, settings.minimumCashBuffer)) {
+            // Can't afford full upgrade, try one level at a time
+            actualLevels = 1;
+            cost = safeNumber(
+                () => corpCall(ns, "getUpgradeWarehouseCost", divisionName, city, 1),
+                Number.POSITIVE_INFINITY
+            );
+        }
+        
+        if (canSpend(ns, cost, budget, settings.minimumCashBuffer) && actualLevels > 0) {
             try {
-                corpCall(ns, "upgradeWarehouse", divisionName, city, levelsNeeded);
-                budget -= upgradeCost;
+                corpCall(ns, "upgradeWarehouse", divisionName, city, actualLevels);
+                budget -= cost;
             } catch {}
         }
     }
@@ -437,13 +451,27 @@ function ensureOffice(ns, divisionName, city, minSize, budget, settings) {
 
     if (office.size < minSize) {
         const growBy = minSize - office.size;
-        const cost = safeNumber(
+        const fullCost = safeNumber(
             () => corpCall(ns, "getOfficeSizeUpgradeCost", divisionName, city, growBy),
             Number.POSITIVE_INFINITY
         );
-        if (canSpend(ns, cost, budget, settings.minimumCashBuffer)) {
+        
+        // Try to grow to target, but if can't afford, grow incrementally (add 3 at a time)
+        let actualGrowBy = growBy;
+        let cost = fullCost;
+        
+        if (!canSpend(ns, fullCost, budget, settings.minimumCashBuffer)) {
+            // Can't afford full upgrade, try incremental growth
+            actualGrowBy = Math.min(3, growBy);
+            cost = safeNumber(
+                () => corpCall(ns, "getOfficeSizeUpgradeCost", divisionName, city, actualGrowBy),
+                Number.POSITIVE_INFINITY
+            );
+        }
+        
+        if (canSpend(ns, cost, budget, settings.minimumCashBuffer) && actualGrowBy > 0) {
             try {
-                corpCall(ns, "upgradeOfficeSize", divisionName, city, growBy);
+                corpCall(ns, "upgradeOfficeSize", divisionName, city, actualGrowBy);
                 budget -= cost;
             } catch {}
         }

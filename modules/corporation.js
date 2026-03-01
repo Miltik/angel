@@ -303,15 +303,26 @@ function ensureDivision(ns, industry, divisionName, budget, settings, ui) {
     }
 
     const funds = safeNumber(() => corpCall(ns, "getCorporation").funds, 0);
-    const canAfford = canSpend(ns, cost, budget, settings.minimumCashBuffer);
+    
+    // For initial divisions, bypass per-cycle budget limits - check only against total funds
+    const corp = safeValue(() => corpCall(ns, "getCorporation"), null);
+    const isFirstDivision = corp && corp.divisions.length === 0;
+    
+    const canAfford = isFirstDivision 
+        ? (funds - cost >= settings.minimumCashBuffer)  // First division: use full funds minus buffer
+        : canSpend(ns, cost, budget, settings.minimumCashBuffer);  // Later divisions: respect per-cycle budget
     
     if (!canAfford) {
-        ui.log(`💾 ${industry} blocked: Cost ${ns.formatNumber(cost, 2)} | Budget ${ns.formatNumber(budget, 2)} | Funds ${ns.formatNumber(funds, 2)} | MinBuffer ${ns.formatNumber(settings.minimumCashBuffer, 2)}`, "warn");
+        if (isFirstDivision) {
+            ui.log(`💾 ${industry} blocked: Cost ${ns.formatNumber(cost, 2)} | Funds ${ns.formatNumber(funds, 2)} | MinBuffer ${ns.formatNumber(settings.minimumCashBuffer, 2)} [First division]`, "warn");
+        } else {
+            ui.log(`💾 ${industry} blocked: Cost ${ns.formatNumber(cost, 2)} | Budget ${ns.formatNumber(budget, 2)} | Funds ${ns.formatNumber(funds, 2)} | MinBuffer ${ns.formatNumber(settings.minimumCashBuffer, 2)}`, "warn");
+        }
         return budget;
     }
 
     try {
-        ui.log(`🚀 Expanding ${industry} → ${divisionName} (Cost: ${ns.formatNumber(cost, 2)})`, "info");
+        ui.log(`🚀 Expanding ${industry} → ${divisionName} (Cost: ${ns.formatNumber(cost, 2)})${isFirstDivision ? ' [FIRST DIVISION]' : ''}`, "info");
         corpCall(ns, "expandIndustry", industry, divisionName);
         ui.log(`✅ Expanded ${industry} → ${divisionName}`, "success");
         return budget - cost;

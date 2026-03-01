@@ -37,7 +37,7 @@ async function collectLoot(ns, ui) {
     const includeHome = Boolean(config.loot?.includeHome);
     const lootExtensions = Array.isArray(config.loot?.extensions)
         ? config.loot.extensions.map(ext => String(ext || "").toLowerCase())
-        : [".lit", ".msg", ".txt", ".cct"];
+        : [".txt", ".cct"];
 
     const maxPerLoop = Math.max(1, Number(config.loot?.maxFilesPerLoop ?? 250));
     const archivePrefix = String(config.loot?.archivePrefix ?? "/angel/loot/");
@@ -61,9 +61,12 @@ async function collectLoot(ns, ui) {
 
             candidates++;
             try {
-                const sourceContent = ns.cat(file, server);
-                if (typeof sourceContent !== "string") {
+                const sourceContent = ns.read(file, server);
+                if (typeof sourceContent !== "string" || sourceContent === "") {
                     failed++;
+                    if (state.loopCount === 1 && failed <= 5) {
+                        ui.log(`⚠️  Cannot read ${file} on ${server} (unsupported type?)`, "warn");
+                    }
                     continue;
                 }
 
@@ -78,8 +81,11 @@ async function collectLoot(ns, ui) {
                 ns.write(target, sourceContent, "w");
                 updated++;
                 state.totalFilesArchived++;
-            } catch {
+            } catch (e) {
                 failed++;
+                if (state.loopCount === 1 && failed <= 5) {
+                    ui.log(`❌ Failed to copy ${file}: ${e.message || e}`, "error");
+                }
             }
         }
 

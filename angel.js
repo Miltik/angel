@@ -386,10 +386,13 @@ async function ensureModulesRunning(ns) {
     
     // Coding Contracts solver - low RAM
     if (config.orchestrator.enableContracts) {
-        await ensureModuleRunning(ns, SCRIPTS.contracts, "Contracts", [], {
+        const contractsStarted = await ensureModuleRunning(ns, SCRIPTS.contracts, "Contracts", [], {
             deferIfInsufficientRam: true,
             lowRamLogIntervalMs: 45000,
         });
+        if (!contractsStarted) {
+            log(ns, `Contracts module not started (check RAM or file errors)`, "WARN");
+        }
         await ns.sleep(1500);
     }
 

@@ -493,7 +493,7 @@ export const config = {
         includeHome: false,
         maxFilesPerLoop: 250,
         archivePrefix: "/angel/loot/",
-        extensions: [".lit", ".msg", ".txt", ".cct"],
+        extensions: [".txt", ".cct"],  // Only copyable file types (.lit/.msg are game objects, not files)
     },
 
     // Backdoor automation settings

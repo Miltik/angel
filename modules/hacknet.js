@@ -38,10 +38,18 @@ export async function main(ns) {
                 await ns.sleep(2000);
             }
         } catch (e) {
+            if (isScriptDeathError(e)) {
+                return;
+            }
             ui.log(`❌ Error: ${e}`, "error");
             await ns.sleep(5000);
         }
     }
+}
+
+function isScriptDeathError(error) {
+    const message = String(error || "");
+    return message.includes("ScriptDeath") || message.includes("NS instance has already been killed");
 }
 
 function displayStatus(ns, ui) {

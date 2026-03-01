@@ -74,11 +74,19 @@ export async function main(ns) {
             runCycle(ns, settings, ui);
             renderUI(ns, ui, settings);
         } catch (error) {
+            if (isScriptDeathError(error)) {
+                return;
+            }
             ui.log(`Cycle error: ${String(error)}`, "error");
         }
 
         await ns.sleep(settings.loopDelayMs);
     }
+}
+
+function isScriptDeathError(error) {
+    const message = String(error || "");
+    return message.includes("ScriptDeath") || message.includes("NS instance has already been killed");
 }
 
 function getSettings() {

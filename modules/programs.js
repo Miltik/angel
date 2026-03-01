@@ -34,6 +34,9 @@ export async function main(ns) {
             }
             
         } catch (e) {
+            if (isScriptDeathError(e)) {
+                return;
+            }
             ui.log(`Error: ${e}`, "error");
             await connectToHome(ns);
         }
@@ -179,9 +182,17 @@ async function phaseBuyPrograms(ns, ui) {
         return false; // Still need TOR
         
     } catch (e) {
+        if (isScriptDeathError(e)) {
+            throw e;
+        }
         ui.log(`Phase error: ${e}`, "error");
         return false;
     }
+}
+
+function isScriptDeathError(error) {
+    const message = String(error || "");
+    return message.includes("ScriptDeath") || message.includes("NS instance has already been killed");
 }
 
 function hasTor(ns) {

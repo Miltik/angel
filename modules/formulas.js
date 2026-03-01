@@ -61,10 +61,18 @@ export async function main(ns) {
             
             await ns.sleep(10000);  // Check every 10 seconds
         } catch (e) {
+            if (isScriptDeathError(e)) {
+                return;
+            }
             ui.log(`❌ Error: ${e.message}`, "error");
             await ns.sleep(5000);
         }
     }
+}
+
+function isScriptDeathError(error) {
+    const message = String(error || "");
+    return message.includes("ScriptDeath") || message.includes("NS instance has already been killed");
 }
 
 function farmFormulas(ns, ui) {

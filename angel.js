@@ -406,6 +406,7 @@ async function ensureModulesRunning(ns) {
     const corporationDelayMs = Number(config.orchestrator?.startupCorporationDelayMs ?? 35000);
     const hackingDelayMs = Number(config.orchestrator?.startupHackingDelayMs ?? 45000);
     const xpFarmDelayMs = Number(config.orchestrator?.startupXPFarmDelayMs ?? 55000);
+    const workerDelayMs = Number(config.orchestrator?.startupWorkerDelayMs ?? 90000);
     
     // Corporation module - starts first after core setup (before hacking RAM spike)
     if (config.orchestrator.enableCorporation) {
@@ -420,61 +421,7 @@ async function ensureModulesRunning(ns) {
         }
     }
 
-    // Hacking module - start after corporation initializes to avoid RAM starvation
-    if (config.orchestrator.enableHacking) {
-        if (startupElapsedMs >= hackingDelayMs) {
-            await ensureModuleRunning(ns, SCRIPTS.hacking, "Hacking", [], {
-                deferIfInsufficientRam: true,
-                lowRamLogIntervalMs: 45000,
-            });
-        } else if (shouldLogDeferredModule("hacking")) {
-            const remainingSec = Math.ceil((hackingDelayMs - startupElapsedMs) / 1000);
-            log(ns, `Deferring Hacking module startup for ${remainingSec}s to let core modules stabilize`, "INFO");
-        }
-    }
-
-    // XP Farm module - optional, starts after core modules to use spare RAM
-    if (config.orchestrator.enableXPFarm) {
-        if (startupElapsedMs < xpFarmDelayMs) {
-            if (shouldLogDeferredModule("xpFarm")) {
-                const remainingSec = Math.ceil((xpFarmDelayMs - startupElapsedMs) / 1000);
-                log(ns, `Deferring XP Farm startup for ${remainingSec}s to prioritize startup stability`, "INFO");
-            }
-            return true;
-        }
-
-        const xpMode = config.xpFarm?.mode || "spare-home";
-        const homeRam = ns.getServerMaxRam("home");
-        const weakenRam = ns.getScriptRam(SCRIPTS.weaken, "home") || 1.75;
-        const maxSafeReserve = Math.max(0, homeRam - weakenRam);
-
-        const configuredReserve = Number(config.xpFarm?.reserveHomeRam ?? 2);
-        const configuredMinFree = Number(config.xpFarm?.minHomeFreeRamGb ?? 1);
-        const effectiveReserve = Math.min(Math.max(0, configuredReserve), maxSafeReserve);
-        const effectiveMinFree = Math.min(Math.max(0, configuredMinFree), maxSafeReserve);
-
-        const xpArgs = [
-            "--mode", xpMode,
-            "--reserve", String(effectiveReserve),
-            "--minHomeFree", String(effectiveMinFree),
-            "--interval", String(config.xpFarm?.interval ?? 10000),
-        ];
-
-        if (config.xpFarm?.target) {
-            xpArgs.push("--target", String(config.xpFarm.target));
-        }
-
-        if (xpMode === "hyper" && config.xpFarm?.cleanHyper === false) {
-            xpArgs.push("--clean", "false");
-        }
-
-        await ensureModuleRunning(ns, SCRIPTS.xpFarm, "XP Farm", xpArgs, {
-            deferIfInsufficientRam: true,
-            lowRamLogIntervalMs: 45000,
-        });
-    }
-
-    // Coding Contracts solver - starts last to ensure maximum RAM availability
+    // Coding Contracts solver - prioritize before worker-heavy modules
     if (config.orchestrator.enableContracts) {
         await ensureModuleRunning(ns, SCRIPTS.contracts, "Contracts", [], {
             deferIfInsufficientRam: true,
@@ -483,13 +430,70 @@ async function ensureModulesRunning(ns) {
         await ns.sleep(1500);
     }
 
-    // Loot collector - starts last, low priority
+    // Loot collector - prioritize before worker-heavy modules
     if (config.orchestrator.enableLoot) {
         await ensureModuleRunning(ns, SCRIPTS.loot, "Loot", [], {
             deferIfInsufficientRam: true,
             lowRamLogIntervalMs: 45000,
         });
         await ns.sleep(1500);
+    }
+
+    // Hacking module - starts only after all utility modules have had launch window
+    if (config.orchestrator.enableHacking) {
+        const effectiveHackingDelayMs = Math.max(hackingDelayMs, workerDelayMs);
+        if (startupElapsedMs >= effectiveHackingDelayMs) {
+            await ensureModuleRunning(ns, SCRIPTS.hacking, "Hacking", [], {
+                deferIfInsufficientRam: true,
+                lowRamLogIntervalMs: 45000,
+            });
+        } else if (shouldLogDeferredModule("hacking")) {
+            const remainingSec = Math.ceil((effectiveHackingDelayMs - startupElapsedMs) / 1000);
+            log(ns, `Deferring Hacking module startup for ${remainingSec}s to let all modules stabilize first`, "INFO");
+        }
+    }
+
+    // XP Farm module - starts after hacking (or after same delay when hacking disabled)
+    if (config.orchestrator.enableXPFarm) {
+        const effectiveXPFarmDelayMs = Math.max(xpFarmDelayMs, workerDelayMs + 10000);
+        if (startupElapsedMs >= effectiveXPFarmDelayMs) {
+            if (config.orchestrator.enableHacking && !ns.isRunning(SCRIPTS.hacking, "home")) {
+                logThrottled(ns, "xpFarm-wait-hacking", "Deferring XP Farm startup until Hacking module is active", "INFO", 45000);
+            } else {
+                const xpMode = config.xpFarm?.mode || "spare-home";
+                const homeRam = ns.getServerMaxRam("home");
+                const weakenRam = ns.getScriptRam(SCRIPTS.weaken, "home") || 1.75;
+                const maxSafeReserve = Math.max(0, homeRam - weakenRam);
+
+                const configuredReserve = Number(config.xpFarm?.reserveHomeRam ?? 2);
+                const configuredMinFree = Number(config.xpFarm?.minHomeFreeRamGb ?? 1);
+                const effectiveReserve = Math.min(Math.max(0, configuredReserve), maxSafeReserve);
+                const effectiveMinFree = Math.min(Math.max(0, configuredMinFree), maxSafeReserve);
+
+                const xpArgs = [
+                    "--mode", xpMode,
+                    "--reserve", String(effectiveReserve),
+                    "--minHomeFree", String(effectiveMinFree),
+                    "--interval", String(config.xpFarm?.interval ?? 10000),
+                ];
+
+                if (config.xpFarm?.target) {
+                    xpArgs.push("--target", String(config.xpFarm.target));
+                }
+
+                if (xpMode === "hyper" && config.xpFarm?.cleanHyper === false) {
+                    xpArgs.push("--clean", "false");
+                }
+
+                await ensureModuleRunning(ns, SCRIPTS.xpFarm, "XP Farm", xpArgs, {
+                    deferIfInsufficientRam: true,
+                    lowRamLogIntervalMs: 45000,
+                });
+            }
+        } else if (shouldLogDeferredModule("xpFarm")) {
+            const remainingSec = Math.ceil((effectiveXPFarmDelayMs - startupElapsedMs) / 1000);
+            log(ns, `Deferring XP Farm startup for ${remainingSec}s to prioritize startup stability`, "INFO");
+        }
     }
 
     return true;

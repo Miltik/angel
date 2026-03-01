@@ -164,6 +164,7 @@ export const config = {
         startupCorporationDelayMs: 35000, // Start corporation early (before hacking consumes RAM)
         startupHackingDelayMs: 45000, // Delay hacking module startup after corporation initializes
         startupXPFarmDelayMs: 55000, // XP farm starts last, uses spare RAM
+        startupWorkerDelayMs: 90000, // Global grace period before worker-heavy modules (hacking/xpFarm)
 
     },
 

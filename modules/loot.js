@@ -40,6 +40,7 @@ async function collectLoot(ns, ui) {
         : [".lit", ".msg", ".txt", ".cct"];
 
     const maxPerLoop = Math.max(1, Number(config.loot?.maxFilesPerLoop ?? 250));
+    const archivePrefix = String(config.loot?.archivePrefix ?? "/angel/loot/");
     const manifestPath = "/angel/loot/loot-index.txt";
 
     let scannedServers = 0;
@@ -49,40 +50,58 @@ async function collectLoot(ns, ui) {
     let failed = 0;
     const manifestRows = [];
 
+    if (state.loopCount === 1) {
+        ui.log(`📚 Loot filters: ${lootExtensions.join(", ")}`, "info");
+    }
+
     for (const server of servers) {
         if (!includeHome && server === "home") continue;
         if (server !== "home" && !ns.hasRootAccess(server)) continue;
 
         scannedServers++;
-        const files = ns.ls(server);
+        const files = collectCandidateFiles(ns, server, lootExtensions);
 
         for (const file of files) {
-            if (!isLootFile(file, lootExtensions)) continue;
             if (candidates >= maxPerLoop) break;
 
             candidates++;
             try {
-                if (server === "home") {
+                const target = `${archivePrefix}${sanitize(server)}__${sanitize(file)}`;
+
+                if (ns.fileExists(target, "home")) {
                     unchanged++;
-                    manifestRows.push(`HOME | ${file} | already-local`);
+                    manifestRows.push(`${server} | ${file} | archived`);
                     continue;
                 }
 
-                const alreadyOnHome = ns.fileExists(file, "home");
-                if (alreadyOnHome) {
-                    unchanged++;
-                    manifestRows.push(`${server} | ${file} | exists-on-home`);
+                if (server === "home") {
+                    const moved = ns.mv("home", file, target);
+                    if (moved) {
+                        updated++;
+                        state.totalFilesArchived++;
+                        manifestRows.push(`HOME | ${file} | moved-to-archive`);
+                    } else {
+                        failed++;
+                        manifestRows.push(`HOME | ${file} | move-failed`);
+                    }
                     continue;
                 }
 
                 const copied = ns.scp(file, "home", server);
-                if (copied) {
-                    updated++;
-                    state.totalFilesArchived++;
-                    manifestRows.push(`${server} | ${file} | copied`);
-                } else {
+                if (!copied) {
                     failed++;
                     manifestRows.push(`${server} | ${file} | copy-failed`);
+                    continue;
+                }
+
+                const moved = ns.mv("home", file, target);
+                if (moved) {
+                    updated++;
+                    state.totalFilesArchived++;
+                    manifestRows.push(`${server} | ${file} | copied-and-archived`);
+                } else {
+                    failed++;
+                    manifestRows.push(`${server} | ${file} | copied-but-move-failed`);
                 }
             } catch (e) {
                 failed++;
@@ -104,16 +123,29 @@ async function collectLoot(ns, ui) {
     }
 }
 
-function isLootFile(file, extensions) {
+function collectCandidateFiles(ns, server, extensions) {
+    const unique = new Set();
+
+    for (const ext of extensions) {
+        const suffix = String(ext || "").toLowerCase();
+        if (!suffix) continue;
+
+        const matches = ns.ls(server, suffix);
+        for (const file of matches) {
+            if (!isLootFile(file, suffix)) continue;
+            unique.add(file);
+        }
+    }
+
+    return [...unique];
+}
+
+function isLootFile(file, extension) {
     if (!file || file.startsWith("/angel/")) return false;
     if (file.endsWith(".js") || file.endsWith(".exe")) return false;
 
-    const lower = file.toLowerCase();
-    for (const ext of extensions) {
-        if (lower.endsWith(ext)) return true;
-    }
-
-    return false;
+    if (!extension) return false;
+    return file.toLowerCase().endsWith(String(extension).toLowerCase());
 }
 
 function sanitize(value) {

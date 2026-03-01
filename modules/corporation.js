@@ -614,6 +614,17 @@ function maintainAgricultureInputs(ns, divisionName, city) {
         return;
     }
 
+    const hasSmartSupply = safeBool(() => corpCall(ns, "hasUnlockUpgrade", "Smart Supply"), false);
+    if (hasSmartSupply) {
+        const materials = ["Water", "Chemicals", "Hardware", "AI Cores", "Real Estate"];
+        for (const material of materials) {
+            try {
+                corpCall(ns, "buyMaterial", divisionName, city, material, 0);
+            } catch {}
+        }
+        return;
+    }
+
     const requiredTargets = {
         "Water": 1200,
         "Chemicals": 400,
@@ -850,15 +861,19 @@ function guaranteeCriticalUnlocks(ns, settings, budget, ui) {
             continue;
         }
 
-        if (!canSpend(ns, cost, budget, settings.minimumCashBuffer)) {
-            ui.log(`⚠️  Cannot afford ${unlockName} (Cost: ${ns.formatNumber(cost, 2)} | Budget: ${ns.formatNumber(budget, 2)})`, "warn");
+        const funds = safeNumber(() => corpCall(ns, "getCorporation").funds, 0);
+        const canAffordCriticalUnlock = (funds - cost) >= settings.minimumCashBuffer;
+
+        // Critical unlocks bypass per-cycle budget cap; only enforce total funds + cash buffer.
+        if (!canAffordCriticalUnlock) {
+            ui.log(`⚠️  Cannot afford ${unlockName} (Cost: ${ns.formatNumber(cost, 2)} | Funds: ${ns.formatNumber(funds, 2)} | MinBuffer: ${ns.formatNumber(settings.minimumCashBuffer, 2)})`, "warn");
             continue;
         }
 
         try {
             corpCall(ns, "unlockUpgrade", unlockName);
             ui.log(`✅ Unlocked: ${unlockName} (Cost: ${ns.formatNumber(cost, 2)})`, "success");
-            budget -= cost;
+            budget = Math.max(0, budget - cost);
         } catch (error) {
             ui.log(`❌ Failed to unlock ${unlockName}: ${String(error)}`, "warn");
         }

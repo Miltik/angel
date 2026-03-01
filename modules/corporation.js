@@ -160,7 +160,14 @@ function corpCall(ns, method, ...args) {
         case "getUpgradeWarehouseCost": return corp.getUpgradeWarehouseCost(args[0], args[1], args[2]);
         case "upgradeWarehouse": return corp.upgradeWarehouse(args[0], args[1], args[2]);
         case "hasUnlockUpgrade": return corp.hasUnlockUpgrade(args[0]);
-        case "setSmartSupply": return corp.setSmartSupply(args[0], args[1], args[2]);
+        case "setSmartSupply":
+            if (typeof corp.setSmartSupply === "function") {
+                return corp.setSmartSupply(args[0], args[1], args[2]);
+            }
+            if (typeof corp.setSmartSupplyEnabled === "function") {
+                return corp.setSmartSupplyEnabled(args[0], args[1], args[2]);
+            }
+            throw new Error("Corporation Smart Supply method unavailable (expected setSmartSupply or setSmartSupplyEnabled)");
         case "getOffice": return corp.getOffice(args[0], args[1]);
         case "getOfficeSizeUpgradeCost": return corp.getOfficeSizeUpgradeCost(args[0], args[1], args[2]);
         case "upgradeOfficeSize": return corp.upgradeOfficeSize(args[0], args[1], args[2]);
@@ -509,7 +516,9 @@ function ensureWarehouse(ns, divisionName, city, minLevel, budget, settings, ui)
         if (safeBool(() => corpCall(ns, "hasUnlockUpgrade", "Smart Supply"), false)) {
             corpCall(ns, "setSmartSupply", divisionName, city, true);
         }
-    } catch {}
+    } catch (error) {
+        logThrottled(ui, `Smart Supply enable failed (${divisionName}/${city}): ${String(error)}`, "warn", 20000);
+    }
 
     return budget;
 }

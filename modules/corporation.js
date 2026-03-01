@@ -119,6 +119,11 @@ function getSettings() {
         minWarehouseLevelProduct: Number(config.corporation?.minWarehouseLevelProduct ?? 5),
         enableProducts: Boolean(config.corporation?.enableProducts ?? false),
         enableSecondaryProduct: Boolean(config.corporation?.enableSecondaryProduct ?? false),
+        enableInvestors: Boolean(config.corporation?.enableInvestors ?? true),
+        maxInvestorRound: Number(config.corporation?.maxInvestorRound ?? 2),
+        investorMinProfitPerSec: Number(config.corporation?.investorMinProfitPerSec ?? 3000),
+        investorMinMultipleRound1: Number(config.corporation?.investorMinMultipleRound1 ?? 8),
+        investorMinMultipleRound2: Number(config.corporation?.investorMinMultipleRound2 ?? 10),
         productStartFunds: Number(config.corporation?.productStartFunds ?? 300e9),
         productDesignInvestment: Number(config.corporation?.productDesignInvestment ?? 2e9),
         productMarketingInvestment: Number(config.corporation?.productMarketingInvestment ?? 2e9),
@@ -147,6 +152,16 @@ function corpCall(ns, method, ...args) {
         case "hasCorporation": return corp.hasCorporation();
         case "createCorporation": return corp.createCorporation(args[0], args[1]);
         case "getCorporation": return corp.getCorporation();
+        case "getInvestmentOffer":
+            if (typeof corp.getInvestmentOffer === "function") {
+                return corp.getInvestmentOffer();
+            }
+            throw new Error("Corporation method unavailable: getInvestmentOffer");
+        case "acceptInvestmentOffer":
+            if (typeof corp.acceptInvestmentOffer === "function") {
+                return corp.acceptInvestmentOffer();
+            }
+            throw new Error("Corporation method unavailable: acceptInvestmentOffer");
         case "getIndustryData": return corp.getIndustryData(args[0]);
         case "getExpandIndustryCost": return corp.getExpandIndustryCost(args[0]);
         case "expandIndustry": return corp.expandIndustry(args[0], args[1]);
@@ -289,6 +304,9 @@ function runCycle(ns, settings, ui) {
     // Attempt every cycle; do not gate on division existence.
     budget = guaranteeCriticalUnlocks(ns, settings, budget, ui);
 
+    // Investor rounds: accept only high-value early offers to accelerate growth.
+    maybeAcceptInvestorOffer(ns, settings, ui, corp);
+
     budget = ensurePrimaryDivision(ns, settings, budget, ui);
     const afterPrimary = budget;
 
@@ -314,6 +332,57 @@ function runCycle(ns, settings, ui) {
     
     if (shouldLog && corp.divisions.length > 0) {
         ui.log(`Budget: ${ns.formatNumber(startBudget, 2)} → ${ns.formatNumber(budget, 2)} (spent: ${ns.formatNumber(startBudget - budget, 2)})`, "info");
+    }
+}
+
+function maybeAcceptInvestorOffer(ns, settings, ui, corp) {
+    if (!settings.enableInvestors) {
+        return;
+    }
+
+    if (!corp || Boolean(corp.public)) {
+        return;
+    }
+
+    const profitPerSec = Number(corp.revenue || 0) - Number(corp.expenses || 0);
+    if (profitPerSec < Number(settings.investorMinProfitPerSec || 0)) {
+        return;
+    }
+
+    const offer = safeValue(() => corpCall(ns, "getInvestmentOffer"), null);
+    if (!offer) {
+        return;
+    }
+
+    const round = Number(offer.round || 0);
+    const offerFunds = Number(offer.funds || 0);
+    if (round <= 0 || round > Number(settings.maxInvestorRound || 0)) {
+        return;
+    }
+
+    const corpFunds = Number(corp.funds || 0);
+    const minMultiple = round === 1
+        ? Number(settings.investorMinMultipleRound1 || 0)
+        : Number(settings.investorMinMultipleRound2 || 0);
+    const requiredOffer = corpFunds * minMultiple;
+
+    if (offerFunds < requiredOffer) {
+        logThrottled(
+            ui,
+            `💼 Investor R${round} hold: ${ns.formatNumber(offerFunds, 2)} < target ${ns.formatNumber(requiredOffer, 2)}`,
+            "info",
+            30000
+        );
+        return;
+    }
+
+    try {
+        const accepted = Boolean(corpCall(ns, "acceptInvestmentOffer"));
+        if (accepted) {
+            ui.log(`💰 Accepted investor round ${round}: +${ns.formatNumber(offerFunds, 2)}`, "success");
+        }
+    } catch (error) {
+        logThrottled(ui, `Investor accept failed (R${round}): ${String(error)}`, "warn", 30000);
     }
 }
 

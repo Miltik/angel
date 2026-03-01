@@ -113,7 +113,7 @@ function getSettings() {
         multiCityExpansionMinFunds: Number(config.corporation?.multiCityExpansionMinFunds ?? 500e9),
         multiCityExpansionMinRevenue: Number(config.corporation?.multiCityExpansionMinRevenue ?? 5e9),
         multiCityExpansionMinEmployees: Number(config.corporation?.multiCityExpansionMinEmployees ?? 30),
-        minOfficeSizePrimary: Number(config.corporation?.minOfficeSizePrimary ?? 3),
+        minOfficeSizePrimary: Number(config.corporation?.minOfficeSizePrimary ?? 1),
         minOfficeSizeProduct: Number(config.corporation?.minOfficeSizeProduct ?? 15),
         minWarehouseLevelPrimary: Number(config.corporation?.minWarehouseLevelPrimary ?? 3),
         minWarehouseLevelProduct: Number(config.corporation?.minWarehouseLevelProduct ?? 5),
@@ -244,6 +244,13 @@ function runCycle(ns, settings, ui) {
         ui.log(`🌍 Milestones reached - enabling multi-city expansion!`, "success");
     }
 
+    // Auto-enable products once primary division revenue hits 100k/sec
+    const primaryDiv = divisionExists(ns, settings.primaryDivision) ? safeValue(() => corpCall(ns, "getDivision", settings.primaryDivision), null) : null;
+    if (primaryDiv && Number(primaryDiv.revenue) > 100e3 && !settings.enableProducts) {
+        settings.enableProducts = true;
+        ui.log(`🎯 Primary revenue sustained! Enabling product division`, "success");
+    }
+
     let budget = Math.max(0, Number(corp.funds) * settings.maxSpendRatioPerCycle);
     const startBudget = budget;
 
@@ -285,6 +292,13 @@ function ensurePrimaryDivision(ns, settings, budget, ui) {
     budget = ensureDivision(ns, settings.primaryIndustry, settings.primaryDivision, budget, settings, ui);
     if (!divisionExists(ns, settings.primaryDivision)) {
         return budget;
+    }
+
+    // Auto-scale office up to 3 once revenue sustains above 50k/sec (cheap profitability check)
+    const division = safeValue(() => corpCall(ns, "getDivision", settings.primaryDivision), null);
+    if (division && Number(division.revenue) > 50e3 && settings.minOfficeSizePrimary < 3) {
+        settings.minOfficeSizePrimary = 3;
+        ui.log(`📈 Revenue hit threshold! Scaling office back to 3 employees`, "success");
     }
 
     const cities = getTargetCitiesForDivision(ns, settings.primaryDivision, settings);

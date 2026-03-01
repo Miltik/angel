@@ -11,6 +11,7 @@ const RESEARCH_QUEUE = [
 const state = {
     warnedNoApi: false,
     lastStatusLogTs: 0,
+    lastRenderTs: 0,
     nextProductId: 1,
     lastRevenue: 0,
     lastRevenueTime: 0,
@@ -217,7 +218,6 @@ function ensurePrimaryDivision(ns, settings, budget, ui) {
     // First attempt to create primary division if it doesn't exist
     budget = ensureDivision(ns, settings.primaryIndustry, settings.primaryDivision, budget, settings, ui);
     if (!divisionExists(ns, settings.primaryDivision)) {
-        ui.log(`⏳ Primary division '${settings.primaryDivision}' not ready yet. Budget: ${ns.formatNumber(budget, 2)}`, "info");
         return budget;
     }
 
@@ -293,15 +293,18 @@ function ensureDivision(ns, industry, divisionName, budget, settings, ui) {
         return budget;
     }
 
-    if (!canSpend(ns, cost, budget, settings.minimumCashBuffer)) {
-        const funds = safeNumber(() => corpCall(ns, "getCorporation").funds, 0);
-        ui.log(`💾 Waiting for ${industry}: Cost ${ns.formatNumber(cost, 2)} | Budget: ${ns.formatNumber(budget, 2)} | Funds: ${ns.formatNumber(funds, 2)}`, "info");
+    const funds = safeNumber(() => corpCall(ns, "getCorporation").funds, 0);
+    const canAfford = canSpend(ns, cost, budget, settings.minimumCashBuffer);
+    
+    if (!canAfford) {
+        ui.log(`💾 ${industry} blocked: Cost ${ns.formatNumber(cost, 2)} | Budget ${ns.formatNumber(budget, 2)} | Funds ${ns.formatNumber(funds, 2)} | MinBuffer ${ns.formatNumber(settings.minimumCashBuffer, 2)}`, "warn");
         return budget;
     }
 
     try {
+        ui.log(`🚀 Expanding ${industry} → ${divisionName} (Cost: ${ns.formatNumber(cost, 2)})`, "info");
         corpCall(ns, "expandIndustry", industry, divisionName);
-        ui.log(`📈 Expanded ${industry} → ${divisionName}`, "success");
+        ui.log(`✅ Expanded ${industry} → ${divisionName}`, "success");
         return budget - cost;
     } catch (error) {
         ui.log(`❌ expandIndustry(${industry}, ${divisionName}) failed: ${String(error)}`, "error");
@@ -724,26 +727,25 @@ function logThrottled(ui, message, level = "info", intervalMs = 15000) {
 
 function renderUI(ns, ui, settings) {
     const now = Date.now();
-    if (now - state.lastStatusLogTs < 30000) {
+    if (now - state.lastRenderTs < 30000) {
         return;
     }
+    state.lastRenderTs = now;
 
     const corp = safeValue(() => corpCall(ns, "getCorporation"), null);
     if (!corp) {
         return;
     }
 
-    const lines = [];
-    lines.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    lines.push(`💰 Funds: ${ns.formatNumber(corp.funds, 2)}`);
-    lines.push(`📊 Revenue: ${ns.formatNumber(corp.revenue, 2)}/s`);
-    lines.push(`📉 Expenses: ${ns.formatNumber(corp.expenses, 2)}/s`);
-    lines.push(`🏭 Divisions: ${corp.divisions.length}`);
+    // Don't clear - just append a separator and stats
+    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
+    ui.log(`💰 Funds: ${ns.formatNumber(corp.funds, 2)} | Revenue: ${ns.formatNumber(corp.revenue, 2)}/s | Expenses: ${ns.formatNumber(corp.expenses, 2)}/s`, "info");
+    ui.log(`🏭 Divisions: ${corp.divisions.length}`, "info");
 
     for (const div of corp.divisions) {
         const d = safeValue(() => corpCall(ns, "getDivision", div), null);
         if (!d) continue;
-        lines.push(`  ${div}: R${ns.formatNumber(d.revenue, 1)}/s | Emp: ${d.totalEmployees}`);
+        ui.log(`  ${div}: R${ns.formatNumber(d.revenue, 1)}/s | Emp: ${d.totalEmployees}`, "info");
         if (d.makesProducts && d.products.length > 0) {
             const city = d.cities[0];
             for (const prod of d.products.slice(0, 2)) {
@@ -751,16 +753,9 @@ function renderUI(ns, ui, settings) {
                 if (p) {
                     const rating = Number(p.rat || 0).toFixed(1);
                     const progress = Number(p.developmentProgress || 0).toFixed(0);
-                    lines.push(`    ${prod}: ⭐${rating} | Dev: ${progress}%`);
+                    ui.log(`    ${prod}: ⭐${rating} | Dev: ${progress}%`, "info");
                 }
             }
         }
-    }
-
-    lines.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-
-    ui.clear();
-    for (const line of lines) {
-        ui.log(line, "info");
     }
 }

@@ -183,8 +183,8 @@ export const config = {
         multiCityExpansionMinFunds: 500000000000,      // 500b
         multiCityExpansionMinRevenue: 5000000000,      // 5b/s
         multiCityExpansionMinEmployees: 30,            // 30 employees in primary
-        minOfficeSizePrimary: 9,              // Build strong primary office
-        minWarehouseLevelPrimary: 3,          // Reasonable warehouse level
+        minOfficeSizePrimary: 6,              // Start small, grow incrementally
+        minWarehouseLevelPrimary: 1,          // Start with level 1, grow as profits come in
 
         enableProducts: true,
         productIndustry: "Tobacco",

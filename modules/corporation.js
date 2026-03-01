@@ -221,7 +221,11 @@ function runCycle(ns, settings, ui) {
     // Log cycle summary every 10 cycles
     if (!state.cycleCounter) state.cycleCounter = 0;
     state.cycleCounter = (state.cycleCounter + 1) % 10;
-    if (state.cycleCounter === 0 && corp.divisions.length > 0) {
+    
+    // Always log budget for first 5 cycles or every 10th cycle
+    const shouldLog = state.cycleCounter <= 5 || state.cycleCounter === 0;
+    
+    if (shouldLog && corp.divisions.length > 0) {
         ui.log(`Budget: ${ns.formatNumber(startBudget, 2)} → ${ns.formatNumber(budget, 2)} (spent: ${ns.formatNumber(startBudget - budget, 2)})`, "info");
     }
 }

@@ -95,12 +95,19 @@ export async function main(ns) {
     // ========================================
     
     ns.disableLog("ALL");
+    const forceMode = ns.args.includes("--force") || ns.args.includes("force");
     
     // Validate configuration
     if (GITHUB_USER === "YOUR_GITHUB_USERNAME" || GITHUB_REPO === "YOUR_REPO_NAME") {
         ns.tprint("ERROR: Please configure the GitHub repository settings in sync.js");
         ns.tprint("Edit the GITHUB_USER and GITHUB_REPO variables at the top of the script.");
         return;
+    }
+
+    if (forceMode) {
+        ns.tprint("Force mode: stopping running ANGEL scripts before sync...");
+        stopRunningAngelScripts(ns);
+        await ns.sleep(200);
     }
 
     ensureLootArchiveSeed(ns);
@@ -128,14 +135,18 @@ export async function main(ns) {
     
     for (const file of files) {
         const url = `${baseUrl}${subdir}/${file}${cacheBust}`;
-        const destination = `angel/${file}`;
+        const destination = `/angel/${file}`;
+        const legacyDestination = `angel/${file}`;
         
         try {
+            if (ns.fileExists(destination, "home")) ns.rm(destination, "home");
+            if (legacyDestination !== destination && ns.fileExists(legacyDestination, "home")) ns.rm(legacyDestination, "home");
+
             ns.tprint(`Downloading: ${file}...`);
             const success = await ns.wget(url, destination, "home");
             
             // Verify the file was downloaded
-            if (success && ns.fileExists(destination, "home")) {
+            if (success && (ns.fileExists(destination, "home") || ns.fileExists(legacyDestination, "home"))) {
                 successCount++;
                 ns.tprint(`  ✓ Success`);
             } else {
@@ -193,5 +204,26 @@ function ensureLootArchiveSeed(ns) {
     if (!ns.fileExists(seedPath, "home")) {
         ns.write(seedPath, "loot", "w");
         ns.tprint("Initialized /angel/loot/loot.txt");
+    }
+}
+
+function stopRunningAngelScripts(ns) {
+    const scripts = [
+        "/angel/angel.js",
+        "/angel/modules/loot.js",
+        "/angel/modules/contracts.js",
+        "/angel/modules/contracts-simple.js",
+        "/angel/modules/dashboard.js",
+        "/angel/modules/hacking.js",
+        "/angel/modules/programs.js",
+        "/angel/modules/servers.js",
+        "/angel/modules/formulas.js",
+        "/angel/modules/corporation.js",
+    ];
+
+    for (const script of scripts) {
+        if (ns.isRunning(script, "home")) {
+            ns.kill(script, "home");
+        }
     }
 }

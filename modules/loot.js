@@ -1,6 +1,8 @@
 import { createWindow } from "/angel/modules/uiManager.js";
 import { config } from "/angel/config.js";
 
+const LOOT_VERSION = "2026-03-01-r4";
+
 const state = {
     loopCount: 0,
     totalFilesArchived: 0,
@@ -14,6 +16,7 @@ export async function main(ns) {
     const ui = createWindow("loot", "📚 Loot Collector", 620, 380, ns);
     ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
     ui.log("📚 Loot collector initialized", "success");
+    ui.log(`🧩 Version: ${LOOT_VERSION}`, "info");
     ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
 
     const intervalMs = Number(config.loot?.loopDelayMs ?? 60000);

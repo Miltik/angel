@@ -157,6 +157,8 @@ function corpCall(ns, method, ...args) {
         case "upgradeOfficeSize": return corp.upgradeOfficeSize(args[0], args[1], args[2]);
         case "hireEmployee": return corp.hireEmployee(args[0], args[1]);
         case "setAutoJobAssignment": return corp.setAutoJobAssignment(args[0], args[1], args[2], args[3]);
+        case "getMaterial": return corp.getMaterial(args[0], args[1], args[2]);
+        case "buyMaterial": return corp.buyMaterial(args[0], args[1], args[2], args[3]);
         case "sellMaterial": return corp.sellMaterial(args[0], args[1], args[2], args[3], args[4]);
         case "sellProduct": return corp.sellProduct(args[0], args[1], args[2], args[3], args[4], args[5]);
         case "getProduct": return corp.getProduct(args[0], args[1], args[2]);
@@ -276,6 +278,7 @@ function ensurePrimaryDivision(ns, settings, budget, ui) {
         budget = ensureDivisionCity(ns, settings.primaryDivision, city, budget, settings, ui);
         budget = ensureWarehouse(ns, settings.primaryDivision, city, settings.minWarehouseLevelPrimary, budget, settings, ui);
         budget = ensureOffice(ns, settings.primaryDivision, city, settings.minOfficeSizePrimary, budget, settings, ui);
+        maintainAgricultureInputs(ns, settings.primaryDivision, city);
         setAgricultureSales(ns, settings.primaryDivision, city);
     }
 
@@ -575,6 +578,34 @@ function setAgricultureSales(ns, divisionName, city) {
         corpCall(ns, "sellMaterial", divisionName, city, "Food", "MAX", "MP");
         corpCall(ns, "sellMaterial", divisionName, city, "Plants", "MAX", "MP");
     } catch {}
+}
+
+function maintainAgricultureInputs(ns, divisionName, city) {
+    if (!hasWarehouse(ns, divisionName, city)) {
+        return;
+    }
+
+    const targets = {
+        "Water": 600,
+        "Hardware": 40,
+        "AI Cores": 30,
+        "Real Estate": 12000,
+    };
+
+    const rates = {
+        "Water": 6,
+        "Hardware": 0.8,
+        "AI Cores": 0.5,
+        "Real Estate": 150,
+    };
+
+    for (const [material, target] of Object.entries(targets)) {
+        const current = safeNumber(() => corpCall(ns, "getMaterial", divisionName, city, material).qty, 0);
+        const buyRate = current < target ? rates[material] : 0;
+        try {
+            corpCall(ns, "buyMaterial", divisionName, city, material, buyRate);
+        } catch {}
+    }
 }
 
 function setProductSales(ns, divisionName, city) {
@@ -922,7 +953,9 @@ function renderUI(ns, ui, settings) {
     for (const div of corp.divisions) {
         const d = safeValue(() => corpCall(ns, "getDivision", div), null);
         if (!d) continue;
-        ui.log(`  ${div}: R${ns.formatNumber(d.revenue, 1)}/s | Emp: ${d.totalEmployees}`, "info");
+        const divisionRevenue = Number.isFinite(Number(d.revenue)) ? Number(d.revenue) : 0;
+        const divisionEmployees = Number.isFinite(Number(d.totalEmployees)) ? Number(d.totalEmployees) : 0;
+        ui.log(`  ${div}: R${ns.formatNumber(divisionRevenue, 1)}/s | Emp: ${divisionEmployees}`, "info");
         if (d.makesProducts && d.products.length > 0) {
             const city = d.cities[0];
             for (const prod of d.products.slice(0, 2)) {

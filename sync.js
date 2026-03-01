@@ -61,6 +61,7 @@ export async function main(ns) {
         "modules/contracts.js",          // New: Coding contracts solver
         "modules/find_contracts.js",     // New: helper to list .cct files across servers
         "modules/formulas.js",           // New: Formulas.exe farming
+        "modules/corporation.js",        // New: integrated corporation automation module
         "modules/backdoorRunner.js",     // New: Full backdoor runner (launched by backdoor.js)
         "modules/resetMonitor.js",       // New: Persistent reset tracking utility
         
@@ -72,7 +73,7 @@ export async function main(ns) {
         "angel-ram.js",                  // New: RAM calculator
         "early-hack.js",
         "resetMonitor.js",               // New: Reset history viewer
-        "corpManager.js",                // Standalone Corporation Management Script
+        "corpManager.js",                // Backward-compatible wrapper to modules/corporation.js
         "share-all.js",                  // Share all free RAM to current faction
         "share.js",                      // Worker script for share-all.js
         

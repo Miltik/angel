@@ -184,6 +184,7 @@ orchestrator: {
     enableServerMgmt: true,   // Server buying
     enableFactions: false,    // Disable if not using SF4
     enableAugments: false,    // Disable if not using SF4
+   enableCorporation: false, // Enable only when you have Corp API and want automation
 }
 ```
 

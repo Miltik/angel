@@ -157,10 +157,46 @@ export const config = {
         enableNetworkMap: true,    // Network visualization
         enableContracts: true,     // Coding contracts solver
         enableFormulas: true,      // Formulas.exe farming
+        enableCorporation: false,  // Corporation automation (off by default for safety)
         enableXPFarm: true,        // Optional XP farming using spare/home RAM or hyper mode
         enableBackdoorAuto: true,  // Auto-run backdoor flow when new servers become eligible
         startupHackingDelayMs: 20000, // Delay hacking module startup to let core modules settle
         startupXPFarmDelayMs: 45000,  // Delay XP farm startup to avoid early RAM contention
+    },
+
+    // Corporation automation settings (requires Corporation API access)
+    corporation: {
+        loopDelayMs: 5000,
+        autoCreate: false,
+        corporationName: "AngelCorp",
+        createWithSeedCapital: true,
+        minFundsForCreation: 150000000000,
+        maxSpendRatioPerCycle: 0.12,
+        minimumCashBuffer: 5000000000,
+
+        primaryIndustry: "Agriculture",
+        primaryDivision: "Agri",
+        expandToAllCities: true,
+        minOfficeSizePrimary: 3,
+        minWarehouseLevelPrimary: 2,
+
+        enableProducts: true,
+        productIndustry: "Tobacco",
+        productDivision: "Cigs",
+        productCity: "Aevum",
+        productPrefix: "AngelProduct",
+        productStartFunds: 300000000000,
+        productDesignInvestment: 1000000000,
+        productMarketingInvestment: 1000000000,
+        maxProductsToKeep: 3,
+        minOfficeSizeProduct: 6,
+        minWarehouseLevelProduct: 3,
+
+        upgrades: {
+            "Smart Factories": 5,
+            "Smart Storage": 5,
+            "Wilson Analytics": 3,
+        },
     },
 
     // Hacking settings
@@ -507,6 +543,7 @@ export const SCRIPTS = {
     networkMap: "/angel/networkMap.js",
     contracts: "/angel/modules/contracts.js",
     formulas: "/angel/modules/formulas.js",
+    corporation: "/angel/modules/corporation.js",
     xpFarm: "/angel/xpFarm.js",
     backdoor: "/angel/backdoor.js",
     

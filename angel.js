@@ -348,6 +348,15 @@ async function ensureModulesRunning(ns) {
         await ensureModuleRunning(ns, SCRIPTS.sleeves, "Sleeves");
         await ns.sleep(1500);
     }
+
+    // Corporation module
+    if (config.orchestrator.enableCorporation) {
+        await ensureModuleRunning(ns, SCRIPTS.corporation, "Corporation", [], {
+            deferIfInsufficientRam: true,
+            lowRamLogIntervalMs: 45000,
+        });
+        await ns.sleep(1500);
+    }
     
     startupState.blockedCoreModules = blockedCoreModules;
 
@@ -577,6 +586,7 @@ export function stopAll(ns) {
         SCRIPTS.gang,
         SCRIPTS.bladeburner,
         SCRIPTS.sleeves,
+        SCRIPTS.corporation,
         SCRIPTS.uiLauncher,
         SCRIPTS.xpFarm,
         SCRIPTS.backdoor,
@@ -618,6 +628,7 @@ export function getSystemHealth(ns) {
         { name: "Gang", script: SCRIPTS.gang, enabled: config.orchestrator.enableGang },
         { name: "Bladeburner", script: SCRIPTS.bladeburner, enabled: config.orchestrator.enableBladeburner },
         { name: "Sleeves", script: SCRIPTS.sleeves, enabled: config.orchestrator.enableSleeves },
+        { name: "Corporation", script: SCRIPTS.corporation, enabled: config.orchestrator.enableCorporation },
         { name: "UI Launcher", script: SCRIPTS.uiLauncher, enabled: config.orchestrator.enableUILauncher },
         { name: "XP Farm", script: SCRIPTS.xpFarm, enabled: config.orchestrator.enableXPFarm },
         { name: "Backdoor", script: SCRIPTS.backdoor, enabled: config.orchestrator.enableBackdoorAuto },

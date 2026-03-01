@@ -71,6 +71,14 @@ Edit `config.js` to customize ANGEL's behavior:
 - `enableServerMgmt`: Enable/disable server management
 - `enableFactions`: Enable/disable faction automation
 - `enableAugments`: Enable/disable augmentation automation
+- `enableCorporation`: Enable/disable integrated corporation automation (default: false)
+
+### Corporation Settings
+- `autoCreate`: Auto-create a corporation once minimum funds are reached
+- `maxSpendRatioPerCycle`: Caps spending per management cycle for stability
+- `minimumCashBuffer`: Keeps a cash reserve so corp automation doesn't drain funds
+- `primaryIndustry` / `primaryDivision`: Early bootstrap division settings
+- `productIndustry` / `productDivision`: Product division settings for late-game growth
 
 ### Hacking Settings
 - `targetMoneyThreshold`: Hack when money is above this % of max (default: 0.75)
@@ -192,6 +200,18 @@ run /angel/modules/programs.js
 - **Programs**: Creates programs when idle, buys from darkweb if needed
 - **Backdoors**: Installs backdoors on faction servers for easy invites
 - **Port Openers**: Prioritizes tools that unlock more servers
+
+### Corporation Module (`modules/corporation.js`)
+*Requires Corporation API access*
+- Integrates with orchestrator lifecycle and health reporting
+- Uses conservative spending caps and cash buffers for safety
+- Grows a primary division first, then starts product automation when funded
+- Handles cities, warehouses, offices, hiring, assignments, and product selling incrementally
+
+**Run standalone:**
+```
+run /angel/modules/corporation.js
+```
 
 ## 🛠️ Utilities
 

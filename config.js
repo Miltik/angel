@@ -173,14 +173,18 @@ export const config = {
         corporationName: "AngelCorp",
         createWithSeedCapital: true,
         minFundsForCreation: 150000000000,
-        maxSpendRatioPerCycle: 0.12,
-        minimumCashBuffer: 5000000000,
+        maxSpendRatioPerCycle: 0.3,           // 30% per cycle (aggressive early growth)
+        minimumCashBuffer: 5000000000,        // 5b safety buffer
 
         primaryIndustry: "Agriculture",
         primaryDivision: "Agri",
-        expandToAllCities: true,
-        minOfficeSizePrimary: 3,
-        minWarehouseLevelPrimary: 2,
+        primaryCity: "Sector-12",             // Single city focus
+        expandToAllCities: false,             // Focus single city first, expand at milestones
+        multiCityExpansionMinFunds: 500000000000,      // 500b
+        multiCityExpansionMinRevenue: 5000000000,      // 5b/s
+        multiCityExpansionMinEmployees: 30,            // 30 employees in primary
+        minOfficeSizePrimary: 9,              // Build strong primary office
+        minWarehouseLevelPrimary: 3,          // Reasonable warehouse level
 
         enableProducts: true,
         productIndustry: "Tobacco",
@@ -188,16 +192,16 @@ export const config = {
         productCity: "Aevum",
         productPrefix: "AngelProduct",
         productStartFunds: 300000000000,
-        productDesignInvestment: 1000000000,
-        productMarketingInvestment: 1000000000,
-        maxProductsToKeep: 3,
-        minOfficeSizeProduct: 6,
-        minWarehouseLevelProduct: 3,
+        productDesignInvestment: 2000000000,  // 2b per product
+        productMarketingInvestment: 2000000000,
+        maxProductsToKeep: 5,
+        minOfficeSizeProduct: 15,             // Larger product office
+        minWarehouseLevelProduct: 5,
 
         upgrades: {
-            "Smart Factories": 5,
-            "Smart Storage": 5,
-            "Wilson Analytics": 3,
+            "Smart Factories": 10,            // Increased targets
+            "Smart Storage": 10,
+            "Wilson Analytics": 5,
         },
     },
 

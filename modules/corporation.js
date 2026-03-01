@@ -246,6 +246,11 @@ function runCycle(ns, settings, ui) {
     let budget = Math.max(0, Number(corp.funds) * settings.maxSpendRatioPerCycle);
     const startBudget = budget;
 
+    // Hard-prioritize Smart Supply unlock for primary division before other spending
+    if (divisionExists(ns, settings.primaryDivision)) {
+        budget = maybeUnlockSmartSupply(ns, settings, budget);
+    }
+
     budget = ensurePrimaryDivision(ns, settings, budget, ui);
     const afterPrimary = budget;
 
@@ -755,7 +760,8 @@ function manageUpgrades(ns, settings, budget) {
         return budget;
     }
 
-    budget = maybeUnlockSmartSupply(ns, settings, budget);
+    // Smart Supply is now unlocked earlier in runCycle for primary division
+    // Skip it here to avoid re-attempting
 
     for (const [upgrade, targetLevel] of Object.entries(settings.upgrades)) {
         let current = safeNumber(() => corpCall(ns, "getUpgradeLevel", upgrade), 0);

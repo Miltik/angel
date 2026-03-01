@@ -325,6 +325,15 @@ function ensureDivision(ns, industry, divisionName, budget, settings, ui) {
         ui.log(`🚀 Expanding ${industry} → ${divisionName} (Cost: ${ns.formatNumber(cost, 2)})${isFirstDivision ? ' [FIRST DIVISION]' : ''}`, "info");
         corpCall(ns, "expandIndustry", industry, divisionName);
         ui.log(`✅ Expanded ${industry} → ${divisionName}`, "success");
+        
+        // If first division bypassed budget, recalculate budget based on remaining funds
+        if (isFirstDivision) {
+            const remainingFunds = safeNumber(() => corpCall(ns, "getCorporation").funds, 0);
+            const newBudget = Math.max(0, remainingFunds * settings.maxSpendRatioPerCycle);
+            ui.log(`💰 Budget recalculated: ${ns.formatNumber(newBudget, 2)} (after first division)`, "info");
+            return newBudget;
+        }
+        
         return budget - cost;
     } catch (error) {
         ui.log(`❌ expandIndustry(${industry}, ${divisionName}) failed: ${String(error)}`, "error");

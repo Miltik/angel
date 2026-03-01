@@ -160,9 +160,10 @@ export const config = {
         enableCorporation: true,   // Corporation automation (delayed startup to avoid RAM contention)
         enableXPFarm: true,        // Optional XP farming using spare/home RAM or hyper mode
         enableBackdoorAuto: true,  // Auto-run backdoor flow when new servers become eligible
-        startupHackingDelayMs: 20000, // Delay hacking module startup to let core modules settle
-        startupCorporationDelayMs: 60000, // Start corporation after core/hacking modules stabilize
-        startupXPFarmDelayMs: 45000,  // Delay XP farm startup to avoid early RAM contention
+        startupCorporationDelayMs: 35000, // Start corporation early (before hacking consumes RAM)
+        startupHackingDelayMs: 45000, // Delay hacking module startup after corporation initializes
+        startupXPFarmDelayMs: 55000, // XP farm starts last, uses spare RAM
+
     },
 
     // Corporation automation settings (requires Corporation API access)

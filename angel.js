@@ -401,24 +401,11 @@ async function ensureModulesRunning(ns) {
     }
 
     const startupElapsedMs = Math.max(0, Date.now() - (startupState.startTs || Date.now()));
-    const hackingDelayMs = Number(config.orchestrator?.startupHackingDelayMs ?? 15000);
-    const corporationDelayMs = Number(config.orchestrator?.startupCorporationDelayMs ?? 45000);
-    const xpFarmDelayMs = Number(config.orchestrator?.startupXPFarmDelayMs ?? 30000);
+    const corporationDelayMs = Number(config.orchestrator?.startupCorporationDelayMs ?? 35000);
+    const hackingDelayMs = Number(config.orchestrator?.startupHackingDelayMs ?? 45000);
+    const xpFarmDelayMs = Number(config.orchestrator?.startupXPFarmDelayMs ?? 55000);
     
-    // Hacking module - start last as it consumes most RAM
-    if (config.orchestrator.enableHacking) {
-        if (startupElapsedMs >= hackingDelayMs) {
-            await ensureModuleRunning(ns, SCRIPTS.hacking, "Hacking", [], {
-                deferIfInsufficientRam: true,
-                lowRamLogIntervalMs: 45000,
-            });
-        } else if (shouldLogDeferredModule("hacking")) {
-            const remainingSec = Math.ceil((hackingDelayMs - startupElapsedMs) / 1000);
-            log(ns, `Deferring Hacking module startup for ${remainingSec}s to let core modules stabilize`, "INFO");
-        }
-    }
-
-    // Corporation module - delayed startup to avoid early RAM starvation
+    // Corporation module - starts first after core setup (before hacking RAM spike)
     if (config.orchestrator.enableCorporation) {
         if (startupElapsedMs >= corporationDelayMs) {
             await ensureModuleRunning(ns, SCRIPTS.corporation, "Corporation", [], {
@@ -428,6 +415,19 @@ async function ensureModulesRunning(ns) {
         } else if (shouldLogDeferredModule("corporation")) {
             const remainingSec = Math.ceil((corporationDelayMs - startupElapsedMs) / 1000);
             log(ns, `Deferring Corporation module startup for ${remainingSec}s to prioritize core stability`, "INFO");
+        }
+    }
+
+    // Hacking module - start after corporation initializes to avoid RAM starvation
+    if (config.orchestrator.enableHacking) {
+        if (startupElapsedMs >= hackingDelayMs) {
+            await ensureModuleRunning(ns, SCRIPTS.hacking, "Hacking", [], {
+                deferIfInsufficientRam: true,
+                lowRamLogIntervalMs: 45000,
+            });
+        } else if (shouldLogDeferredModule("hacking")) {
+            const remainingSec = Math.ceil((hackingDelayMs - startupElapsedMs) / 1000);
+            log(ns, `Deferring Hacking module startup for ${remainingSec}s to let core modules stabilize`, "INFO");
         }
     }
 

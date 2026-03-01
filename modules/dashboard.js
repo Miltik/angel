@@ -197,6 +197,14 @@ async function updateDashboard(ns, ui) {
         } catch (e) {
             // Contracts not available
         }
+
+        // Loot archive status
+        try {
+            displayLootStatus(ui, ns);
+            ui.log("", "info");
+        } catch (e) {
+            // Loot not available
+        }
         
         // Formulas.exe Farm Status
         try {
@@ -512,16 +520,15 @@ function displayProgramsStatus(ui, ns) {
 function displayContractsStatus(ui, ns) {
     try {
         let contractCount = 0;
-        let totalRewards = 0;
         
         // Scan all servers for contracts
         const servers = getAllServersForDashboard(ns);
         for (const server of servers) {
             try {
-                const contracts = ns.codingcontract.listContracts(server);
+                const contracts = ns.ls(server, ".cct");
                 contractCount += contracts.length;
             } catch (e) {
-                // Server doesn't have contracts API
+                // Ignore inaccessible servers
             }
         }
         
@@ -533,6 +540,21 @@ function displayContractsStatus(ui, ns) {
     } catch (e) {
         ui.log(`📋 CONTRACTS: Error - ${e.message.substring(0, 30)}`, "warn");
     }
+}
+
+/**
+ * Display loot archive status
+ */
+function displayLootStatus(ui, ns) {
+    const lootFiles = ns.ls("home", "/angel/loot/").filter(file => file !== "/angel/loot/loot.txt");
+    const seedExists = ns.fileExists("/angel/loot/loot.txt", "home");
+
+    if (!seedExists && lootFiles.length === 0) {
+        ui.log("📚 LOOT: Archive not initialized", "info");
+        return;
+    }
+
+    ui.log(`📚 LOOT: ${lootFiles.length} archived files${seedExists ? " | seed ready" : ""}`, "info");
 }
 
 /**

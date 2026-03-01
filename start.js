@@ -8,6 +8,8 @@
 import { stopAll } from "/angel/angel.js";
 
 export async function main(ns) {
+    ensureLootArchiveSeed(ns);
+
     const shouldStop = ns.args[0] === "stop" || ns.args[0] === "--stop";
     const shouldRestart = ns.args[0] === "restart" || ns.args[0] === "--restart";
     
@@ -46,5 +48,13 @@ export async function main(ns) {
         ns.tprint("");
         ns.tprint("The orchestrator is now running!");
         ns.tprint("Tail window will open automatically");
+    }
+}
+
+function ensureLootArchiveSeed(ns) {
+    const seedPath = "/angel/loot/loot.txt";
+    if (!ns.fileExists(seedPath, "home")) {
+        ns.write(seedPath, "loot", "w");
+        ns.tprint("Initialized /angel/loot/loot.txt");
     }
 }

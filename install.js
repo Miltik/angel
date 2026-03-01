@@ -29,10 +29,12 @@ export async function main(ns) {
         "/angel/modules/factions.js",
         "/angel/modules/augments.js",
         "/angel/modules/programs.js",
+        "/angel/modules/loot.js",
         "/angel/workers/hack.js",
         "/angel/workers/grow.js",
         "/angel/workers/weaken.js",
         "/angel/workers/share.js",
+        "/angel/loot/loot.txt",
     ];
     
     // Check if files exist

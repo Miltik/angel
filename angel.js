@@ -73,6 +73,8 @@ async function initialize(ns) {
     startupState.startTs = Date.now();
 
     log(ns, "Initializing ANGEL orchestrator...", "INFO");
+
+    ensureLootArchiveSeed(ns);
     
     // Scan network
     const servers = scanAll(ns);
@@ -94,6 +96,14 @@ async function initialize(ns) {
     
     log(ns, "Initialization complete", "INFO");
     log(ns, "", "INFO");
+}
+
+function ensureLootArchiveSeed(ns) {
+    const seedPath = "/angel/loot/loot.txt";
+    if (!ns.fileExists(seedPath, "home")) {
+        ns.write(seedPath, "loot", "w");
+        log(ns, "Initialized loot archive at /angel/loot/loot.txt", "INFO");
+    }
 }
 
 /**
@@ -256,6 +266,7 @@ async function ensureModulesRunning(ns) {
         SCRIPTS.hacking,
         SCRIPTS.networkMap,
         SCRIPTS.dashboard,
+        SCRIPTS.loot,
         SCRIPTS.contracts,
         SCRIPTS.formulas,
         SCRIPTS.backdoor,
@@ -376,6 +387,15 @@ async function ensureModulesRunning(ns) {
     // Coding Contracts solver - low RAM
     if (config.orchestrator.enableContracts) {
         await ensureModuleRunning(ns, SCRIPTS.contracts, "Contracts", [], {
+            deferIfInsufficientRam: true,
+            lowRamLogIntervalMs: 45000,
+        });
+        await ns.sleep(1500);
+    }
+
+    // Loot collector - low RAM
+    if (config.orchestrator.enableLoot) {
+        await ensureModuleRunning(ns, SCRIPTS.loot, "Loot", [], {
             deferIfInsufficientRam: true,
             lowRamLogIntervalMs: 45000,
         });
@@ -594,6 +614,7 @@ export function stopAll(ns) {
         SCRIPTS.corporation,
         SCRIPTS.uiLauncher,
         SCRIPTS.xpFarm,
+        SCRIPTS.loot,
         SCRIPTS.backdoor,
         "/angel/modules/backdoorRunner.js",
     ];
@@ -636,6 +657,7 @@ export function getSystemHealth(ns) {
         { name: "Corporation", script: SCRIPTS.corporation, enabled: config.orchestrator.enableCorporation },
         { name: "UI Launcher", script: SCRIPTS.uiLauncher, enabled: config.orchestrator.enableUILauncher },
         { name: "XP Farm", script: SCRIPTS.xpFarm, enabled: config.orchestrator.enableXPFarm },
+        { name: "Loot", script: SCRIPTS.loot, enabled: config.orchestrator.enableLoot },
         { name: "Backdoor", script: SCRIPTS.backdoor, enabled: config.orchestrator.enableBackdoorAuto },
     ];
     

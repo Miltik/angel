@@ -156,6 +156,7 @@ export const config = {
         enableUILauncher: true,    // Clickable DOM window launcher/toggles
         enableNetworkMap: true,    // Network visualization
         enableContracts: true,     // Coding contracts solver
+        enableLoot: true,          // Loot file collector (.lit/.msg/.txt/.cct)
         enableFormulas: true,      // Formulas.exe farming
         enableCorporation: true,   // Corporation automation (delayed startup to avoid RAM contention)
         enableXPFarm: true,        // Optional XP farming using spare/home RAM or hyper mode
@@ -486,6 +487,15 @@ export const config = {
         target: "",                // Optional fixed target (empty = auto)
     },
 
+    // Loot collector settings
+    loot: {
+        loopDelayMs: 60000,
+        includeHome: false,
+        maxFilesPerLoop: 250,
+        archivePrefix: "/angel/loot/",
+        extensions: [".lit", ".msg", ".txt", ".cct"],
+    },
+
     // Backdoor automation settings
     backdoor: {
         checkIntervalMs: 60000,     // How often orchestrator checks for new eligible backdoor targets
@@ -548,6 +558,7 @@ export const SCRIPTS = {
     uiLauncher: "/angel/modules/uiLauncher.js",
     networkMap: "/angel/networkMap.js",
     contracts: "/angel/modules/contracts.js",
+    loot: "/angel/modules/loot.js",
     formulas: "/angel/modules/formulas.js",
     corporation: "/angel/modules/corporation.js",
     xpFarm: "/angel/xpFarm.js",

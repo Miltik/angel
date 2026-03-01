@@ -59,6 +59,7 @@ export async function main(ns) {
         "modules/dashboard.js",          // New: Real-time monitoring
         "modules/uiLauncher.js",         // New: Clickable window visibility launcher
         "modules/contracts.js",          // New: Coding contracts solver
+        "modules/loot.js",               // New: Loot collector and archiver
         "modules/find_contracts.js",     // New: helper to list .cct files across servers
         "modules/formulas.js",           // New: Formulas.exe farming
         "modules/corporation.js",        // New: integrated corporation automation module
@@ -82,6 +83,7 @@ export async function main(ns) {
         "workers/grow.js",
         "workers/weaken.js",
         "workers/share.js",
+        "loot/loot.txt",                 // Seed file to initialize loot archive path
     ];
     
     // ========================================
@@ -96,6 +98,8 @@ export async function main(ns) {
         ns.tprint("Edit the GITHUB_USER and GITHUB_REPO variables at the top of the script.");
         return;
     }
+
+    ensureLootArchiveSeed(ns);
     
     ns.tprint("╔════════════════════════════════════════╗");
     ns.tprint("║     ANGEL GitHub Sync Script           ║");
@@ -178,4 +182,12 @@ export async function main(ns) {
     }
     
     ns.tprint("");
+}
+
+function ensureLootArchiveSeed(ns) {
+    const seedPath = "/angel/loot/loot.txt";
+    if (!ns.fileExists(seedPath, "home")) {
+        ns.write(seedPath, "loot", "w");
+        ns.tprint("Initialized /angel/loot/loot.txt");
+    }
 }

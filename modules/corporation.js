@@ -2,20 +2,27 @@ import { config } from "/angel/config.js";
 import { createWindow } from "/angel/modules/uiManager.js";
 
 const CITIES = ["Aevum", "Chongqing", "Sector-12", "New Tokyo", "Ishima", "Volhaven"];
+const RESEARCH_QUEUE = [
+    "Smart Factories", "Smart Storage", "Wilson Analytics", "Overclock",
+    "Self-Correcting Assemblers", "Efficient Offices", "Advertising",
+    "Automatic Drug Synthesis", "Bulk Purchasing"
+];
 
 const state = {
     warnedNoApi: false,
     lastStatusLogTs: 0,
     nextProductId: 1,
+    lastRevenue: 0,
+    lastRevenueTime: 0,
 };
 
 /** @param {NS} ns */
 export async function main(ns) {
     ns.disableLog("ALL");
 
-    const ui = createWindow("corporation", "🏢 Corporation", 640, 380, ns);
+    const ui = createWindow("corporation", "🏢 Corporation", 800, 450, ns);
     ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
-    ui.log("🏢 Corporation automation initialized", "success");
+    ui.log("🏢 Corporation automation (premium edition)", "success");
     ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
 
     const settings = getSettings();
@@ -40,6 +47,7 @@ export async function main(ns) {
             }
 
             runCycle(ns, settings, ui);
+            renderUI(ns, ui, settings);
         } catch (error) {
             ui.log(`Cycle error: ${String(error)}`, "error");
         }
@@ -52,8 +60,8 @@ function getSettings() {
     return {
         ...(config.corporation || {}),
         loopDelayMs: Number(config.corporation?.loopDelayMs ?? 5000),
-        maxSpendRatioPerCycle: Number(config.corporation?.maxSpendRatioPerCycle ?? 0.12),
-        minimumCashBuffer: Number(config.corporation?.minimumCashBuffer ?? 5e9),
+        maxSpendRatioPerCycle: Number(config.corporation?.maxSpendRatioPerCycle ?? 0.2),
+        minimumCashBuffer: Number(config.corporation?.minimumCashBuffer ?? 10e9),
         autoCreate: Boolean(config.corporation?.autoCreate ?? false),
         corporationName: String(config.corporation?.corporationName ?? "AngelCorp"),
         createWithSeedCapital: Boolean(config.corporation?.createWithSeedCapital ?? true),
@@ -62,23 +70,24 @@ function getSettings() {
         primaryDivision: String(config.corporation?.primaryDivision ?? "Agri"),
         productIndustry: String(config.corporation?.productIndustry ?? "Tobacco"),
         productDivision: String(config.corporation?.productDivision ?? "Cigs"),
+        secondaryProductDivision: String(config.corporation?.secondaryProductDivision ?? "Soft"),
+        secondaryProductIndustry: String(config.corporation?.secondaryProductIndustry ?? "Software"),
         productCity: String(config.corporation?.productCity ?? "Aevum"),
         productPrefix: String(config.corporation?.productPrefix ?? "AngelProduct"),
         expandToAllCities: Boolean(config.corporation?.expandToAllCities ?? true),
-        minOfficeSizePrimary: Number(config.corporation?.minOfficeSizePrimary ?? 3),
-        minOfficeSizeProduct: Number(config.corporation?.minOfficeSizeProduct ?? 6),
-        minWarehouseLevelPrimary: Number(config.corporation?.minWarehouseLevelPrimary ?? 2),
-        minWarehouseLevelProduct: Number(config.corporation?.minWarehouseLevelProduct ?? 3),
+        minOfficeSizePrimary: Number(config.corporation?.minOfficeSizePrimary ?? 10),
+        minOfficeSizeProduct: Number(config.corporation?.minOfficeSizeProduct ?? 15),
+        minWarehouseLevelPrimary: Number(config.corporation?.minWarehouseLevelPrimary ?? 5),
+        minWarehouseLevelProduct: Number(config.corporation?.minWarehouseLevelProduct ?? 10),
         enableProducts: Boolean(config.corporation?.enableProducts ?? true),
+        enableSecondaryProduct: Boolean(config.corporation?.enableSecondaryProduct ?? false),
         productStartFunds: Number(config.corporation?.productStartFunds ?? 300e9),
-        productDesignInvestment: Number(config.corporation?.productDesignInvestment ?? 1e9),
-        productMarketingInvestment: Number(config.corporation?.productMarketingInvestment ?? 1e9),
-        maxProductsToKeep: Number(config.corporation?.maxProductsToKeep ?? 3),
-        upgrades: config.corporation?.upgrades || {
-            "Smart Factories": 5,
-            "Smart Storage": 5,
-            "Wilson Analytics": 3,
-        },
+        productDesignInvestment: Number(config.corporation?.productDesignInvestment ?? 2e9),
+        productMarketingInvestment: Number(config.corporation?.productMarketingInvestment ?? 2e9),
+        maxProductsToKeep: Number(config.corporation?.maxProductsToKeep ?? 5),
+        productMinRating: Number(config.corporation?.productMinRating ?? 10),
+        productMinProfitability: Number(config.corporation?.productMinProfitability ?? 0.15),
+        upgrades: config.corporation?.upgrades || {"Smart Factories": 10, "Smart Storage": 10, "Wilson Analytics": 5},
     };
 }
 
@@ -159,11 +168,9 @@ function runCycle(ns, settings, ui) {
         budget = manageProducts(ns, settings, budget, ui);
     }
 
-    const now = Date.now();
-    if (now - state.lastStatusLogTs >= 15000) {
-        state.lastStatusLogTs = now;
-        const funds = safeNumber(() => corpCall(ns, "getCorporation").funds, 0);
-        ui.log(`Funds ${ns.formatNumber(funds, 2)} | Budget left ${ns.formatNumber(Math.max(0, budget), 2)}`, "info");
+    if (settings.enableSecondaryProduct) {
+        budget = ensureSecondaryProductDivision(ns, settings, budget, ui);
+        budget = manageSecondaryProducts(ns, settings, budget, ui);
     }
 }
 
@@ -206,6 +213,33 @@ function ensureProductDivision(ns, settings, budget, ui) {
     return budget;
 }
 
+function ensureSecondaryProductDivision(ns, settings, budget, ui) {
+    const funds = safeNumber(() => corpCall(ns, "getCorporation").funds, 0);
+    const primaryStable = isDivisionStable(ns, settings.productDivision);
+
+    if (!primaryStable || funds < settings.productStartFunds * 2) {
+        return budget;
+    }
+
+    if (!divisionExists(ns, settings.secondaryProductDivision)) {
+        budget = ensureDivision(ns, settings.secondaryProductIndustry, settings.secondaryProductDivision, budget, settings, ui);
+    }
+
+    if (!divisionExists(ns, settings.secondaryProductDivision)) {
+        return budget;
+    }
+
+    const cities = getTargetCities(settings);
+    for (const city of cities) {
+        budget = ensureDivisionCity(ns, settings.secondaryProductDivision, city, budget, settings, ui);
+        budget = ensureWarehouse(ns, settings.secondaryProductDivision, city, settings.minWarehouseLevelProduct, budget, settings, ui);
+        budget = ensureOffice(ns, settings.secondaryProductDivision, city, settings.minOfficeSizeProduct, budget, settings);
+        setProductSales(ns, settings.secondaryProductDivision, city);
+    }
+
+    return budget;
+}
+
 function ensureDivision(ns, industry, divisionName, budget, settings, ui) {
     if (divisionExists(ns, divisionName)) {
         return budget;
@@ -218,10 +252,10 @@ function ensureDivision(ns, industry, divisionName, budget, settings, ui) {
 
     try {
         corpCall(ns, "expandIndustry", industry, divisionName);
-        ui.log(`Expanded industry ${industry} -> ${divisionName}`, "success");
+        ui.log(`📈 Expanded ${industry} -> ${divisionName}`, "success");
         return budget - cost;
     } catch (error) {
-        ui.log(`expandIndustry failed (${divisionName}): ${String(error)}`, "error");
+        ui.log(`❌ expandIndustry failed (${divisionName}): ${String(error)}`, "error");
         return budget;
     }
 }
@@ -243,10 +277,9 @@ function ensureDivisionCity(ns, divisionName, city, budget, settings, ui) {
 
     try {
         corpCall(ns, "expandCity", divisionName, city);
-        ui.log(`Expanded ${divisionName} to ${city}`, "success");
         return budget - cost;
     } catch (error) {
-        ui.log(`expandCity failed (${divisionName}/${city}): ${String(error)}`, "error");
+        ui.log(`❌ expandCity failed (${divisionName}/${city}): ${String(error)}`, "error");
         return budget;
     }
 }
@@ -264,10 +297,9 @@ function ensureWarehouse(ns, divisionName, city, minLevel, budget, settings, ui)
 
         try {
             corpCall(ns, "purchaseWarehouse", divisionName, city);
-            ui.log(`Purchased warehouse: ${divisionName}/${city}`, "info");
             budget -= purchaseCost;
         } catch (error) {
-            ui.log(`purchaseWarehouse failed (${divisionName}/${city}): ${String(error)}`, "error");
+            ui.log(`❌ purchaseWarehouse failed (${divisionName}/${city}): ${String(error)}`, "error");
             return budget;
         }
     }
@@ -287,9 +319,7 @@ function ensureWarehouse(ns, divisionName, city, minLevel, budget, settings, ui)
             try {
                 corpCall(ns, "upgradeWarehouse", divisionName, city, levelsNeeded);
                 budget -= upgradeCost;
-            } catch {
-                // retry next cycle
-            }
+            } catch {}
         }
     }
 
@@ -297,9 +327,7 @@ function ensureWarehouse(ns, divisionName, city, minLevel, budget, settings, ui)
         if (safeBool(() => corpCall(ns, "hasUnlockUpgrade", "Smart Supply"), false)) {
             corpCall(ns, "setSmartSupply", divisionName, city, true);
         }
-    } catch {
-        // optional behavior
-    }
+    } catch {}
 
     return budget;
 }
@@ -324,9 +352,7 @@ function ensureOffice(ns, divisionName, city, minSize, budget, settings) {
             try {
                 corpCall(ns, "upgradeOfficeSize", divisionName, city, growBy);
                 budget -= cost;
-            } catch {
-                // retry next cycle
-            }
+            } catch {}
         }
     }
 
@@ -370,9 +396,7 @@ function applyOfficeAssignments(ns, divisionName, city, employees) {
 function setJob(ns, divisionName, city, role, amount) {
     try {
         corpCall(ns, "setAutoJobAssignment", divisionName, city, role, Math.max(0, amount));
-    } catch {
-        // ignore role/availability issues
-    }
+    } catch {}
 }
 
 function setAgricultureSales(ns, divisionName, city) {
@@ -382,9 +406,7 @@ function setAgricultureSales(ns, divisionName, city) {
     try {
         corpCall(ns, "sellMaterial", divisionName, city, "Food", "MAX", "MP");
         corpCall(ns, "sellMaterial", divisionName, city, "Plants", "MAX", "MP");
-    } catch {
-        // ignore unavailable states
-    }
+    } catch {}
 }
 
 function setProductSales(ns, divisionName, city) {
@@ -397,20 +419,40 @@ function setProductSales(ns, divisionName, city) {
     }
 
     for (const product of division.products) {
+        const prodInfo = safeValue(() => corpCall(ns, "getProduct", divisionName, city, product), null);
+        if (!prodInfo) continue;
+
+        const rating = Number(prodInfo.rat || 0);
+        const markup = calculateMarkup(rating);
+
         try {
-            corpCall(ns, "sellProduct", divisionName, city, product, "MAX", "MP", true);
-        } catch {
-            // ignore unavailable product states
-        }
+            corpCall(ns, "sellProduct", divisionName, city, product, "MAX", markup.toFixed(2), true);
+        } catch {}
     }
 }
 
+function calculateMarkup(rating) {
+    if (rating < 10) return 1.0;
+    if (rating < 30) return 1.1;
+    if (rating < 60) return 1.25;
+    if (rating < 100) return 1.5;
+    return 2.0;
+}
+
 function manageProducts(ns, settings, budget, ui) {
-    if (!divisionExists(ns, settings.productDivision)) {
+    return manageProductsForDivision(ns, settings.productDivision, settings, budget, ui);
+}
+
+function manageSecondaryProducts(ns, settings, budget, ui) {
+    return manageProductsForDivision(ns, settings.secondaryProductDivision, settings, budget, ui);
+}
+
+function manageProductsForDivision(ns, divisionName, settings, budget, ui) {
+    if (!divisionExists(ns, divisionName)) {
         return budget;
     }
 
-    const division = safeValue(() => corpCall(ns, "getDivision", settings.productDivision), null);
+    const division = safeValue(() => corpCall(ns, "getDivision", divisionName), null);
     if (!division || !division.makesProducts) {
         return budget;
     }
@@ -420,34 +462,40 @@ function manageProducts(ns, settings, budget, ui) {
         : (division.cities[0] || settings.productCity);
 
     const products = [...division.products];
-    let developingCount = 0;
+    let developing = 0;
+    const toDisc = [];
 
     for (const product of products) {
-        const info = safeValue(() => corpCall(ns, "getProduct", settings.productDivision, city, product), null);
-        if (info && Number(info.developmentProgress) < 100) {
-            developingCount += 1;
+        const info = safeValue(() => corpCall(ns, "getProduct", divisionName, city, product), null);
+        if (!info) continue;
+
+        const devProg = Number(info.developmentProgress || 0);
+        const rating = Number(info.rat || 0);
+        const profit = Number(info.prd || 0);
+
+        if (devProg < 100) {
+            developing += 1;
+        } else if (rating < settings.productMinRating || profit < 0) {
+            toDisc.push(product);
         }
     }
 
-    while (products.length > settings.maxProductsToKeep) {
-        const toDrop = products.shift();
-        if (!toDrop) {
-            break;
-        }
-        try {
-            corpCall(ns, "discontinueProduct", settings.productDivision, toDrop);
-            ui.log(`Discontinued product: ${toDrop}`, "warn");
-        } catch {
-            break;
+    for (const prod of toDisc) {
+        if (products.length > 1) {
+            try {
+                corpCall(ns, "discontinueProduct", divisionName, prod);
+                ui.log(`🗑️  Discontinued ${prod} (rating/profit low)`, "warn");
+                products.splice(products.indexOf(prod), 1);
+            } catch {}
         }
     }
 
-    if (developingCount > 0) {
+    if (developing > 0 || products.length >= settings.maxProductsToKeep) {
         return budget;
     }
 
     const investCost = settings.productDesignInvestment + settings.productMarketingInvestment;
-    if (!canSpend(ns, investCost, budget, settings.minimumCashBuffer)) {
+    if (!canSpend(ns, investCost, budget, settings.minimumCashBuffer * 2)) {
         return budget;
     }
 
@@ -458,13 +506,13 @@ function manageProducts(ns, settings, budget, ui) {
         corpCall(
             ns,
             "makeProduct",
-            settings.productDivision,
+            divisionName,
             city,
             productName,
             settings.productDesignInvestment,
             settings.productMarketingInvestment
         );
-        ui.log(`Started product: ${productName}`, "success");
+        ui.log(`🚀 Started product: ${productName}`, "success");
         return budget - investCost;
     } catch {
         return budget;
@@ -498,6 +546,20 @@ function manageUpgrades(ns, settings, budget) {
         }
     }
 
+    for (const research of RESEARCH_QUEUE) {
+        if (!settings.upgrades.hasOwnProperty(research)) {
+            try {
+                if (!safeBool(() => corpCall(ns, "hasResearched", research), false)) {
+                    const cost = safeNumber(() => corpCall(ns, "getResearchCost", research), Number.POSITIVE_INFINITY);
+                    if (canSpend(ns, cost, budget, settings.minimumCashBuffer * 1.5)) {
+                        corpCall(ns, "research", research);
+                        budget -= cost;
+                    }
+                }
+            } catch {}
+        }
+    }
+
     return budget;
 }
 
@@ -515,6 +577,29 @@ function maybeUnlockSmartSupply(ns, settings, budget) {
     } catch {
         return budget;
     }
+}
+
+function isDivisionStable(ns, divisionName) {
+    if (!divisionExists(ns, divisionName)) {
+        return false;
+    }
+    const division = safeValue(() => corpCall(ns, "getDivision", divisionName), null);
+    if (!division) return false;
+
+    const hasProducts = division.makesProducts && division.products.length > 0;
+    if (!hasProducts) {
+        return Number(division.revenue) > 1e9;
+    }
+
+    const city = division.cities[0];
+    for (const prod of division.products) {
+        const info = safeValue(() => corpCall(ns, "getProduct", divisionName, city, prod), null);
+        if (info && Number(info.developmentProgress) >= 100) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 function getTargetCities(settings) {
@@ -586,4 +671,47 @@ function logThrottled(ui, message, level = "info", intervalMs = 15000) {
     }
     state.lastStatusLogTs = now;
     ui.log(message, level);
+}
+
+function renderUI(ns, ui, settings) {
+    const now = Date.now();
+    if (now - state.lastStatusLogTs < 30000) {
+        return;
+    }
+
+    const corp = safeValue(() => corpCall(ns, "getCorporation"), null);
+    if (!corp) {
+        return;
+    }
+
+    const lines = [];
+    lines.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    lines.push(`💰 Funds: ${ns.formatNumber(corp.funds, 2)}`);
+    lines.push(`📊 Revenue: ${ns.formatNumber(corp.revenue, 2)}/s`);
+    lines.push(`📉 Expenses: ${ns.formatNumber(corp.expenses, 2)}/s`);
+    lines.push(`🏭 Divisions: ${corp.divisions.length}`);
+
+    for (const div of corp.divisions) {
+        const d = safeValue(() => corpCall(ns, "getDivision", div), null);
+        if (!d) continue;
+        lines.push(`  ${div}: R${ns.formatNumber(d.revenue, 1)}/s | Emp: ${d.totalEmployees}`);
+        if (d.makesProducts && d.products.length > 0) {
+            const city = d.cities[0];
+            for (const prod of d.products.slice(0, 2)) {
+                const p = safeValue(() => corpCall(ns, "getProduct", div, city, prod), null);
+                if (p) {
+                    const rating = Number(p.rat || 0).toFixed(1);
+                    const progress = Number(p.developmentProgress || 0).toFixed(0);
+                    lines.push(`    ${prod}: ⭐${rating} | Dev: ${progress}%`);
+                }
+            }
+        }
+    }
+
+    lines.push("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+
+    ui.clear();
+    for (const line of lines) {
+        ui.log(line, "info");
+    }
 }

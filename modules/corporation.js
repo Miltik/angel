@@ -804,7 +804,8 @@ function manageUpgrades(ns, settings, budget) {
         : settings.productDivision;
 
     for (const research of RESEARCH_QUEUE) {
-        // Skip Market Research and Data Hubs - they're now guaranteed by guaranteeCriticalUnlocks()
+        // Skip Market Research and Data Hubs - they moved from research to unlocks
+        // and are now guaranteed by guaranteeCriticalUnlocks()
         if ((research === "Market Research" || research === "Data Hubs")) {
             continue;
         }
@@ -826,64 +827,40 @@ function manageUpgrades(ns, settings, budget) {
 }
 
 function guaranteeCriticalUnlocks(ns, settings, budget, ui) {
-    // Smart Supply unlock
-    const hasSmartSupply = safeBool(() => corpCall(ns, "hasUnlockUpgrade", "Smart Supply"), false);
-    if (!hasSmartSupply) {
-        const cost = safeNumber(() => corpCall(ns, "getUnlockUpgradeCost", "Smart Supply"), Number.POSITIVE_INFINITY);
-        if (Number.isFinite(cost) && cost > 0 && canSpend(ns, cost, budget, settings.minimumCashBuffer)) {
-            try {
-                corpCall(ns, "unlockUpgrade", "Smart Supply");
-                ui.log(`✅ Unlocked: Smart Supply`, "success");
-                budget -= cost;
-            } catch (error) {
-                ui.log(`❌ Failed to unlock Smart Supply: ${String(error)}`, "warn");
-            }
-        }
-    }
+    // CRITICAL: All three are UNLOCKS, not research!
+    // Names in the game: "Market Research - Demand" and "Market Data - Competition"
+    
+    const unlocks = [
+        "Smart Supply",
+        "Market Research - Demand",
+        "Market Data - Competition"
+    ];
 
-    // Market Research research
-    if (divisionExists(ns, settings.primaryDivision)) {
-        const hasMarketResearch = safeBool(
-            () => corpCall(ns, "hasResearched", settings.primaryDivision, "Market Research"),
-            false
-        );
-        if (!hasMarketResearch) {
-            const cost = safeNumber(
-                () => corpCall(ns, "getResearchCost", settings.primaryDivision, "Market Research"),
-                Number.POSITIVE_INFINITY
-            );
-            if (Number.isFinite(cost) && cost > 0 && canSpend(ns, cost, budget, settings.minimumCashBuffer)) {
-                try {
-                    corpCall(ns, "research", settings.primaryDivision, "Market Research");
-                    ui.log(`✅ Researched: Market Research (${ns.formatNumber(cost, 2)})`, "success");
-                    budget -= cost;
-                } catch (error) {
-                    ui.log(`❌ Failed to research Market Research: ${String(error)}`, "warn");
-                }
-            }
+    for (const unlockName of unlocks) {
+        // Check if already unlocked
+        if (safeBool(() => corpCall(ns, "hasUnlockUpgrade", unlockName), false)) {
+            continue;  // Already unlocked, skip
         }
-    }
 
-    // Data Hubs research
-    if (divisionExists(ns, settings.primaryDivision)) {
-        const hasDataHubs = safeBool(
-            () => corpCall(ns, "hasResearched", settings.primaryDivision, "Data Hubs"),
-            false
-        );
-        if (!hasDataHubs) {
-            const cost = safeNumber(
-                () => corpCall(ns, "getResearchCost", settings.primaryDivision, "Data Hubs"),
-                Number.POSITIVE_INFINITY
-            );
-            if (Number.isFinite(cost) && cost > 0 && canSpend(ns, cost, budget, settings.minimumCashBuffer)) {
-                try {
-                    corpCall(ns, "research", settings.primaryDivision, "Data Hubs");
-                    ui.log(`✅ Researched: Data Hubs (${ns.formatNumber(cost, 2)})`, "success");
-                    budget -= cost;
-                } catch (error) {
-                    ui.log(`❌ Failed to research Data Hubs: ${String(error)}`, "warn");
-                }
-            }
+        // Try to get cost and unlock
+        const cost = safeNumber(() => corpCall(ns, "getUnlockUpgradeCost", unlockName), Number.POSITIVE_INFINITY);
+        
+        if (!Number.isFinite(cost) || cost <= 0) {
+            // If that didn't work, it might already be unlocked or not available
+            continue;
+        }
+
+        if (!canSpend(ns, cost, budget, settings.minimumCashBuffer)) {
+            ui.log(`⚠️  Cannot afford ${unlockName} (Cost: ${ns.formatNumber(cost, 2)} | Budget: ${ns.formatNumber(budget, 2)})`, "warn");
+            continue;
+        }
+
+        try {
+            corpCall(ns, "unlockUpgrade", unlockName);
+            ui.log(`✅ Unlocked: ${unlockName} (Cost: ${ns.formatNumber(cost, 2)})`, "success");
+            budget -= cost;
+        } catch (error) {
+            ui.log(`❌ Failed to unlock ${unlockName}: ${String(error)}`, "warn");
         }
     }
 

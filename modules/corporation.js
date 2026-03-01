@@ -254,11 +254,9 @@ function runCycle(ns, settings, ui) {
     let budget = Math.max(0, Number(corp.funds) * settings.maxSpendRatioPerCycle);
     const startBudget = budget;
 
-    // === CRITICAL PRIORITY: Guarantee Smart Supply, Market Research, Data Hubs unlock/research ===
-    // These three are essential for early profitability - allocate dedicated budget FIRST
-    if (divisionExists(ns, settings.primaryDivision)) {
-        budget = guaranteeCriticalUnlocks(ns, settings, budget, ui);
-    }
+    // === CRITICAL PRIORITY: Guarantee Smart Supply + Market unlocks ===
+    // Attempt every cycle; do not gate on division existence.
+    budget = guaranteeCriticalUnlocks(ns, settings, budget, ui);
 
     budget = ensurePrimaryDivision(ns, settings, budget, ui);
     const afterPrimary = budget;
@@ -853,27 +851,23 @@ function guaranteeCriticalUnlocks(ns, settings, budget, ui) {
             continue;  // Already unlocked, skip
         }
 
-        // Try to get cost and unlock
-        const cost = safeNumber(() => corpCall(ns, "getUnlockUpgradeCost", unlockName), Number.POSITIVE_INFINITY);
-        
-        if (!Number.isFinite(cost) || cost <= 0) {
-            // If that didn't work, it might already be unlocked or not available
-            continue;
-        }
-
+        const cost = safeNumber(() => corpCall(ns, "getUnlockUpgradeCost", unlockName), Number.NaN);
         const funds = safeNumber(() => corpCall(ns, "getCorporation").funds, 0);
-        const canAffordCriticalUnlock = (funds - cost) >= settings.minimumCashBuffer;
 
-        // Critical unlocks bypass per-cycle budget cap; only enforce total funds + cash buffer.
-        if (!canAffordCriticalUnlock) {
+        // Critical unlocks bypass per-cycle budget cap; only enforce total funds + cash buffer when cost is known.
+        if (Number.isFinite(cost) && cost > 0 && (funds - cost) < settings.minimumCashBuffer) {
             ui.log(`⚠️  Cannot afford ${unlockName} (Cost: ${ns.formatNumber(cost, 2)} | Funds: ${ns.formatNumber(funds, 2)} | MinBuffer: ${ns.formatNumber(settings.minimumCashBuffer, 2)})`, "warn");
             continue;
         }
 
         try {
             corpCall(ns, "unlockUpgrade", unlockName);
-            ui.log(`✅ Unlocked: ${unlockName} (Cost: ${ns.formatNumber(cost, 2)})`, "success");
-            budget = Math.max(0, budget - cost);
+            if (Number.isFinite(cost) && cost > 0) {
+                ui.log(`✅ Unlocked: ${unlockName} (Cost: ${ns.formatNumber(cost, 2)})`, "success");
+                budget = Math.max(0, budget - cost);
+            } else {
+                ui.log(`✅ Unlocked: ${unlockName}`, "success");
+            }
         } catch (error) {
             ui.log(`❌ Failed to unlock ${unlockName}: ${String(error)}`, "warn");
         }

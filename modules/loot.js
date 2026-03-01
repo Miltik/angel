@@ -37,16 +37,17 @@ async function collectLoot(ns, ui) {
     const includeHome = Boolean(config.loot?.includeHome);
     const lootExtensions = Array.isArray(config.loot?.extensions)
         ? config.loot.extensions.map(ext => String(ext || "").toLowerCase())
-        : [".txt", ".cct"];
+        : [".lit", ".msg", ".txt", ".cct"];
 
     const maxPerLoop = Math.max(1, Number(config.loot?.maxFilesPerLoop ?? 250));
-    const archivePrefix = String(config.loot?.archivePrefix ?? "/angel/loot/");
+    const manifestPath = "/angel/loot/loot-index.txt";
 
     let scannedServers = 0;
     let candidates = 0;
     let updated = 0;
     let unchanged = 0;
     let failed = 0;
+    const manifestRows = [];
 
     for (const server of servers) {
         if (!includeHome && server === "home") continue;
@@ -61,28 +62,31 @@ async function collectLoot(ns, ui) {
 
             candidates++;
             try {
-                const sourceContent = ns.read(file, server);
-                if (typeof sourceContent !== "string" || sourceContent === "") {
-                    failed++;
-                    if (state.loopCount === 1 && failed <= 5) {
-                        ui.log(`⚠️  Cannot read ${file} on ${server} (unsupported type?)`, "warn");
-                    }
-                    continue;
-                }
-
-                const target = `${archivePrefix}${sanitize(server)}__${sanitize(file)}`;
-                const existing = ns.read(target);
-
-                if (existing === sourceContent) {
+                if (server === "home") {
                     unchanged++;
+                    manifestRows.push(`HOME | ${file} | already-local`);
                     continue;
                 }
 
-                ns.write(target, sourceContent, "w");
-                updated++;
-                state.totalFilesArchived++;
+                const alreadyOnHome = ns.fileExists(file, "home");
+                if (alreadyOnHome) {
+                    unchanged++;
+                    manifestRows.push(`${server} | ${file} | exists-on-home`);
+                    continue;
+                }
+
+                const copied = ns.scp(file, "home", server);
+                if (copied) {
+                    updated++;
+                    state.totalFilesArchived++;
+                    manifestRows.push(`${server} | ${file} | copied`);
+                } else {
+                    failed++;
+                    manifestRows.push(`${server} | ${file} | copy-failed`);
+                }
             } catch (e) {
                 failed++;
+                manifestRows.push(`${server} | ${file} | error: ${String(e?.message || e)}`);
                 if (state.loopCount === 1 && failed <= 5) {
                     ui.log(`❌ Failed to copy ${file}: ${e.message || e}`, "error");
                 }
@@ -93,6 +97,7 @@ async function collectLoot(ns, ui) {
     }
 
     const summary = `Scanned ${scannedServers} servers | Candidates ${candidates} | Updated ${updated} | Unchanged ${unchanged} | Failed ${failed}`;
+    writeManifest(ns, manifestPath, summary, manifestRows);
     if (summary !== state.lastSummary || state.loopCount % 10 === 0) {
         ui.log(`📦 ${summary}`, failed > 0 ? "warn" : "info");
         state.lastSummary = summary;
@@ -116,6 +121,22 @@ function sanitize(value) {
         .replace(/[\\/:*?"<>|\s]+/g, "_")
         .replace(/_+/g, "_")
         .replace(/^_+|_+$/g, "");
+}
+
+function writeManifest(ns, path, summary, rows) {
+    const lines = [
+        `ANGEL LOOT INDEX - ${new Date().toISOString()}`,
+        summary,
+        "",
+    ];
+
+    if (rows.length === 0) {
+        lines.push("No loot candidates found in this pass.");
+    } else {
+        lines.push(...rows);
+    }
+
+    ns.write(path, lines.join("\n"), "w");
 }
 
 function getAllServers(ns) {

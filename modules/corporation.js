@@ -122,23 +122,57 @@ function getSettings() {
 
 function corpApi(ns) {
     try {
-        return (0, eval)("ns.corporation");
-    } catch (e) {
-        // Try alternative: direct ns.corporation access
-        try {
-            return ns.corporation;
-        } catch {
-            return null;
-        }
+        return ns.corporation || null;
+    } catch {
+        return null;
     }
 }
 
 function corpCall(ns, method, ...args) {
     const corp = corpApi(ns);
-    if (!corp || typeof corp[method] !== "function") {
-        throw new Error(`Corporation method unavailable: ${method}`);
+    if (!corp) {
+        throw new Error("Corporation API unavailable");
     }
-    return corp[method](...args);
+
+    switch (method) {
+        case "hasCorporation": return corp.hasCorporation();
+        case "createCorporation": return corp.createCorporation(args[0], args[1]);
+        case "getCorporation": return corp.getCorporation();
+        case "getIndustryData": return corp.getIndustryData(args[0]);
+        case "getExpandIndustryCost": return corp.getExpandIndustryCost(args[0]);
+        case "expandIndustry": return corp.expandIndustry(args[0], args[1]);
+        case "getDivision": return corp.getDivision(args[0]);
+        case "getExpandCityCost": return corp.getExpandCityCost();
+        case "expandCity": return corp.expandCity(args[0], args[1]);
+        case "hasWarehouse": return corp.hasWarehouse(args[0], args[1]);
+        case "getPurchaseWarehouseCost": return corp.getPurchaseWarehouseCost();
+        case "purchaseWarehouse": return corp.purchaseWarehouse(args[0], args[1]);
+        case "getWarehouse": return corp.getWarehouse(args[0], args[1]);
+        case "getUpgradeWarehouseCost": return corp.getUpgradeWarehouseCost(args[0], args[1], args[2]);
+        case "upgradeWarehouse": return corp.upgradeWarehouse(args[0], args[1], args[2]);
+        case "hasUnlockUpgrade": return corp.hasUnlockUpgrade(args[0]);
+        case "setSmartSupply": return corp.setSmartSupply(args[0], args[1], args[2]);
+        case "getOffice": return corp.getOffice(args[0], args[1]);
+        case "getOfficeSizeUpgradeCost": return corp.getOfficeSizeUpgradeCost(args[0], args[1], args[2]);
+        case "upgradeOfficeSize": return corp.upgradeOfficeSize(args[0], args[1], args[2]);
+        case "hireEmployee": return corp.hireEmployee(args[0], args[1]);
+        case "setAutoJobAssignment": return corp.setAutoJobAssignment(args[0], args[1], args[2], args[3]);
+        case "sellMaterial": return corp.sellMaterial(args[0], args[1], args[2], args[3], args[4]);
+        case "sellProduct": return corp.sellProduct(args[0], args[1], args[2], args[3], args[4], args[5]);
+        case "getProduct": return corp.getProduct(args[0], args[1], args[2]);
+        case "discontinueProduct": return corp.discontinueProduct(args[0], args[1]);
+        case "makeProduct": return corp.makeProduct(args[0], args[1], args[2], args[3], args[4]);
+        case "getUpgradeLevel": return corp.getUpgradeLevel(args[0]);
+        case "getUpgradeLevelCost": return corp.getUpgradeLevelCost(args[0]);
+        case "levelUpgrade": return corp.levelUpgrade(args[0]);
+        case "hasResearched": return corp.hasResearched(args[0], args[1]);
+        case "getResearchCost": return corp.getResearchCost(args[0], args[1]);
+        case "research": return corp.research(args[0], args[1]);
+        case "getUnlockUpgradeCost": return corp.getUnlockUpgradeCost(args[0]);
+        case "unlockUpgrade": return corp.unlockUpgrade(args[0]);
+        default:
+            throw new Error(`Corporation method unsupported: ${method}`);
+    }
 }
 
 function hasCorporationApi(ns) {
@@ -680,13 +714,17 @@ function manageUpgrades(ns, settings, budget) {
         }
     }
 
+    const researchDivision = divisionExists(ns, settings.primaryDivision)
+        ? settings.primaryDivision
+        : settings.productDivision;
+
     for (const research of RESEARCH_QUEUE) {
-        if (!settings.upgrades.hasOwnProperty(research)) {
+        if (!settings.upgrades.hasOwnProperty(research) && divisionExists(ns, researchDivision)) {
             try {
-                if (!safeBool(() => corpCall(ns, "hasResearched", research), false)) {
-                    const cost = safeNumber(() => corpCall(ns, "getResearchCost", research), Number.POSITIVE_INFINITY);
+                if (!safeBool(() => corpCall(ns, "hasResearched", researchDivision, research), false)) {
+                    const cost = safeNumber(() => corpCall(ns, "getResearchCost", researchDivision, research), Number.POSITIVE_INFINITY);
                     if (canSpend(ns, cost, budget, settings.minimumCashBuffer * 1.5)) {
-                        corpCall(ns, "research", research);
+                        corpCall(ns, "research", researchDivision, research);
                         budget -= cost;
                     }
                 }

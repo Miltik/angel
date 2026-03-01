@@ -254,9 +254,10 @@ function runCycle(ns, settings, ui) {
     let budget = Math.max(0, Number(corp.funds) * settings.maxSpendRatioPerCycle);
     const startBudget = budget;
 
-    // Hard-prioritize Smart Supply unlock for primary division before other spending
+    // === CRITICAL PRIORITY: Guarantee Smart Supply, Market Research, Data Hubs unlock/research ===
+    // These three are essential for early profitability - allocate dedicated budget FIRST
     if (divisionExists(ns, settings.primaryDivision)) {
-        budget = maybeUnlockSmartSupply(ns, settings, budget);
+        budget = guaranteeCriticalUnlocks(ns, settings, budget, ui);
     }
 
     budget = ensurePrimaryDivision(ns, settings, budget, ui);
@@ -803,6 +804,11 @@ function manageUpgrades(ns, settings, budget) {
         : settings.productDivision;
 
     for (const research of RESEARCH_QUEUE) {
+        // Skip Market Research and Data Hubs - they're now guaranteed by guaranteeCriticalUnlocks()
+        if ((research === "Market Research" || research === "Data Hubs")) {
+            continue;
+        }
+
         if (!settings.upgrades.hasOwnProperty(research) && divisionExists(ns, researchDivision)) {
             try {
                 if (!safeBool(() => corpCall(ns, "hasResearched", researchDivision, research), false)) {
@@ -813,6 +819,71 @@ function manageUpgrades(ns, settings, budget) {
                     }
                 }
             } catch {}
+        }
+    }
+
+    return budget;
+}
+
+function guaranteeCriticalUnlocks(ns, settings, budget, ui) {
+    // Smart Supply unlock
+    const hasSmartSupply = safeBool(() => corpCall(ns, "hasUnlockUpgrade", "Smart Supply"), false);
+    if (!hasSmartSupply) {
+        const cost = safeNumber(() => corpCall(ns, "getUnlockUpgradeCost", "Smart Supply"), Number.POSITIVE_INFINITY);
+        if (Number.isFinite(cost) && cost > 0 && canSpend(ns, cost, budget, settings.minimumCashBuffer)) {
+            try {
+                corpCall(ns, "unlockUpgrade", "Smart Supply");
+                ui.log(`✅ Unlocked: Smart Supply`, "success");
+                budget -= cost;
+            } catch (error) {
+                ui.log(`❌ Failed to unlock Smart Supply: ${String(error)}`, "warn");
+            }
+        }
+    }
+
+    // Market Research research
+    if (divisionExists(ns, settings.primaryDivision)) {
+        const hasMarketResearch = safeBool(
+            () => corpCall(ns, "hasResearched", settings.primaryDivision, "Market Research"),
+            false
+        );
+        if (!hasMarketResearch) {
+            const cost = safeNumber(
+                () => corpCall(ns, "getResearchCost", settings.primaryDivision, "Market Research"),
+                Number.POSITIVE_INFINITY
+            );
+            if (Number.isFinite(cost) && cost > 0 && canSpend(ns, cost, budget, settings.minimumCashBuffer)) {
+                try {
+                    corpCall(ns, "research", settings.primaryDivision, "Market Research");
+                    ui.log(`✅ Researched: Market Research (${ns.formatNumber(cost, 2)})`, "success");
+                    budget -= cost;
+                } catch (error) {
+                    ui.log(`❌ Failed to research Market Research: ${String(error)}`, "warn");
+                }
+            }
+        }
+    }
+
+    // Data Hubs research
+    if (divisionExists(ns, settings.primaryDivision)) {
+        const hasDataHubs = safeBool(
+            () => corpCall(ns, "hasResearched", settings.primaryDivision, "Data Hubs"),
+            false
+        );
+        if (!hasDataHubs) {
+            const cost = safeNumber(
+                () => corpCall(ns, "getResearchCost", settings.primaryDivision, "Data Hubs"),
+                Number.POSITIVE_INFINITY
+            );
+            if (Number.isFinite(cost) && cost > 0 && canSpend(ns, cost, budget, settings.minimumCashBuffer)) {
+                try {
+                    corpCall(ns, "research", settings.primaryDivision, "Data Hubs");
+                    ui.log(`✅ Researched: Data Hubs (${ns.formatNumber(cost, 2)})`, "success");
+                    budget -= cost;
+                } catch (error) {
+                    ui.log(`❌ Failed to research Data Hubs: ${String(error)}`, "warn");
+                }
+            }
         }
     }
 

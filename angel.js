@@ -384,27 +384,6 @@ async function ensureModulesRunning(ns) {
         await ns.sleep(1000);
     }
     
-    // Coding Contracts solver - low RAM
-    if (config.orchestrator.enableContracts) {
-        const contractsStarted = await ensureModuleRunning(ns, SCRIPTS.contracts, "Contracts", [], {
-            deferIfInsufficientRam: true,
-            lowRamLogIntervalMs: 45000,
-        });
-        if (!contractsStarted) {
-            log(ns, `Contracts module not started (check RAM or file errors)`, "WARN");
-        }
-        await ns.sleep(1500);
-    }
-
-    // Loot collector - low RAM
-    if (config.orchestrator.enableLoot) {
-        await ensureModuleRunning(ns, SCRIPTS.loot, "Loot", [], {
-            deferIfInsufficientRam: true,
-            lowRamLogIntervalMs: 45000,
-        });
-        await ns.sleep(1500);
-    }
-    
     // Formulas.exe farming - low RAM
     if (config.orchestrator.enableFormulas) {
         await ensureModuleRunning(ns, SCRIPTS.formulas, "Formulas", [], {
@@ -493,6 +472,24 @@ async function ensureModulesRunning(ns) {
             deferIfInsufficientRam: true,
             lowRamLogIntervalMs: 45000,
         });
+    }
+
+    // Coding Contracts solver - starts last to ensure maximum RAM availability
+    if (config.orchestrator.enableContracts) {
+        await ensureModuleRunning(ns, SCRIPTS.contracts, "Contracts", [], {
+            deferIfInsufficientRam: true,
+            lowRamLogIntervalMs: 45000,
+        });
+        await ns.sleep(1500);
+    }
+
+    // Loot collector - starts last, low priority
+    if (config.orchestrator.enableLoot) {
+        await ensureModuleRunning(ns, SCRIPTS.loot, "Loot", [], {
+            deferIfInsufficientRam: true,
+            lowRamLogIntervalMs: 45000,
+        });
+        await ns.sleep(1500);
     }
 
     return true;

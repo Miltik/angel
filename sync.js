@@ -65,6 +65,7 @@ export async function main(ns) {
         "modules/corporation.js",        // New: integrated corporation automation module
         "modules/backdoorRunner.js",     // New: Full backdoor runner (launched by backdoor.js)
         "modules/resetMonitor.js",       // New: Persistent reset tracking utility
+        "modules/contracts-simple.js",   // New: Simplified contracts module for testing
         
         // Tools
         "snapshot.js",                   // New: System state capture
@@ -77,6 +78,9 @@ export async function main(ns) {
         "corpManager.js",                // Backward-compatible wrapper to modules/corporation.js
         "share-all.js",                  // Share all free RAM to current faction
         "share.js",                      // Worker script for share-all.js
+        "test-contracts.js",             // Diagnostic: test contracts module startup
+        "test-contracts-deps.js",        // Diagnostic: test contracts dependencies
+        "test-contracts-minimal.js",     // Diagnostic: minimal contracts startup test
         
         // Workers
         "workers/hack.js",

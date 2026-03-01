@@ -237,11 +237,11 @@ function ensurePrimaryDivision(ns, settings, budget, ui) {
         return budget;
     }
 
-    const cities = getTargetCities(settings);
+    const cities = getTargetCitiesForDivision(ns, settings.primaryDivision, settings);
     for (const city of cities) {
         budget = ensureDivisionCity(ns, settings.primaryDivision, city, budget, settings, ui);
         budget = ensureWarehouse(ns, settings.primaryDivision, city, settings.minWarehouseLevelPrimary, budget, settings, ui);
-        budget = ensureOffice(ns, settings.primaryDivision, city, settings.minOfficeSizePrimary, budget, settings);
+        budget = ensureOffice(ns, settings.primaryDivision, city, settings.minOfficeSizePrimary, budget, settings, ui);
         setAgricultureSales(ns, settings.primaryDivision, city);
     }
 
@@ -263,7 +263,7 @@ function ensureProductDivision(ns, settings, budget, ui) {
     for (const city of cities) {
         budget = ensureDivisionCity(ns, settings.productDivision, city, budget, settings, ui);
         budget = ensureWarehouse(ns, settings.productDivision, city, settings.minWarehouseLevelProduct, budget, settings, ui);
-        budget = ensureOffice(ns, settings.productDivision, city, settings.minOfficeSizeProduct, budget, settings);
+        budget = ensureOffice(ns, settings.productDivision, city, settings.minOfficeSizeProduct, budget, settings, ui);
         setProductSales(ns, settings.productDivision, city);
     }
 
@@ -290,7 +290,7 @@ function ensureSecondaryProductDivision(ns, settings, budget, ui) {
     for (const city of cities) {
         budget = ensureDivisionCity(ns, settings.secondaryProductDivision, city, budget, settings, ui);
         budget = ensureWarehouse(ns, settings.secondaryProductDivision, city, settings.minWarehouseLevelProduct, budget, settings, ui);
-        budget = ensureOffice(ns, settings.secondaryProductDivision, city, settings.minOfficeSizeProduct, budget, settings);
+        budget = ensureOffice(ns, settings.secondaryProductDivision, city, settings.minOfficeSizeProduct, budget, settings, ui);
         setProductSales(ns, settings.secondaryProductDivision, city);
     }
 
@@ -443,13 +443,15 @@ function ensureWarehouse(ns, divisionName, city, minLevel, budget, settings, ui)
     return budget;
 }
 
-function ensureOffice(ns, divisionName, city, minSize, budget, settings) {
+function ensureOffice(ns, divisionName, city, minSize, budget, settings, ui) {
     if (!cityReady(ns, divisionName, city)) {
+        logThrottled(ui, `Office skipped: ${divisionName}/${city} not ready`, "info", 20000);
         return budget;
     }
 
     const office = safeValue(() => corpCall(ns, "getOffice", divisionName, city), null);
     if (!office) {
+        logThrottled(ui, `Office unavailable for ${divisionName}/${city}`, "warn", 20000);
         return budget;
     }
 
@@ -487,8 +489,15 @@ function ensureOffice(ns, divisionName, city, minSize, budget, settings) {
     }
 
     while (refreshed.numEmployees < refreshed.size) {
-        const hired = safeBool(() => corpCall(ns, "hireEmployee", divisionName, city), false);
+        let hired = false;
+        try {
+            hired = Boolean(corpCall(ns, "hireEmployee", divisionName, city));
+        } catch (error) {
+            logThrottled(ui, `hireEmployee failed (${divisionName}/${city}): ${String(error)}`, "warn", 20000);
+            break;
+        }
         if (!hired) {
+            logThrottled(ui, `hireEmployee returned false (${divisionName}/${city})`, "info", 20000);
             break;
         }
         refreshed = safeValue(() => corpCall(ns, "getOffice", divisionName, city), refreshed);
@@ -769,6 +778,23 @@ function shouldExpandToAllCities(ns, settings, ui) {
 
 function getTargetCities(settings) {
     return settings.expandToAllCities ? CITIES : [settings.primaryCity];
+}
+
+function getTargetCitiesForDivision(ns, divisionName, settings) {
+    if (settings.expandToAllCities) {
+        return CITIES;
+    }
+
+    const division = safeValue(() => corpCall(ns, "getDivision", divisionName), null);
+    const preferred = settings.primaryCity || "Sector-12";
+    if (division && Array.isArray(division.cities) && division.cities.length > 0) {
+        if (division.cities.includes(preferred)) {
+            return [preferred];
+        }
+        return [division.cities[0]];
+    }
+
+    return [preferred];
 }
 
 function divisionExists(ns, divisionName) {

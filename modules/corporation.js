@@ -593,23 +593,47 @@ function maintainAgricultureInputs(ns, divisionName, city) {
         return;
     }
 
-    const targets = {
-        "Water": 600,
+    const requiredTargets = {
+        "Water": 1200,
+        "Chemicals": 400,
+    };
+
+    const requiredRates = {
+        "Water": 12,
+        "Chemicals": 4,
+    };
+
+    const boostTargets = {
         "Hardware": 40,
         "AI Cores": 30,
         "Real Estate": 12000,
     };
 
-    const rates = {
-        "Water": 6,
-        "Hardware": 0.8,
-        "AI Cores": 0.5,
-        "Real Estate": 150,
+    const boostRates = {
+        "Hardware": 0.3,
+        "AI Cores": 0.2,
+        "Real Estate": 40,
     };
 
-    for (const [material, target] of Object.entries(targets)) {
+    let requiredReady = true;
+    for (const [material, target] of Object.entries(requiredTargets)) {
         const current = safeNumber(() => corpCall(ns, "getMaterial", divisionName, city, material).qty, 0);
-        const buyRate = current < target ? rates[material] : 0;
+        if (current < target * 0.9) {
+            requiredReady = false;
+        }
+        const buyRate = current < target ? requiredRates[material] : 0;
+        try {
+            corpCall(ns, "buyMaterial", divisionName, city, material, buyRate);
+        } catch {}
+    }
+
+    const warehouse = safeValue(() => corpCall(ns, "getWarehouse", divisionName, city), null);
+    const usageRatio = warehouse && warehouse.size > 0 ? Number(warehouse.sizeUsed) / Number(warehouse.size) : 0;
+    const canBuyBoosts = requiredReady && usageRatio < 0.85;
+
+    for (const [material, target] of Object.entries(boostTargets)) {
+        const current = safeNumber(() => corpCall(ns, "getMaterial", divisionName, city, material).qty, 0);
+        const buyRate = canBuyBoosts && current < target ? boostRates[material] : 0;
         try {
             corpCall(ns, "buyMaterial", divisionName, city, material, buyRate);
         } catch {}
@@ -962,7 +986,7 @@ function renderUI(ns, ui, settings) {
         const d = safeValue(() => corpCall(ns, "getDivision", div), null);
         if (!d) continue;
         const divisionRevenue = Number.isFinite(Number(d.revenue)) ? Number(d.revenue) : 0;
-        const divisionEmployees = Number.isFinite(Number(d.totalEmployees)) ? Number(d.totalEmployees) : 0;
+        const divisionEmployees = getDivisionEmployeeCount(ns, d);
         ui.log(`  ${div}: R${ns.formatNumber(divisionRevenue, 1)}/s | Emp: ${divisionEmployees}`, "info");
         if (d.makesProducts && d.products.length > 0) {
             const city = d.cities[0];
@@ -976,4 +1000,16 @@ function renderUI(ns, ui, settings) {
             }
         }
     }
+}
+
+function getDivisionEmployeeCount(ns, division) {
+    if (!division || !Array.isArray(division.cities)) {
+        return 0;
+    }
+
+    let total = 0;
+    for (const city of division.cities) {
+        total += safeNumber(() => corpCall(ns, "getOffice", division.name, city).numEmployees, 0);
+    }
+    return total;
 }

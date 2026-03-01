@@ -3,6 +3,7 @@ import { createWindow } from "/angel/modules/uiManager.js";
 
 const CITIES = ["Aevum", "Chongqing", "Sector-12", "New Tokyo", "Ishima", "Volhaven"];
 const RESEARCH_QUEUE = [
+    "Market Research", "Data Hubs",
     "Smart Factories", "Smart Storage", "Wilson Analytics", "Overclock",
     "Self-Correcting Assemblers", "Efficient Offices", "Advertising",
     "Automatic Drug Synthesis", "Bulk Purchasing"

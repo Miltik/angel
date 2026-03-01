@@ -1,10 +1,11 @@
 import { config } from "/angel/config.js";
+import { createWindow } from "/angel/modules/uiManager.js";
 
 const CITIES = ["Aevum", "Chongqing", "Sector-12", "New Tokyo", "Ishima", "Volhaven"];
 
 const state = {
     warnedNoApi: false,
-    lastInfoLog: 0,
+    lastStatusLogTs: 0,
     nextProductId: 1,
 };
 
@@ -12,13 +13,18 @@ const state = {
 export async function main(ns) {
     ns.disableLog("ALL");
 
+    const ui = createWindow("corporation", "🏢 Corporation", 640, 380, ns);
+    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
+    ui.log("🏢 Corporation automation initialized", "success");
+    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
+
     const settings = getSettings();
 
     while (true) {
         try {
             if (!hasCorporationApi(ns)) {
                 if (!state.warnedNoApi) {
-                    ns.print("[CORP] Corporation API unavailable. Idling.");
+                    ui.log("Corporation API unavailable. Idling.", "warn");
                     state.warnedNoApi = true;
                 }
                 await ns.sleep(settings.loopDelayMs);
@@ -27,15 +33,15 @@ export async function main(ns) {
 
             state.warnedNoApi = false;
 
-            const corpReady = await ensureCorporationExists(ns, settings);
+            const corpReady = ensureCorporationExists(ns, settings, ui);
             if (!corpReady) {
                 await ns.sleep(settings.loopDelayMs);
                 continue;
             }
 
-            await runCycle(ns, settings);
+            runCycle(ns, settings, ui);
         } catch (error) {
-            ns.print(`[CORP] cycle error: ${String(error)}`);
+            ui.log(`Cycle error: ${String(error)}`, "error");
         }
 
         await ns.sleep(settings.loopDelayMs);
@@ -76,78 +82,101 @@ function getSettings() {
     };
 }
 
+function corpApi(ns) {
+    try {
+        return (0, eval)("ns.corporation");
+    } catch {
+        return null;
+    }
+}
+
+function corpCall(ns, method, ...args) {
+    const corp = corpApi(ns);
+    if (!corp || typeof corp[method] !== "function") {
+        throw new Error(`Corporation method unavailable: ${method}`);
+    }
+    return corp[method](...args);
+}
+
 function hasCorporationApi(ns) {
     try {
-        if (!ns.corporation || typeof ns.corporation.hasCorporation !== "function") {
-            return false;
-        }
-        ns.corporation.hasCorporation();
+        corpCall(ns, "hasCorporation");
         return true;
     } catch {
         return false;
     }
 }
 
-async function ensureCorporationExists(ns, settings) {
-    if (ns.corporation.hasCorporation()) {
+function ensureCorporationExists(ns, settings, ui) {
+    if (safeBool(() => corpCall(ns, "hasCorporation"), false)) {
         return true;
     }
 
     if (!settings.autoCreate) {
-        logInfoThrottled(ns, "[CORP] No corporation yet (autoCreate disabled)");
+        logThrottled(ui, "No corporation yet (autoCreate disabled)", "warn", 15000);
         return false;
     }
 
     if (settings.createWithSeedCapital) {
         const money = ns.getServerMoneyAvailable("home");
         if (money < settings.minFundsForCreation) {
-            logInfoThrottled(
-                ns,
-                `[CORP] Waiting to create corp (${ns.formatNumber(money, 2)} / ${ns.formatNumber(settings.minFundsForCreation, 2)})`
+            logThrottled(
+                ui,
+                `Waiting for corp creation funds: ${ns.formatNumber(money, 2)} / ${ns.formatNumber(settings.minFundsForCreation, 2)}`,
+                "info",
+                15000
             );
             return false;
         }
     }
 
     try {
-        const created = ns.corporation.createCorporation(settings.corporationName, settings.createWithSeedCapital);
+        const created = corpCall(ns, "createCorporation", settings.corporationName, settings.createWithSeedCapital);
         if (created) {
-            ns.print(`[CORP] Corporation created: ${settings.corporationName}`);
+            ui.log(`Corporation created: ${settings.corporationName}`, "success");
             return true;
         }
     } catch (error) {
-        ns.print(`[CORP] Corporation create failed: ${String(error)}`);
+        ui.log(`Corporation create failed: ${String(error)}`, "error");
     }
 
-    return ns.corporation.hasCorporation();
+    return safeBool(() => corpCall(ns, "hasCorporation"), false);
 }
 
-async function runCycle(ns, settings) {
-    const corp = ns.corporation.getCorporation();
-    let budget = Math.max(0, corp.funds * settings.maxSpendRatioPerCycle);
+function runCycle(ns, settings, ui) {
+    const corp = safeValue(() => corpCall(ns, "getCorporation"), null);
+    if (!corp) {
+        return;
+    }
 
-    budget = await ensurePrimaryDivision(ns, settings, budget);
+    let budget = Math.max(0, Number(corp.funds) * settings.maxSpendRatioPerCycle);
+
+    budget = ensurePrimaryDivision(ns, settings, budget, ui);
     budget = manageUpgrades(ns, settings, budget);
 
     if (settings.enableProducts) {
-        budget = await ensureProductDivision(ns, settings, budget);
-        budget = manageProducts(ns, settings, budget);
+        budget = ensureProductDivision(ns, settings, budget, ui);
+        budget = manageProducts(ns, settings, budget, ui);
     }
 
-    const funds = ns.corporation.getCorporation().funds;
-    logInfoThrottled(ns, `[CORP] Funds ${ns.formatNumber(funds, 2)} | Cycle spend budget left ${ns.formatNumber(Math.max(0, budget), 2)}`);
+    const now = Date.now();
+    if (now - state.lastStatusLogTs >= 15000) {
+        state.lastStatusLogTs = now;
+        const funds = safeNumber(() => corpCall(ns, "getCorporation").funds, 0);
+        ui.log(`Funds ${ns.formatNumber(funds, 2)} | Budget left ${ns.formatNumber(Math.max(0, budget), 2)}`, "info");
+    }
 }
 
-async function ensurePrimaryDivision(ns, settings, budget) {
-    budget = ensureDivision(ns, settings.primaryIndustry, settings.primaryDivision, budget, settings);
+function ensurePrimaryDivision(ns, settings, budget, ui) {
+    budget = ensureDivision(ns, settings.primaryIndustry, settings.primaryDivision, budget, settings, ui);
     if (!divisionExists(ns, settings.primaryDivision)) {
         return budget;
     }
 
     const cities = getTargetCities(settings);
     for (const city of cities) {
-        budget = ensureDivisionCity(ns, settings.primaryDivision, city, budget, settings);
-        budget = ensureWarehouse(ns, settings.primaryDivision, city, settings.minWarehouseLevelPrimary, budget, settings);
+        budget = ensureDivisionCity(ns, settings.primaryDivision, city, budget, settings, ui);
+        budget = ensureWarehouse(ns, settings.primaryDivision, city, settings.minWarehouseLevelPrimary, budget, settings, ui);
         budget = ensureOffice(ns, settings.primaryDivision, city, settings.minOfficeSizePrimary, budget, settings);
         setAgricultureSales(ns, settings.primaryDivision, city);
     }
@@ -155,21 +184,21 @@ async function ensurePrimaryDivision(ns, settings, budget) {
     return budget;
 }
 
-async function ensureProductDivision(ns, settings, budget) {
-    const funds = ns.corporation.getCorporation().funds;
+function ensureProductDivision(ns, settings, budget, ui) {
+    const funds = safeNumber(() => corpCall(ns, "getCorporation").funds, 0);
     if (!divisionExists(ns, settings.productDivision) && funds < settings.productStartFunds) {
         return budget;
     }
 
-    budget = ensureDivision(ns, settings.productIndustry, settings.productDivision, budget, settings);
+    budget = ensureDivision(ns, settings.productIndustry, settings.productDivision, budget, settings, ui);
     if (!divisionExists(ns, settings.productDivision)) {
         return budget;
     }
 
     const cities = getTargetCities(settings);
     for (const city of cities) {
-        budget = ensureDivisionCity(ns, settings.productDivision, city, budget, settings);
-        budget = ensureWarehouse(ns, settings.productDivision, city, settings.minWarehouseLevelProduct, budget, settings);
+        budget = ensureDivisionCity(ns, settings.productDivision, city, budget, settings, ui);
+        budget = ensureWarehouse(ns, settings.productDivision, city, settings.minWarehouseLevelProduct, budget, settings, ui);
         budget = ensureOffice(ns, settings.productDivision, city, settings.minOfficeSizeProduct, budget, settings);
         setProductSales(ns, settings.productDivision, city);
     }
@@ -177,68 +206,68 @@ async function ensureProductDivision(ns, settings, budget) {
     return budget;
 }
 
-function ensureDivision(ns, industry, divisionName, budget, settings) {
+function ensureDivision(ns, industry, divisionName, budget, settings, ui) {
     if (divisionExists(ns, divisionName)) {
         return budget;
     }
 
-    const cost = safeNumber(() => ns.corporation.getExpandIndustryCost(industry), Number.POSITIVE_INFINITY);
+    const cost = safeNumber(() => corpCall(ns, "getExpandIndustryCost", industry), Number.POSITIVE_INFINITY);
     if (!canSpend(ns, cost, budget, settings.minimumCashBuffer)) {
         return budget;
     }
 
     try {
-        ns.corporation.expandIndustry(industry, divisionName);
-        ns.print(`[CORP] Expanded industry ${industry} -> ${divisionName}`);
+        corpCall(ns, "expandIndustry", industry, divisionName);
+        ui.log(`Expanded industry ${industry} -> ${divisionName}`, "success");
         return budget - cost;
     } catch (error) {
-        ns.print(`[CORP] expandIndustry failed for ${divisionName}: ${String(error)}`);
+        ui.log(`expandIndustry failed (${divisionName}): ${String(error)}`, "error");
         return budget;
     }
 }
 
-function ensureDivisionCity(ns, divisionName, city, budget, settings) {
+function ensureDivisionCity(ns, divisionName, city, budget, settings, ui) {
     if (!divisionExists(ns, divisionName)) {
         return budget;
     }
 
-    const division = ns.corporation.getDivision(divisionName);
-    if (division.cities.includes(city)) {
+    const division = safeValue(() => corpCall(ns, "getDivision", divisionName), null);
+    if (!division || division.cities.includes(city)) {
         return budget;
     }
 
-    const cost = safeNumber(() => ns.corporation.getExpandCityCost(), Number.POSITIVE_INFINITY);
+    const cost = safeNumber(() => corpCall(ns, "getExpandCityCost"), Number.POSITIVE_INFINITY);
     if (!canSpend(ns, cost, budget, settings.minimumCashBuffer)) {
         return budget;
     }
 
     try {
-        ns.corporation.expandCity(divisionName, city);
-        ns.print(`[CORP] Expanded ${divisionName} to ${city}`);
+        corpCall(ns, "expandCity", divisionName, city);
+        ui.log(`Expanded ${divisionName} to ${city}`, "success");
         return budget - cost;
     } catch (error) {
-        ns.print(`[CORP] expandCity failed (${divisionName}/${city}): ${String(error)}`);
+        ui.log(`expandCity failed (${divisionName}/${city}): ${String(error)}`, "error");
         return budget;
     }
 }
 
-function ensureWarehouse(ns, divisionName, city, minLevel, budget, settings) {
+function ensureWarehouse(ns, divisionName, city, minLevel, budget, settings, ui) {
     if (!cityReady(ns, divisionName, city)) {
         return budget;
     }
 
     if (!hasWarehouse(ns, divisionName, city)) {
-        const purchaseCost = safeNumber(() => ns.corporation.getPurchaseWarehouseCost(), Number.POSITIVE_INFINITY);
+        const purchaseCost = safeNumber(() => corpCall(ns, "getPurchaseWarehouseCost"), Number.POSITIVE_INFINITY);
         if (!canSpend(ns, purchaseCost, budget, settings.minimumCashBuffer)) {
             return budget;
         }
 
         try {
-            ns.corporation.purchaseWarehouse(divisionName, city);
-            ns.print(`[CORP] Purchased warehouse: ${divisionName}/${city}`);
+            corpCall(ns, "purchaseWarehouse", divisionName, city);
+            ui.log(`Purchased warehouse: ${divisionName}/${city}`, "info");
             budget -= purchaseCost;
         } catch (error) {
-            ns.print(`[CORP] purchaseWarehouse failed (${divisionName}/${city}): ${String(error)}`);
+            ui.log(`purchaseWarehouse failed (${divisionName}/${city}): ${String(error)}`, "error");
             return budget;
         }
     }
@@ -247,29 +276,29 @@ function ensureWarehouse(ns, divisionName, city, minLevel, budget, settings) {
         return budget;
     }
 
-    const warehouse = ns.corporation.getWarehouse(divisionName, city);
-    if (warehouse.level < minLevel) {
+    const warehouse = safeValue(() => corpCall(ns, "getWarehouse", divisionName, city), null);
+    if (warehouse && warehouse.level < minLevel) {
         const levelsNeeded = minLevel - warehouse.level;
         const upgradeCost = safeNumber(
-            () => ns.corporation.getUpgradeWarehouseCost(divisionName, city, levelsNeeded),
+            () => corpCall(ns, "getUpgradeWarehouseCost", divisionName, city, levelsNeeded),
             Number.POSITIVE_INFINITY
         );
         if (canSpend(ns, upgradeCost, budget, settings.minimumCashBuffer)) {
             try {
-                ns.corporation.upgradeWarehouse(divisionName, city, levelsNeeded);
+                corpCall(ns, "upgradeWarehouse", divisionName, city, levelsNeeded);
                 budget -= upgradeCost;
             } catch {
-                // Ignore transient failures and retry next cycle
+                // retry next cycle
             }
         }
     }
 
     try {
-        if (ns.corporation.hasUnlockUpgrade("Smart Supply")) {
-            ns.corporation.setSmartSupply(divisionName, city, true);
+        if (safeBool(() => corpCall(ns, "hasUnlockUpgrade", "Smart Supply"), false)) {
+            corpCall(ns, "setSmartSupply", divisionName, city, true);
         }
     } catch {
-        // Optional behavior
+        // optional behavior
     }
 
     return budget;
@@ -280,31 +309,41 @@ function ensureOffice(ns, divisionName, city, minSize, budget, settings) {
         return budget;
     }
 
-    const office = ns.corporation.getOffice(divisionName, city);
+    const office = safeValue(() => corpCall(ns, "getOffice", divisionName, city), null);
+    if (!office) {
+        return budget;
+    }
+
     if (office.size < minSize) {
-        const upgradeBy = minSize - office.size;
+        const growBy = minSize - office.size;
         const cost = safeNumber(
-            () => ns.corporation.getOfficeSizeUpgradeCost(divisionName, city, upgradeBy),
+            () => corpCall(ns, "getOfficeSizeUpgradeCost", divisionName, city, growBy),
             Number.POSITIVE_INFINITY
         );
         if (canSpend(ns, cost, budget, settings.minimumCashBuffer)) {
             try {
-                ns.corporation.upgradeOfficeSize(divisionName, city, upgradeBy);
+                corpCall(ns, "upgradeOfficeSize", divisionName, city, growBy);
                 budget -= cost;
             } catch {
-                // Retry next cycle
+                // retry next cycle
             }
         }
     }
 
-    const refreshedOffice = ns.corporation.getOffice(divisionName, city);
-    while (refreshedOffice.numEmployees < refreshedOffice.size) {
-        const hired = ns.corporation.hireEmployee(divisionName, city);
-        if (!hired) break;
-        refreshedOffice.numEmployees += 1;
+    let refreshed = safeValue(() => corpCall(ns, "getOffice", divisionName, city), null);
+    if (!refreshed) {
+        return budget;
     }
 
-    applyOfficeAssignments(ns, divisionName, city, refreshedOffice.numEmployees);
+    while (refreshed.numEmployees < refreshed.size) {
+        const hired = safeBool(() => corpCall(ns, "hireEmployee", divisionName, city), false);
+        if (!hired) {
+            break;
+        }
+        refreshed = safeValue(() => corpCall(ns, "getOffice", divisionName, city), refreshed);
+    }
+
+    applyOfficeAssignments(ns, divisionName, city, refreshed.numEmployees);
 
     return budget;
 }
@@ -319,18 +358,20 @@ function applyOfficeAssignments(ns, divisionName, city, employees) {
     const bus = Math.max(1, Math.floor(employees * 0.2));
     const mgmt = Math.max(0, employees - ops - eng - bus);
 
-    trySetJob(ns, divisionName, city, "Operations", ops);
-    trySetJob(ns, divisionName, city, "Engineer", eng);
-    trySetJob(ns, divisionName, city, "Business", bus);
-    trySetJob(ns, divisionName, city, "Management", mgmt);
-    trySetJob(ns, divisionName, city, "Research & Development", Math.max(0, employees - ops - eng - bus - mgmt));
+    setJob(ns, divisionName, city, "Operations", ops);
+    setJob(ns, divisionName, city, "Engineer", eng);
+    setJob(ns, divisionName, city, "Business", bus);
+    setJob(ns, divisionName, city, "Management", mgmt);
+
+    const assigned = ops + eng + bus + mgmt;
+    setJob(ns, divisionName, city, "Research & Development", Math.max(0, employees - assigned));
 }
 
-function trySetJob(ns, divisionName, city, role, amount) {
+function setJob(ns, divisionName, city, role, amount) {
     try {
-        ns.corporation.setAutoJobAssignment(divisionName, city, role, Math.max(0, amount));
+        corpCall(ns, "setAutoJobAssignment", divisionName, city, role, Math.max(0, amount));
     } catch {
-        // Ignore unsupported/unavailable assignment issues
+        // ignore role/availability issues
     }
 }
 
@@ -339,10 +380,10 @@ function setAgricultureSales(ns, divisionName, city) {
         return;
     }
     try {
-        ns.corporation.sellMaterial(divisionName, city, "Food", "MAX", "MP");
-        ns.corporation.sellMaterial(divisionName, city, "Plants", "MAX", "MP");
+        corpCall(ns, "sellMaterial", divisionName, city, "Food", "MAX", "MP");
+        corpCall(ns, "sellMaterial", divisionName, city, "Plants", "MAX", "MP");
     } catch {
-        // Not all materials apply to all divisions/cities in all states
+        // ignore unavailable states
     }
 }
 
@@ -350,23 +391,27 @@ function setProductSales(ns, divisionName, city) {
     if (!hasWarehouse(ns, divisionName, city)) {
         return;
     }
-    const division = ns.corporation.getDivision(divisionName);
+    const division = safeValue(() => corpCall(ns, "getDivision", divisionName), null);
+    if (!division) {
+        return;
+    }
+
     for (const product of division.products) {
         try {
-            ns.corporation.sellProduct(divisionName, city, product, "MAX", "MP", true);
+            corpCall(ns, "sellProduct", divisionName, city, product, "MAX", "MP", true);
         } catch {
-            // Ignore unavailable product states
+            // ignore unavailable product states
         }
     }
 }
 
-function manageProducts(ns, settings, budget) {
+function manageProducts(ns, settings, budget, ui) {
     if (!divisionExists(ns, settings.productDivision)) {
         return budget;
     }
 
-    const division = ns.corporation.getDivision(settings.productDivision);
-    if (!division.makesProducts) {
+    const division = safeValue(() => corpCall(ns, "getDivision", settings.productDivision), null);
+    if (!division || !division.makesProducts) {
         return budget;
     }
 
@@ -376,8 +421,9 @@ function manageProducts(ns, settings, budget) {
 
     const products = [...division.products];
     let developingCount = 0;
+
     for (const product of products) {
-        const info = safeGetProduct(ns, settings.productDivision, city, product);
+        const info = safeValue(() => corpCall(ns, "getProduct", settings.productDivision, city, product), null);
         if (info && Number(info.developmentProgress) < 100) {
             developingCount += 1;
         }
@@ -385,10 +431,12 @@ function manageProducts(ns, settings, budget) {
 
     while (products.length > settings.maxProductsToKeep) {
         const toDrop = products.shift();
-        if (!toDrop) break;
+        if (!toDrop) {
+            break;
+        }
         try {
-            ns.corporation.discontinueProduct(settings.productDivision, toDrop);
-            ns.print(`[CORP] Discontinued product: ${toDrop}`);
+            corpCall(ns, "discontinueProduct", settings.productDivision, toDrop);
+            ui.log(`Discontinued product: ${toDrop}`, "warn");
         } catch {
             break;
         }
@@ -405,15 +453,18 @@ function manageProducts(ns, settings, budget) {
 
     const productName = `${settings.productPrefix}-${state.nextProductId}`;
     state.nextProductId += 1;
+
     try {
-        ns.corporation.makeProduct(
+        corpCall(
+            ns,
+            "makeProduct",
             settings.productDivision,
             city,
             productName,
             settings.productDesignInvestment,
             settings.productMarketingInvestment
         );
-        ns.print(`[CORP] Started product: ${productName}`);
+        ui.log(`Started product: ${productName}`, "success");
         return budget - investCost;
     } catch {
         return budget;
@@ -428,19 +479,19 @@ function manageUpgrades(ns, settings, budget) {
     budget = maybeUnlockSmartSupply(ns, settings, budget);
 
     for (const [upgrade, targetLevel] of Object.entries(settings.upgrades)) {
-        let currentLevel = safeNumber(() => ns.corporation.getUpgradeLevel(upgrade), 0);
+        let current = safeNumber(() => corpCall(ns, "getUpgradeLevel", upgrade), 0);
         const target = Math.max(0, Number(targetLevel) || 0);
 
-        while (currentLevel < target) {
-            const cost = safeNumber(() => ns.corporation.getUpgradeLevelCost(upgrade), Number.POSITIVE_INFINITY);
+        while (current < target) {
+            const cost = safeNumber(() => corpCall(ns, "getUpgradeLevelCost", upgrade), Number.POSITIVE_INFINITY);
             if (!canSpend(ns, cost, budget, settings.minimumCashBuffer)) {
                 break;
             }
 
             try {
-                ns.corporation.levelUpgrade(upgrade);
+                corpCall(ns, "levelUpgrade", upgrade);
                 budget -= cost;
-                currentLevel += 1;
+                current += 1;
             } catch {
                 break;
             }
@@ -452,14 +503,14 @@ function manageUpgrades(ns, settings, budget) {
 
 function maybeUnlockSmartSupply(ns, settings, budget) {
     try {
-        if (ns.corporation.hasUnlockUpgrade("Smart Supply")) {
+        if (safeBool(() => corpCall(ns, "hasUnlockUpgrade", "Smart Supply"), false)) {
             return budget;
         }
-        const cost = ns.corporation.getUnlockUpgradeCost("Smart Supply");
+        const cost = safeNumber(() => corpCall(ns, "getUnlockUpgradeCost", "Smart Supply"), Number.POSITIVE_INFINITY);
         if (!canSpend(ns, cost, budget, settings.minimumCashBuffer)) {
             return budget;
         }
-        ns.corporation.unlockUpgrade("Smart Supply");
+        corpCall(ns, "unlockUpgrade", "Smart Supply");
         return budget - cost;
     } catch {
         return budget;
@@ -472,8 +523,8 @@ function getTargetCities(settings) {
 
 function divisionExists(ns, divisionName) {
     try {
-        const corp = ns.corporation.getCorporation();
-        return corp.divisions.includes(divisionName);
+        const corp = corpCall(ns, "getCorporation");
+        return Array.isArray(corp.divisions) && corp.divisions.includes(divisionName);
     } catch {
         return false;
     }
@@ -483,19 +534,12 @@ function cityReady(ns, divisionName, city) {
     if (!divisionExists(ns, divisionName)) {
         return false;
     }
-    try {
-        return ns.corporation.getDivision(divisionName).cities.includes(city);
-    } catch {
-        return false;
-    }
+    const division = safeValue(() => corpCall(ns, "getDivision", divisionName), null);
+    return Boolean(division && Array.isArray(division.cities) && division.cities.includes(city));
 }
 
 function hasWarehouse(ns, divisionName, city) {
-    try {
-        return ns.corporation.hasWarehouse(divisionName, city);
-    } catch {
-        return false;
-    }
+    return safeBool(() => corpCall(ns, "hasWarehouse", divisionName, city), false);
 }
 
 function canSpend(ns, cost, budget, minimumCashBuffer) {
@@ -505,8 +549,17 @@ function canSpend(ns, cost, budget, minimumCashBuffer) {
     if (budget < cost) {
         return false;
     }
-    const funds = safeNumber(() => ns.corporation.getCorporation().funds, 0);
+    const funds = safeNumber(() => corpCall(ns, "getCorporation").funds, 0);
     return funds - cost >= minimumCashBuffer;
+}
+
+function safeValue(fn, fallback) {
+    try {
+        const value = fn();
+        return value === undefined ? fallback : value;
+    } catch {
+        return fallback;
+    }
 }
 
 function safeNumber(fn, fallback) {
@@ -518,19 +571,19 @@ function safeNumber(fn, fallback) {
     }
 }
 
-function safeGetProduct(ns, divisionName, city, productName) {
+function safeBool(fn, fallback) {
     try {
-        return ns.corporation.getProduct(divisionName, city, productName);
+        return Boolean(fn());
     } catch {
-        return null;
+        return fallback;
     }
 }
 
-function logInfoThrottled(ns, message) {
+function logThrottled(ui, message, level = "info", intervalMs = 15000) {
     const now = Date.now();
-    if (now - state.lastInfoLog < 15000) {
+    if (now - state.lastStatusLogTs < intervalMs) {
         return;
     }
-    state.lastInfoLog = now;
-    ns.print(message);
+    state.lastStatusLogTs = now;
+    ui.log(message, level);
 }

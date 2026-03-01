@@ -10,6 +10,7 @@ const WINDOW_OPTIONS = [
     { id: "hacknet", label: "Hacknet" },
     { id: "gang", label: "Gang" },
     { id: "stocks", label: "Stocks" },
+    { id: "corporation", label: "Corporation" },
     { id: "sleeves", label: "Sleeves" },
     { id: "bladeburner", label: "Bladeburner" },
     { id: "contracts", label: "Contracts" },

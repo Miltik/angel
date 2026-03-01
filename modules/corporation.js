@@ -17,6 +17,7 @@ const state = {
     lastRevenueTime: 0,
     cycleStarted: false,
     cycleCounter: 0,
+    expansionMilestoneLogged: false,
 };
 
 /** @param {NS} ns */
@@ -33,7 +34,8 @@ export async function main(ns) {
 
     // Log startup settings once
     ui.log(`Settings:`, "info");
-    ui.log(`  Primary: ${settings.primaryIndustry}/${settings.primaryDivision} | Cities: ${settings.expandToAllCities ? "all" : settings.productCity}`, "info");
+    ui.log(`  Primary: ${settings.primaryIndustry}/${settings.primaryDivision} in ${settings.primaryCity}`, "info");
+    ui.log(`  Multi-city: ${settings.expandToAllCities ? "enabled" : "disabled (focus single city first)"}`, "info");
     ui.log(`  Products: ${settings.enableProducts ? "enabled" : "disabled"} | Budget/cycle: 20%`, "info");
 
     while (true) {
@@ -95,12 +97,16 @@ function getSettings() {
         productDivision: String(config.corporation?.productDivision ?? "Cigs"),
         secondaryProductDivision: String(config.corporation?.secondaryProductDivision ?? "Soft"),
         secondaryProductIndustry: String(config.corporation?.secondaryProductIndustry ?? "Software"),
+        primaryCity: String(config.corporation?.primaryCity ?? "Sector-12"),
         productCity: String(config.corporation?.productCity ?? "Aevum"),
         productPrefix: String(config.corporation?.productPrefix ?? "AngelProduct"),
-        expandToAllCities: Boolean(config.corporation?.expandToAllCities ?? true),
-        minOfficeSizePrimary: Number(config.corporation?.minOfficeSizePrimary ?? 10),
-        minOfficeSizeProduct: Number(config.corporation?.minOfficeSizeProduct ?? 15),
-        minWarehouseLevelPrimary: Number(config.corporation?.minWarehouseLevelPrimary ?? 5),
+        expandToAllCities: Boolean(config.corporation?.expandToAllCities ?? false),
+        multiCityExpansionMinFunds: Number(config.corporation?.multiCityExpansionMinFunds ?? 500e9),
+        multiCityExpansionMinRevenue: Number(config.corporation?.multiCityExpansionMinRevenue ?? 5e9),
+        multiCityExpansionMinEmployees: Number(config.corporation?.multiCityExpansionMinEmployees ?? 30),
+        minOfficeSizePrimary: Number(config.corporation?.minOfficeSizePrimary ?? 30),
+        minOfficeSizeProduct: Number(config.corporation?.minOfficeSizeProduct ?? 30),
+        minWarehouseLevelPrimary: Number(config.corporation?.minWarehouseLevelPrimary ?? 10),
         minWarehouseLevelProduct: Number(config.corporation?.minWarehouseLevelProduct ?? 10),
         enableProducts: Boolean(config.corporation?.enableProducts ?? true),
         enableSecondaryProduct: Boolean(config.corporation?.enableSecondaryProduct ?? false),
@@ -185,6 +191,12 @@ function runCycle(ns, settings, ui) {
     if (!corp) {
         ui.log("Cannot get corporation data", "error");
         return;
+    }
+
+    // Check if we should auto-enable multi-city expansion
+    if (!settings.expandToAllCities && shouldExpandToAllCities(ns, settings, ui)) {
+        settings.expandToAllCities = true;
+        ui.log(`🌍 Milestones reached - enabling multi-city expansion!`, "success");
     }
 
     let budget = Math.max(0, Number(corp.funds) * settings.maxSpendRatioPerCycle);
@@ -683,8 +695,48 @@ function isDivisionStable(ns, divisionName) {
     return false;
 }
 
+function shouldExpandToAllCities(ns, settings, ui) {
+    // Already expanded or explicitly configured
+    if (settings.expandToAllCities) {
+        return false;
+    }
+
+    // Check if primary division exists and is profitable
+    if (!divisionExists(ns, settings.primaryDivision)) {
+        return false;
+    }
+
+    const corp = safeValue(() => corpCall(ns, "getCorporation"), null);
+    if (!corp) return false;
+
+    const division = safeValue(() => corpCall(ns, "getDivision", settings.primaryDivision), null);
+    if (!division) return false;
+
+    // Check milestone criteria
+    const hasFunds = corp.funds >= settings.multiCityExpansionMinFunds;
+    const hasRevenue = division.revenue >= settings.multiCityExpansionMinRevenue;
+    
+    // Check if primary city office has enough employees
+    const primaryCity = division.cities.includes(settings.primaryCity) ? settings.primaryCity : division.cities[0];
+    const office = safeValue(() => corpCall(ns, "getOffice", settings.primaryDivision, primaryCity), null);
+    const hasEmployees = office && office.numEmployees >= settings.multiCityExpansionMinEmployees;
+
+    // All criteria must be met
+    const ready = hasFunds && hasRevenue && hasEmployees;
+    
+    if (ready && !state.expansionMilestoneLogged) {
+        state.expansionMilestoneLogged = true;
+        ui.log(`📊 Expansion criteria met:`, "info");
+        ui.log(`   Funds: ${ns.formatNumber(corp.funds, 2)} ≥ ${ns.formatNumber(settings.multiCityExpansionMinFunds, 2)} ✓`, "info");
+        ui.log(`   Revenue: ${ns.formatNumber(division.revenue, 2)}/s ≥ ${ns.formatNumber(settings.multiCityExpansionMinRevenue, 2)}/s ✓`, "info");
+        ui.log(`   Employees: ${office.numEmployees} ≥ ${settings.multiCityExpansionMinEmployees} ✓`, "info");
+    }
+
+    return ready;
+}
+
 function getTargetCities(settings) {
-    return settings.expandToAllCities ? CITIES : [settings.productCity || "Aevum"];
+    return settings.expandToAllCities ? CITIES : [settings.primaryCity];
 }
 
 function divisionExists(ns, divisionName) {

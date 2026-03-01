@@ -159,7 +159,14 @@ function corpCall(ns, method, ...args) {
         case "getWarehouse": return corp.getWarehouse(args[0], args[1]);
         case "getUpgradeWarehouseCost": return corp.getUpgradeWarehouseCost(args[0], args[1], args[2]);
         case "upgradeWarehouse": return corp.upgradeWarehouse(args[0], args[1], args[2]);
-        case "hasUnlockUpgrade": return corp.hasUnlockUpgrade(args[0]);
+        case "hasUnlockUpgrade":
+            if (typeof corp.hasUnlockUpgrade === "function") {
+                return corp.hasUnlockUpgrade(args[0]);
+            }
+            if (typeof corp.hasUnlock === "function") {
+                return corp.hasUnlock(args[0]);
+            }
+            throw new Error("Corporation unlock-check method unavailable (expected hasUnlockUpgrade or hasUnlock)");
         case "setSmartSupply":
             if (typeof corp.setSmartSupply === "function") {
                 return corp.setSmartSupply(args[0], args[1], args[2]);
@@ -174,6 +181,16 @@ function corpCall(ns, method, ...args) {
         case "hireEmployee": return corp.hireEmployee(args[0], args[1]);
         case "setAutoJobAssignment": return corp.setAutoJobAssignment(args[0], args[1], args[2], args[3]);
         case "getMaterial": return corp.getMaterial(args[0], args[1], args[2]);
+        case "setMaterialMarketTA1":
+            if (typeof corp.setMaterialMarketTA1 === "function") {
+                return corp.setMaterialMarketTA1(args[0], args[1], args[2], args[3]);
+            }
+            throw new Error("Corporation method unavailable: setMaterialMarketTA1");
+        case "setMaterialMarketTA2":
+            if (typeof corp.setMaterialMarketTA2 === "function") {
+                return corp.setMaterialMarketTA2(args[0], args[1], args[2], args[3]);
+            }
+            throw new Error("Corporation method unavailable: setMaterialMarketTA2");
         case "buyMaterial": return corp.buyMaterial(args[0], args[1], args[2], args[3]);
         case "sellMaterial": return corp.sellMaterial(args[0], args[1], args[2], args[3], args[4]);
         case "sellProduct": return corp.sellProduct(args[0], args[1], args[2], args[3], args[4], args[5]);
@@ -617,6 +634,21 @@ function setAgricultureSales(ns, divisionName, city) {
     if (!hasWarehouse(ns, divisionName, city)) {
         return;
     }
+
+    const hasMarketDemand = safeBool(() => corpCall(ns, "hasUnlockUpgrade", "Market Research - Demand"), false);
+    const hasMarketCompetition = safeBool(() => corpCall(ns, "hasUnlockUpgrade", "Market Data - Competition"), false);
+    if (hasMarketDemand && hasMarketCompetition) {
+        try {
+            corpCall(ns, "setMaterialMarketTA2", divisionName, city, "Food", true);
+            corpCall(ns, "setMaterialMarketTA2", divisionName, city, "Plants", true);
+        } catch {
+            try {
+                corpCall(ns, "setMaterialMarketTA1", divisionName, city, "Food", true);
+                corpCall(ns, "setMaterialMarketTA1", divisionName, city, "Plants", true);
+            } catch {}
+        }
+    }
+
     try {
         corpCall(ns, "sellMaterial", divisionName, city, "Food", "MAX", "MP");
         corpCall(ns, "sellMaterial", divisionName, city, "Plants", "MAX", "MP");
@@ -885,6 +917,10 @@ function guaranteeCriticalUnlocks(ns, settings, budget, ui) {
                 ui.log(`✅ Unlocked: ${unlockName}`, "success");
             }
         } catch (error) {
+            const message = String(error || "").toLowerCase();
+            if (message.includes("already been unlocked") || message.includes("already unlocked")) {
+                continue;
+            }
             ui.log(`❌ Failed to unlock ${unlockName}: ${String(error)}`, "warn");
         }
     }

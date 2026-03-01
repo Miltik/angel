@@ -66,24 +66,19 @@ async function collectLoot(ns, ui) {
 
             candidates++;
             try {
-                const target = `${archivePrefix}${sanitize(server)}__${sanitize(file)}`;
+                const markerPath = `${archivePrefix}${sanitize(server)}__${sanitize(file)}.txt`;
 
-                if (ns.fileExists(target, "home")) {
+                if (ns.fileExists(markerPath, "home")) {
                     unchanged++;
                     manifestRows.push(`${server} | ${file} | archived`);
                     continue;
                 }
 
                 if (server === "home") {
-                    const moved = ns.mv("home", file, target);
-                    if (moved) {
-                        updated++;
-                        state.totalFilesArchived++;
-                        manifestRows.push(`HOME | ${file} | moved-to-archive`);
-                    } else {
-                        failed++;
-                        manifestRows.push(`HOME | ${file} | move-failed`);
-                    }
+                    writeLootMarker(ns, markerPath, server, file, "already-on-home");
+                    updated++;
+                    state.totalFilesArchived++;
+                    manifestRows.push(`HOME | ${file} | marked`);
                     continue;
                 }
 
@@ -94,15 +89,10 @@ async function collectLoot(ns, ui) {
                     continue;
                 }
 
-                const moved = ns.mv("home", file, target);
-                if (moved) {
-                    updated++;
-                    state.totalFilesArchived++;
-                    manifestRows.push(`${server} | ${file} | copied-and-archived`);
-                } else {
-                    failed++;
-                    manifestRows.push(`${server} | ${file} | copied-but-move-failed`);
-                }
+                writeLootMarker(ns, markerPath, server, file, "copied-to-home");
+                updated++;
+                state.totalFilesArchived++;
+                manifestRows.push(`${server} | ${file} | copied-and-marked`);
             } catch (e) {
                 failed++;
                 manifestRows.push(`${server} | ${file} | error: ${String(e?.message || e)}`);
@@ -121,6 +111,18 @@ async function collectLoot(ns, ui) {
         ui.log(`📦 ${summary}`, failed > 0 ? "warn" : "info");
         state.lastSummary = summary;
     }
+}
+
+function writeLootMarker(ns, markerPath, server, file, status) {
+    const lines = [
+        `status: ${status}`,
+        `sourceServer: ${server}`,
+        `sourceFile: ${file}`,
+        `storedOnHomeAs: ${file}`,
+        `timestamp: ${new Date().toISOString()}`,
+    ];
+
+    ns.write(markerPath, lines.join("\n"), "w");
 }
 
 function collectCandidateFiles(ns, server, extensions) {

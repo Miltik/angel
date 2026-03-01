@@ -40,7 +40,7 @@ async function collectLoot(ns, ui) {
     const includeHome = Boolean(config.loot?.includeHome);
     const lootExtensions = Array.isArray(config.loot?.extensions)
         ? config.loot.extensions.map(ext => String(ext || "").toLowerCase())
-        : [".lit", ".msg", ".txt", ".cct"];
+        : [".lit", ".msg", ".txt"];
 
     const maxPerLoop = Math.max(1, Number(config.loot?.maxFilesPerLoop ?? 250));
     const archivePrefix = String(config.loot?.archivePrefix ?? "/angel/loot/");

@@ -26,12 +26,18 @@ export async function main(ns) {
     ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
 
     const settings = getSettings();
+    let apiCheckAttempts = 0;
 
     while (true) {
         try {
             if (!hasCorporationApi(ns)) {
                 if (!state.warnedNoApi) {
-                    ui.log("Corporation API unavailable. Idling.", "warn");
+                    apiCheckAttempts++;
+                    if (apiCheckAttempts === 1) {
+                        ui.log("⚠️  Corporation API not available.", "warn");
+                        ui.log("Ensure: Corp API unlocked in Bitburner settings", "warn");
+                        ui.log("Retrying in 10s intervals...", "info");
+                    }
                     state.warnedNoApi = true;
                 }
                 await ns.sleep(settings.loopDelayMs);
@@ -39,6 +45,10 @@ export async function main(ns) {
             }
 
             state.warnedNoApi = false;
+            if (apiCheckAttempts > 0) {
+                ui.log(`✅ Corporation API available (after ${apiCheckAttempts} attempts)`, "success");
+                apiCheckAttempts = 0;
+            }
 
             const corpReady = ensureCorporationExists(ns, settings, ui);
             if (!corpReady) {
@@ -94,8 +104,13 @@ function getSettings() {
 function corpApi(ns) {
     try {
         return (0, eval)("ns.corporation");
-    } catch {
-        return null;
+    } catch (e) {
+        // Try alternative: direct ns.corporation access
+        try {
+            return ns.corporation;
+        } catch {
+            return null;
+        }
     }
 }
 

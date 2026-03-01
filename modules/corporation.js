@@ -14,6 +14,8 @@ const state = {
     nextProductId: 1,
     lastRevenue: 0,
     lastRevenueTime: 0,
+    cycleStarted: false,
+    cycleCounter: 0,
 };
 
 /** @param {NS} ns */
@@ -27,6 +29,11 @@ export async function main(ns) {
 
     const settings = getSettings();
     let apiCheckAttempts = 0;
+
+    // Log startup settings once
+    ui.log(`Settings:`, "info");
+    ui.log(`  Primary: ${settings.primaryIndustry}/${settings.primaryDivision} | Cities: ${settings.expandToAllCities ? "all" : settings.productCity}`, "info");
+    ui.log(`  Products: ${settings.enableProducts ? "enabled" : "disabled"} | Budget/cycle: 20%`, "info");
 
     while (true) {
         try {
@@ -54,6 +61,11 @@ export async function main(ns) {
             if (!corpReady) {
                 await ns.sleep(settings.loopDelayMs);
                 continue;
+            }
+
+            if (!state.cycleStarted) {
+                state.cycleStarted = true;
+                ui.log(`🔄 Starting cycle loop (primary: ${settings.primaryIndustry}/${settings.primaryDivision})`, "success");
             }
 
             runCycle(ns, settings, ui);
@@ -170,13 +182,18 @@ function ensureCorporationExists(ns, settings, ui) {
 function runCycle(ns, settings, ui) {
     const corp = safeValue(() => corpCall(ns, "getCorporation"), null);
     if (!corp) {
+        ui.log("Cannot get corporation data", "error");
         return;
     }
 
     let budget = Math.max(0, Number(corp.funds) * settings.maxSpendRatioPerCycle);
+    const startBudget = budget;
 
     budget = ensurePrimaryDivision(ns, settings, budget, ui);
+    const afterPrimary = budget;
+
     budget = manageUpgrades(ns, settings, budget);
+    const afterUpgrades = budget;
 
     if (settings.enableProducts) {
         budget = ensureProductDivision(ns, settings, budget, ui);
@@ -187,11 +204,20 @@ function runCycle(ns, settings, ui) {
         budget = ensureSecondaryProductDivision(ns, settings, budget, ui);
         budget = manageSecondaryProducts(ns, settings, budget, ui);
     }
+
+    // Log cycle summary every 10 cycles
+    if (!state.cycleCounter) state.cycleCounter = 0;
+    state.cycleCounter = (state.cycleCounter + 1) % 10;
+    if (state.cycleCounter === 0 && corp.divisions.length > 0) {
+        ui.log(`Budget: ${ns.formatNumber(startBudget, 2)} → ${ns.formatNumber(budget, 2)} (spent: ${ns.formatNumber(startBudget - budget, 2)})`, "info");
+    }
 }
 
 function ensurePrimaryDivision(ns, settings, budget, ui) {
+    // First attempt to create primary division if it doesn't exist
     budget = ensureDivision(ns, settings.primaryIndustry, settings.primaryDivision, budget, settings, ui);
     if (!divisionExists(ns, settings.primaryDivision)) {
+        ui.log(`⏳ Primary division '${settings.primaryDivision}' not ready yet. Budget: ${ns.formatNumber(budget, 2)}`, "info");
         return budget;
     }
 
@@ -261,16 +287,24 @@ function ensureDivision(ns, industry, divisionName, budget, settings, ui) {
     }
 
     const cost = safeNumber(() => corpCall(ns, "getExpandIndustryCost", industry), Number.POSITIVE_INFINITY);
+    
+    if (!Number.isFinite(cost)) {
+        ui.log(`❌ Cannot get expansion cost for ${industry}`, "error");
+        return budget;
+    }
+
     if (!canSpend(ns, cost, budget, settings.minimumCashBuffer)) {
+        const funds = safeNumber(() => corpCall(ns, "getCorporation").funds, 0);
+        ui.log(`💾 Waiting for ${industry}: Cost ${ns.formatNumber(cost, 2)} | Budget: ${ns.formatNumber(budget, 2)} | Funds: ${ns.formatNumber(funds, 2)}`, "info");
         return budget;
     }
 
     try {
         corpCall(ns, "expandIndustry", industry, divisionName);
-        ui.log(`📈 Expanded ${industry} -> ${divisionName}`, "success");
+        ui.log(`📈 Expanded ${industry} → ${divisionName}`, "success");
         return budget - cost;
     } catch (error) {
-        ui.log(`❌ expandIndustry failed (${divisionName}): ${String(error)}`, "error");
+        ui.log(`❌ expandIndustry(${industry}, ${divisionName}) failed: ${String(error)}`, "error");
         return budget;
     }
 }

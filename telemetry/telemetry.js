@@ -637,25 +637,70 @@ async function syncToBackend(ns, telemetryConfig) {
 
         ns.print(`🔄 Syncing to backend: ${backendUrl}`);
         
-        // Prepare telemetry payload
+        // Prepare telemetry payload with enhanced metrics
+        const homeServer = ns.getServer('home');
+        const usedRam = ns.getServerUsedRam('home');
+        const maxRam = ns.getServerMaxRam('home');
+        const moneyEarned = ns.getServerMoneyAvailable('home');
+        const totalXp = ns.getTotalScriptExpGain();
+        const hackLevel = ns.getHackingLevel();
+        
+        // Calculate active workers (rough estimate based on running scripts)
+        let activeWorkers = 0;
+        const serverList = ns.scan('home');
+        
+        // Get module counts
+        const moduleCount = Object.keys(run.modules || {}).length;
+        const activeModules = Object.entries(run.modules || {})
+            .filter(([_, m]) => m.active)
+            .map(([name, _]) => name);
+        
+        // Calculate additional metrics
+        const ramUsagePercent = maxRam > 0 ? (usedRam / maxRam) * 100 : 0;
+        const totalModuleExecutions = Object.values(run.modules || {}).reduce((sum, m) => sum + (m.executions || 0), 0);
+        const totalModuleFailures = Object.values(run.modules || {}).reduce((sum, m) => sum + (m.failures || 0), 0);
+        const moduleSuccessRate = totalModuleExecutions > 0 
+            ? ((totalModuleExecutions - totalModuleFailures) / totalModuleExecutions * 100)
+            : 0;
+        
         const payload = {
             runId: run.startTime,
             timestamp: Date.now(),
             modules: run.modules,
             stats: {
                 uptime: Date.now() - run.startTime,
-                totalExecutions: Object.values(run.modules || {}).reduce((sum, m) => sum + (m.executions || 0), 0),
-                totalFailures: Object.values(run.modules || {}).reduce((sum, m) => sum + (m.failures || 0), 0),
+                totalExecutions: totalModuleExecutions,
+                totalFailures: totalModuleFailures,
+                successRate: moduleSuccessRate,
                 moneyRate: run.aggregates?.length > 0 ? run.aggregates[run.aggregates.length - 1].moneyRate : 0,
                 xpRate: run.aggregates?.length > 0 ? run.aggregates[run.aggregates.length - 1].xpRate : 0,
             },
             memory: {
-                used: ns.getServerUsedRam('home'),
-                total: ns.getServerMaxRam('home'),
+                used: usedRam,
+                total: maxRam,
+                usagePercent: ramUsagePercent,
             },
-            money: ns.getServerMoneyAvailable('home'),
-            xp: ns.getTotalScriptExpGain(),
-            hackLevel: ns.getHackingLevel(),
+            money: moneyEarned,
+            xp: totalXp,
+            hackLevel: hackLevel,
+            // New detailed metrics
+            server: {
+                cores: homeServer?.cpuCores || 1,
+                hostname: 'home',
+                type: 'home',
+            },
+            modules: {
+                count: moduleCount,
+                active: activeModules,
+                activeCount: activeModules.length,
+            },
+            skills: {
+                hack: hackLevel,
+                hacking_exp: totalXp,
+            },
+            workers: {
+                estimated: activeWorkers || moduleCount,
+            },
         };
 
         // Send to backend

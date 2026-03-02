@@ -104,25 +104,88 @@ export function setupApiRoutes(app) {
     });
 
     // ============================================
-    // STATUS ENDPOINT - Get current game state
+    // STATUS ENDPOINT - Get current game state with dashboard data
     // ============================================
     app.get('/api/status', async (req, res) => {
         try {
+            // Get latest single sample
             const latest = await queryOne(
                 `SELECT * FROM telemetry_samples 
                  ORDER BY timestamp DESC LIMIT 1`
             );
 
+            // Get recent samples (last 10) for trends
+            const recentSamples = await query(
+                `SELECT * FROM telemetry_samples 
+                 ORDER BY timestamp DESC LIMIT 10`
+            );
+
+            // Get module breakdown
+            const moduleStats = await query(
+                `SELECT module_name, COUNT(*) as sample_count,
+                        AVG(memory_used) as avg_memory,
+                        AVG(money_rate) as avg_money_rate,
+                        AVG(xp_rate) as avg_xp_rate,
+                        MAX(execution_count) as total_executions,
+                        MAX(failure_count) as total_failures,
+                        AVG(module_status LIKE '%active%') as active_percent
+                 FROM telemetry_samples 
+                 WHERE timestamp > datetime('now', '-1 hour')
+                 GROUP BY module_name
+                 ORDER BY sample_count DESC`
+            );
+
+            // Get pending commands
             const pendingCommands = await query(
                 `SELECT COUNT(*) as count FROM commands WHERE status = 'pending'`
             );
 
+            // Calculate aggregates
+            const totalSamples = recentSamples.length;
+            const avgMemory = recentSamples.length > 0
+                ? recentSamples.reduce((sum, s) => sum + (s.memory_used || 0), 0) / recentSamples.length
+                : 0;
+            const avgMoneyRate = recentSamples.length > 0
+                ? recentSamples.reduce((sum, s) => sum + (s.money_rate || 0), 0) / recentSamples.length
+                : 0;
+            const avgXpRate = recentSamples.length > 0
+                ? recentSamples.reduce((sum, s) => sum + (s.xp_rate || 0), 0) / recentSamples.length
+                : 0;
+
             res.json({
                 status: 'ok',
+                timestamp: Date.now(),
                 lastUpdate: latest?.timestamp || null,
+                
+                // Current state
+                current: {
+                    memory: latest?.memory_used || 0,
+                    money: latest?.current_money || 0,
+                    hackLevel: latest?.hack_level || 0,
+                    xpGain: latest?.hack_level || 0,
+                    uptime: latest?.uptime || 0,
+                    moduleStatus: latest?.module_status || 'unknown',
+                },
+                
+                // Aggregated metrics
+                metrics: {
+                    totalSamples,
+                    avgMemory,
+                    avgMoneyRate,
+                    avgXpRate,
+                    successRate: latest?.failure_count > 0 
+                        ? ((latest?.execution_count - latest?.failure_count) / latest?.execution_count * 100)
+                        : 100,
+                },
+                
+                // Module breakdown
+                modules: moduleStats.slice(0, 10),
+                
+                // Raw data
                 latestData: latest,
+                recentSamples: recentSamples.slice(0, 5),
+                
                 pendingCommands: pendingCommands[0]?.count || 0,
-                timestamp: Date.now()
             });
         } catch (error) {
             console.error('Status GET error:', error);

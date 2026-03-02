@@ -17,17 +17,40 @@ import {
     formatMoney,
 } from '/angel/telemetry/telemetry.js';
 
-import { UIManager } from '/angel/modules/uiManager.js';
+import { createWindow } from '/angel/modules/uiManager.js';
 
 const UI_ID = 'telemetry';
 const UPDATE_INTERVAL = 2000; // Update every 2s
 
+/**
+ * Wraps the window object to provide helper methods for formatting output
+ */
+function createUIWrapper(window) {
+    return {
+        log: (msg, level = 'info') => window.log(msg, level),
+        clear: () => window.clear(),
+        header: (title) => {
+            window.log('', 'info');
+            window.log('═'.repeat(50), 'info');
+            window.log(`  ${title}`, 'info');
+            window.log('═'.repeat(50), 'info');
+            window.log('', 'info');
+        },
+        separator: () => window.log('─'.repeat(50), 'info'),
+        section: (name) => {
+            window.log('', 'info');
+            window.log(`► ${name}`, 'info');
+            window.log('─'.repeat(50), 'info');
+        },
+        show: () => window.show(),
+    };
+}
+
 export async function main(ns) {
     ns.disableLog('ALL');
     
-    const ui = new UIManager(ns, UI_ID, 'Angel Telemetry');
-    ui.init();
-    ui.setDimensions(700, 500);
+    const windowObj = createWindow(UI_ID, 'Angel Telemetry', 700, 500);
+    const ui = createUIWrapper(windowObj);
     ui.show();
     
     let lastUpdate = 0;

@@ -38,7 +38,18 @@ export async function main(ns) {
 
     while (true) {
         try {
+            const loopStartTime = Date.now();
             lastState.loopCount++;
+            
+            // Check telemetry FIRST before anything else
+            const timeSinceLastReport = loopStartTime - telemetryState.lastReportTime;
+            if (timeSinceLastReport >= 5000) {
+                ns.print(`🚀 Loop ${lastState.loopCount}: REPORTING (${timeSinceLastReport}ms >= 5000ms)`);
+                reportTelemetry(ns);
+            } else if (lastState.loopCount === 1 || lastState.loopCount % 20 === 0) {
+                ns.print(`🔄 Loop ${lastState.loopCount}: ${timeSinceLastReport}ms since last report (need 5000ms)`);
+            }
+            
             const bought = buyBestUpgrade(ns, ui);
             
             // Display status periodically (every 10 loops = ~5 minutes if not buying)
@@ -46,25 +57,21 @@ export async function main(ns) {
                 displayStatus(ns, ui);
             }
             
-            // Report telemetry every 5 seconds for live dashboard updates
-            const now = Date.now();
-            const timeSinceLastReport = now - telemetryState.lastReportTime;
-            if (timeSinceLastReport >= 5000) {
-                ns.print(`⏰ Timing check: ${timeSinceLastReport}ms since last report, calling reportTelemetry()`);
-                reportTelemetry(ns);
-            } else if (lastState.loopCount % 5 === 0) {
-                ns.print(`⏰ Not ready: only ${timeSinceLastReport}ms since last report (need 5000ms)`);
-            }
+            // Sleep with dynamic timing based on telemetry readiness
+            const timeSinceLastReportAfterBuy = Date.now() - telemetryState.lastReportTime;
+            const timeUntilNextReport = Math.max(0, 5000 - timeSinceLastReportAfterBuy);
+            const sleepTime = Math.min(timeUntilNextReport, bought ? 2000 : 30000);
             
             if (!bought) {
-                await ns.sleep(30000);
+                await ns.sleep(Math.min(sleepTime, 30000));
             } else {
-                await ns.sleep(2000);
+                await ns.sleep(Math.min(sleepTime, 2000));
             }
         } catch (e) {
             if (isScriptDeathError(e)) {
                 return;
             }
+            ns.print(`❌ Loop error: ${e}`);
             ui.log(`❌ Error: ${e}`, "error");
             await ns.sleep(5000);
         }

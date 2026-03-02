@@ -28,12 +28,14 @@ export async function main(ns) {
     
     const files = [
         // Core files
+        "sync.js",
         "angel.js",
         "angel-lite.js",
         "config.js",
         "utils.js",
         "scanner.js",
         "start.js",
+        "status.js",
         "bootstrap.js",
         
         // Quick start (in-game reference - markdown files stay on GitHub)

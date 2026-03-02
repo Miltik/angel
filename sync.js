@@ -29,6 +29,7 @@ export async function main(ns) {
     const files = [
         // Core files
         "angel.js",
+        "angel-lite.js",
         "config.js",
         "utils.js",
         "scanner.js",

@@ -94,10 +94,12 @@ async function hackingLoop(ns, ui) {
         ui.log(`🎯 Target: ${target} | Phase: ${currentPhase}`, "info");
         ui.log(`💰 Money: ${formatMoneyInline(targetInfo.currentMoney)}/${formatMoneyInline(targetInfo.maxMoney)} (${moneyPercent}%)`, "info");
         ui.log(`🔒 Security: ${targetInfo.currentSecurity.toFixed(2)}/${targetInfo.minSecurity} (+${securityDelta})`, "info");
-        lastLoggedState.target = target;
-        lastLoggedState.phase = currentPhase;
     }
 
+    // Update all telemetry state every loop for live dashboard sync
+    lastLoggedState.target = target;
+    lastLoggedState.phase = currentPhase;
+    lastLoggedState.isPrepped = isPrepped;
     lastLoggedState.moneyPercent = Number(moneyPercent);
     lastLoggedState.securityDelta = Number(securityDelta);
     lastLoggedState.targetMoneyCurrent = targetInfo.currentMoney || 0;

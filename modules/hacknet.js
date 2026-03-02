@@ -5,6 +5,7 @@
 import { config } from "/angel/config.js";
 import { createWindow } from "/angel/modules/uiManager.js";
 import { formatMoney } from "/angel/utils.js";
+import { reportModuleMetrics } from "/angel/telemetry/telemetry.js";
 
 // State tracking
 let lastState = {
@@ -12,6 +13,14 @@ let lastState = {
     totalProduction: 0,
     loopCount: 0,
     lastUpgradeLoop: -10
+};
+
+// Telemetry tracking
+let telemetryState = {
+    lastMoney: 0,
+    lastReportTime: 0,
+    totalInvestment: 0,
+    upgradesCompleted: 0
 };
 
 export async function main(ns) {
@@ -22,6 +31,10 @@ export async function main(ns) {
     ui.log("🌐 Hacknet automation initialized", "success");
     ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
 
+    // Initialize telemetry tracking
+    telemetryState.lastMoney = ns.getServerMoneyAvailable("home");
+    telemetryState.lastReportTime = Date.now();
+
     while (true) {
         try {
             lastState.loopCount++;
@@ -30,6 +43,12 @@ export async function main(ns) {
             // Display status periodically (every 10 loops = ~5 minutes if not buying)
             if (!bought && lastState.loopCount % 10 === 0) {
                 displayStatus(ns, ui);
+            }
+            
+            // Report telemetry every 5 seconds for live dashboard updates
+            const now = Date.now();
+            if (now - telemetryState.lastReportTime >= 5000) {
+                reportTelemetry(ns);
             }
             
             if (!bought) {
@@ -50,6 +69,61 @@ export async function main(ns) {
 function isScriptDeathError(error) {
     const message = String(error || "");
     return message.includes("ScriptDeath") || message.includes("NS instance has already been killed");
+}
+
+/**
+ * Report telemetry metrics to dashboard
+ */
+function reportTelemetry(ns) {
+    try {
+        const now = Date.now();
+        const currentMoney = ns.getServerMoneyAvailable('home');
+        const timeDelta = (now - telemetryState.lastReportTime) / 1000; // seconds
+        
+        // Calculate production rate
+        const moneyRate = timeDelta > 0 ? (currentMoney - telemetryState.lastMoney) / timeDelta : 0;
+        
+        // Get hacknet stats
+        const nodeCount = ns.hacknet.numNodes();
+        let totalRam = 0;
+        let totalCores = 0;
+        let totalLevel = 0;
+        
+        for (let i = 0; i < nodeCount; i++) {
+            const node = ns.hacknet.getNodeStats(i);
+            totalRam += node.ram;
+            totalCores += node.cores;
+            totalLevel += node.level;
+        }
+        
+        // Calculate total investment (rough estimate based on config)
+        const budgetInfo = getHacknetBudget(ns);
+        
+        // Report to telemetry
+        const metricsPayload = {
+            moneyRate: Math.max(0, moneyRate),
+            nodes: nodeCount,
+            totalRam: totalRam,
+            totalCores: totalCores,
+            avgLevel: nodeCount > 0 ? (totalLevel / nodeCount).toFixed(1) : 0,
+            totalInvestment: telemetryState.totalInvestment,
+            upgradesCompleted: telemetryState.upgradesCompleted,
+            budget: budgetInfo.budget,
+            reserve: budgetInfo.reserve
+        };
+        reportModuleMetrics(ns, 'hacknet', metricsPayload);
+        
+        // Diagnostic: confirm reporting (10% of reports)
+        if (Math.random() < 0.1) {
+            ns.print(`📊 Reported hacknet: ${nodeCount} nodes @ $${(moneyRate / 1e6).toFixed(2)}M/s`);
+        }
+        
+        // Update state
+        telemetryState.lastMoney = currentMoney;
+        telemetryState.lastReportTime = now;
+    } catch (e) {
+        // Silent fail to not interrupt hacknet
+    }
 }
 
 function displayStatus(ns, ui) {
@@ -99,24 +173,34 @@ function buyBestUpgrade(ns, ui) {
             return false;
         }
         lastState.nodeCount = ns.hacknet.numNodes();
+        telemetryState.totalInvestment += best.cost;
+        telemetryState.upgradesCompleted++;
         ui.log(`✅ Purchased new node (total: ${lastState.nodeCount}) | ${formatMoney(best.cost)}`, "success");
         return true;
     }
 
     if (best.type === "level") {
         if (!ns.hacknet.upgradeLevel(best.node, 1)) return false;
+        telemetryState.totalInvestment += best.cost;
+        telemetryState.upgradesCompleted++;
         ui.log(`⬆️ Upgraded level on node ${best.node} | ${formatMoney(best.cost)}`, "success");
     }
     if (best.type === "ram") {
         if (!ns.hacknet.upgradeRam(best.node, 1)) return false;
+        telemetryState.totalInvestment += best.cost;
+        telemetryState.upgradesCompleted++;
         ui.log(`💾 Upgraded RAM on node ${best.node} | ${formatMoney(best.cost)}`, "success");
     }
     if (best.type === "core") {
         if (!ns.hacknet.upgradeCore(best.node, 1)) return false;
+        telemetryState.totalInvestment += best.cost;
+        telemetryState.upgradesCompleted++;
         ui.log(`🔧 Upgraded core on node ${best.node} | ${formatMoney(best.cost)}`, "success");
     }
     if (best.type === "cache") {
         if (!ns.hacknet.upgradeCache(best.node, 1)) return false;
+        telemetryState.totalInvestment += best.cost;
+        telemetryState.upgradesCompleted++;
         ui.log(`📦 Upgraded cache on node ${best.node} | ${formatMoney(best.cost)}`, "success");
     }
     return true;

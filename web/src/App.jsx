@@ -48,6 +48,7 @@ function ModuleCard({ module }) {
     : '⏸️'
 
   const isHacking = module.name === 'hacking'
+  const isHacknet = module.name === 'hacknet'
   const details = module.details || {}
   const executionCount = isHacking
     ? (details.successfulHacks ?? module.aggregate?.totalExecutions ?? 0)
@@ -123,6 +124,48 @@ function ModuleCard({ module }) {
           <span className="line-icon">🔒</span>
           <span className="metric-label">Security:</span>
           <span className="metric-value">{Number(details.targetSecurityCurrent || 0).toFixed(2)}/{Number(details.targetSecurityMin || 0).toFixed(2)}</span>
+        </div>
+      )}
+
+      {hasData && isHacknet && (
+        <div className="line-text sub-text">
+          <span className="spacing"></span>
+          <span className="line-icon">🖥️</span>
+          <span className="metric-label">Nodes:</span>
+          <span className="metric-value">{details.nodes || 0}</span>
+          <span className="line-divider">|</span>
+          <span className="line-icon">💾</span>
+          <span className="metric-label">RAM:</span>
+          <span className="metric-value">{(details.totalRam || 0)}GB</span>
+          <span className="line-divider">|</span>
+          <span className="line-icon">⚙️</span>
+          <span className="metric-label">Cores:</span>
+          <span className="metric-value">{details.totalCores || 0}</span>
+          <span className="line-divider">|</span>
+          <span className="line-icon">📊</span>
+          <span className="metric-label">Avg L:</span>
+          <span className="metric-value">{details.avgLevel || 0}</span>
+        </div>
+      )}
+
+      {hasData && isHacknet && (
+        <div className="line-text sub-text">
+          <span className="spacing"></span>
+          <span className="line-icon">💸</span>
+          <span className="metric-label">Invested:</span>
+          <span className="metric-value">{formatCompactMoney(details.totalInvestment)}</span>
+          <span className="line-divider">|</span>
+          <span className="line-icon">📈</span>
+          <span className="metric-label">Upgraded:</span>
+          <span className="metric-value">{details.upgradesCompleted || 0}x</span>
+          <span className="line-divider">|</span>
+          <span className="line-icon">🏦</span>
+          <span className="metric-label">Budget:</span>
+          <span className="metric-value">{formatCompactMoney(details.budget)}</span>
+          <span className="line-divider">|</span>
+          <span className="line-icon">🔐</span>
+          <span className="metric-label">Reserve:</span>
+          <span className="metric-value">{formatCompactMoney(details.reserve)}</span>
         </div>
       )}
 

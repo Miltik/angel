@@ -25,7 +25,8 @@ function ModuleCard({ module }) {
     : module.status === 'idle' ? '🟡' 
     : '🔴'
   
-  const hasData = module.aggregate?.samples > 0 || module.current?.moneyRate > 0
+  // Module has data if it's active (running/idle) OR has generated samples/money
+  const hasData = module.isActive || module.aggregate?.samples > 0 || module.current?.moneyRate > 0
   
   const successIcon = module.successRate > 95 ? '✅' 
     : module.successRate > 80 ? '⚠️' 
@@ -36,6 +37,12 @@ function ModuleCard({ module }) {
     : module.current?.moneyRate > 100000 ? '💰'
     : module.current?.moneyRate > 0 ? '📈'
     : '⏸️'
+
+  const isHacking = module.name === 'hacking'
+  const details = module.details || {}
+  const executionCount = isHacking
+    ? (details.successfulHacks ?? module.aggregate?.totalExecutions ?? 0)
+    : (module.aggregate?.totalExecutions || 0)
 
   return (
     <div className={`module-line ${!hasData ? 'inactive' : ''}`}>
@@ -68,11 +75,32 @@ function ModuleCard({ module }) {
           <span className="line-icon">{successIcon}</span>
           <span className="metric-label">Success:</span>
           <span className="metric-value">{module.successRate.toFixed(1)}%</span>
-          <span className="sub-metric">({module.aggregate?.totalExecutions || 0} execs)</span>
+          <span className="sub-metric">({executionCount} execs)</span>
           <span className="line-divider">|</span>
           <span className="line-icon">🧠</span>
           <span className="metric-label">Memory:</span>
           <span className="metric-value">{(module.current?.memory || 0).toLocaleString(undefined, {maximumFractionDigits: 1})} GB</span>
+        </div>
+      )}
+
+      {hasData && isHacking && (
+        <div className="line-text sub-text">
+          <span className="spacing"></span>
+          <span className="line-icon">🎯</span>
+          <span className="metric-label">Target:</span>
+          <span className="metric-value">{details.currentTarget || 'none'}</span>
+          <span className="line-divider">|</span>
+          <span className="metric-label">Phase:</span>
+          <span className="metric-value">{details.phase ?? 0}</span>
+          <span className="line-divider">|</span>
+          <span className="metric-label">Prep:</span>
+          <span className="metric-value">{details.prepState || 'unknown'}</span>
+          <span className="line-divider">|</span>
+          <span className="metric-label">Money%:</span>
+          <span className="metric-value">{details.targetMoneyPercent ?? 0}%</span>
+          <span className="line-divider">|</span>
+          <span className="metric-label">Sec Δ:</span>
+          <span className="metric-value">+{details.targetSecurityDelta ?? 0}</span>
         </div>
       )}
 

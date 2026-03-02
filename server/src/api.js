@@ -31,6 +31,30 @@ export function setupApiRoutes(app) {
                 for (const module of Object.entries(modules)) {
                     const [moduleName, data] = module;
                     
+                    // Determine module status: running, idle, or offline
+                    let moduleStatus = 'idle';
+                    if (data?.active) {
+                        moduleStatus = 'running';
+                    } else if (data?.lastRun && Date.now() - data.lastRun < 60000) {
+                        // Recently active (within last minute)
+                        moduleStatus = 'idle';
+                    } else {
+                        moduleStatus = 'offline';
+                    }
+                    
+                    // For active modules, capture their money/xp rates if available
+                    let moduleMoneyRate = 0;
+                    let moduleXpRate = 0;
+                    if (moduleStatus === 'running') {
+                        // Try to extract module-specific rates if stored in raw data
+                        try {
+                            if (data?.moneyRate) moduleMoneyRate = data.moneyRate;
+                            if (data?.xpRate) moduleXpRate = data.xpRate;
+                        } catch (e) {
+                            // Use default rates
+                        }
+                    }
+                    
                     await run(
                         `INSERT INTO telemetry_samples 
                         (timestamp, run_id, module_name, memory_used, money_rate, xp_rate, 
@@ -42,15 +66,15 @@ export function setupApiRoutes(app) {
                             runId || 'unknown',
                             moduleName,
                             memory?.used || 0,
-                            stats?.moneyRate || 0,
-                            stats?.xpRate || 0,
+                            moduleMoneyRate || 0,
+                            moduleXpRate || 0,
                             hackLevel || 0,
                             money || '0',
                             stats?.uptime || 0,
-                            data?.status || 'unknown',
-                            data?.executions || 0,
+                            moduleStatus,
+                            data?.successfulHacks ?? data?.executions ?? 0,
                             data?.failures || 0,
-                            data?.avgTime || 0,
+                            data?.avgDuration || 0,
                             JSON.stringify(data)
                         ]
                     );
@@ -219,6 +243,7 @@ export function setupApiRoutes(app) {
                     execution_count,
                     failure_count,
                     avg_execution_time,
+                    raw_data,
                     uptime
                 FROM telemetry_samples
                 WHERE module_name != 'SYSTEM'
@@ -253,14 +278,26 @@ export function setupApiRoutes(app) {
             const dataMap = {};
             moduleStats.forEach(mod => {
                 const agg = aggregates.find(a => a.module_name === mod.module_name) || {};
+                const moduleStatus = mod.module_status || 'inactive';
+                let details = {};
+                try {
+                    details = mod.raw_data ? JSON.parse(mod.raw_data) : {};
+                } catch {
+                    details = {};
+                }
+                
+                // Module is considered "active" if status is running or idle
+                const isActive = moduleStatus === 'running' || moduleStatus === 'idle';
+                
                 dataMap[mod.module_name] = {
                     name: mod.module_name,
-                    status: mod.module_status || 'inactive',
+                    status: moduleStatus,
+                    isActive: isActive,
                     current: {
                         memory: mod.memory_used || 0,
                         moneyRate: mod.money_rate || 0,
                         xpRate: mod.xp_rate || 0,
-                        executions: mod.execution_count || 0,
+                        executions: mod.execution_count || details.successfulHacks || 0,
                         failures: mod.failure_count || 0,
                         avgExecTime: mod.avg_execution_time || 0,
                     },
@@ -276,6 +313,7 @@ export function setupApiRoutes(app) {
                     successRate: agg.total_executions > 0 
                         ? ((agg.total_executions - agg.total_failures) / agg.total_executions * 100)
                         : 100,
+                    details,
                     lastUpdate: mod.timestamp
                 };
             });
@@ -288,7 +326,8 @@ export function setupApiRoutes(app) {
                     // Return placeholder for modules without data
                     return {
                         name: moduleName,
-                        status: 'idle',
+                        status: 'offline',
+                        isActive: false,
                         current: {
                             memory: 0,
                             moneyRate: 0,
@@ -307,13 +346,20 @@ export function setupApiRoutes(app) {
                             avgExecTime: 0,
                         },
                         successRate: 100,
+                        details: {},
                         lastUpdate: null
                     };
                 }
             });
 
-            // Sort by money rate (active modules first)
-            enriched.sort((a, b) => (b.current?.moneyRate || 0) - (a.current?.moneyRate || 0));
+            // Sort: active modules first, then by money rate
+            enriched.sort((a, b) => {
+                // Prioritize active modules
+                if (a.isActive && !b.isActive) return -1;
+                if (!a.isActive && b.isActive) return 1;
+                // Within same active status, sort by money rate
+                return (b.current?.moneyRate || 0) - (a.current?.moneyRate || 0);
+            });
 
             res.json({
                 success: true,

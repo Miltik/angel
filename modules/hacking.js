@@ -93,6 +93,9 @@ async function hackingLoop(ns, ui) {
         lastLoggedState.target = target;
         lastLoggedState.phase = currentPhase;
     }
+
+    lastLoggedState.moneyPercent = Number(moneyPercent);
+    lastLoggedState.securityDelta = Number(securityDelta);
     
     // Log prep status changes or periodically
     if (isPrepped !== lastLoggedState.isPrepped || lastLoggedState.loopCount % 30 === 0) {
@@ -140,6 +143,10 @@ function reportTelemetry(ns) {
             moneyRate: Math.max(0, moneyRate), // Only report positive rates
             xpRate: Math.max(0, xpRate),
             currentTarget: lastLoggedState.target || 'none',
+            phase: lastLoggedState.phase || 0,
+            targetMoneyPercent: lastLoggedState.moneyPercent || 0,
+            targetSecurityDelta: lastLoggedState.securityDelta || 0,
+            prepState: lastLoggedState.isPrepped ? 'ready' : 'prepping',
             targetsPrepped: telemetryState.targetsPrepped,
             activeThreads: telemetryState.activeThreads,
             successfulHacks: telemetryState.successfulHacks

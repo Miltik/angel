@@ -41,6 +41,115 @@ let resetHeuristicState = {
     lastReasonLogTs: 0,
 };
 
+// Reset tracking
+const RESET_HISTORY_KEY = "angelResetHistory";
+const RESET_STATE_KEY = "angelResetState";
+const MAX_RESET_HISTORY = 50;
+
+function initializeResetTracking(ns) {
+    const now = Date.now();
+    const resetInfo = ns.getResetInfo();
+    const lastAugReset = Number(resetInfo?.lastAugReset || now);
+
+    let state = loadResetState();
+    
+    // Detect if we've reset since last session
+    const resetDetected = state.lastSeenAugReset > 0 && lastAugReset !== state.lastSeenAugReset;
+    
+    if (resetDetected || !state.currentRun) {
+        state.currentRun = {
+            startEpoch: lastAugReset,
+            startedAt: new Date(lastAugReset).toISOString(),
+            startHackLevel: Number(ns.getPlayer().skills.hacking || 0),
+            startCash: Number(ns.getServerMoneyAvailable("home") || 0),
+        };
+    }
+    
+    state.lastSeenAugReset = lastAugReset;
+    state.lastHeartbeat = now;
+    saveResetState(state);
+    return state;
+}
+
+function loadResetState() {
+    try {
+        const stored = localStorage.getItem(RESET_STATE_KEY);
+        return stored ? JSON.parse(stored) : { currentRun: null, lastSeenAugReset: 0, lastHeartbeat: 0 };
+    } catch (e) {
+        return { currentRun: null, lastSeenAugReset: 0, lastHeartbeat: 0 };
+    }
+}
+
+function saveResetState(state) {
+    try {
+        localStorage.setItem(RESET_STATE_KEY, JSON.stringify(state));
+    } catch (e) {
+        // Ignore storage errors
+    }
+}
+
+function recordResetSnapshot(ns) {
+    const state = loadResetState();
+    const player = ns.getPlayer();
+    const now = Date.now();
+    const resetInfo = ns.getResetInfo();
+    const lastAugReset = Number(resetInfo?.lastAugReset || now);
+    
+    const playtimeMs = Math.max(0, now - lastAugReset);
+    const finalCash = Number(ns.getServerMoneyAvailable("home") || 0);
+    const finalHackLevel = Number(player.skills.hacking || 0);
+    
+    const snapshot = {
+        timestamp: new Date(now).toISOString(),
+        startEpoch: state.currentRun?.startEpoch || lastAugReset,
+        endEpoch: now,
+        durationMs: playtimeMs,
+        durationLabel: formatDuration(playtimeMs),
+        finalCash,
+        finalHackLevel,
+        purchasedAugCount: ns.singularity.getOwnedAugmentations(true).length - ns.singularity.getOwnedAugmentations(false).length,
+    };
+    
+    // Add to history
+    let history = loadResetHistory();
+    history.push(snapshot);
+    
+    // Keep only last N resets
+    if (history.length > MAX_RESET_HISTORY) {
+        history = history.slice(-MAX_RESET_HISTORY);
+    }
+    
+    saveResetHistory(history);
+    return snapshot;
+}
+
+function loadResetHistory() {
+    try {
+        const stored = localStorage.getItem(RESET_HISTORY_KEY);
+        return stored ? JSON.parse(stored) : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+function saveResetHistory(history) {
+    try {
+        localStorage.setItem(RESET_HISTORY_KEY, JSON.stringify(history));
+    } catch (e) {
+        // Ignore storage errors
+    }
+}
+
+function formatDuration(ms) {
+    const seconds = Math.floor(ms / 1000);
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    if (minutes > 0) return `${minutes}m ${secs}s`;
+    return `${secs}s`;
+}
+
 export async function main(ns) {
     ns.disableLog("ALL");
     
@@ -67,6 +176,9 @@ export async function main(ns) {
  */
 async function updateDashboard(ns, ui) {
     await runCoordinatorFromDashboard(ns, ui);
+
+    // Initialize reset tracking
+    initializeResetTracking(ns);
 
     const now = Date.now();
     const player = ns.getPlayer();
@@ -155,6 +267,7 @@ async function updateDashboard(ns, ui) {
         // Augmentation Status
         try {
             displayAugmentationStatus(ui, ns, player);
+            displayResetStatus(ui, ns);
             ui.log("", "info");
         } catch (e) {
             // Singularity not available
@@ -1357,5 +1470,32 @@ async function triggerAugResetFromDashboard(ns, ui, queuedCount, queuedCost) {
         await ns.sleep(1000);
     }
 
+    // Record reset snapshot before installing
+    try {
+        recordResetSnapshot(ns);
+    } catch (e) {
+        // Ignore snapshot errors
+    }
+
     ns.singularity.installAugmentations(restartScript);
+}
+
+function displayResetStatus(ui, ns) {
+    try {
+        const history = loadResetHistory();
+        const last = history.length > 0 ? history[history.length - 1] : null;
+        const now = Date.now();
+        const resetInfo = ns.getResetInfo();
+        const lastAugReset = Number(resetInfo?.lastAugReset || now);
+        const runDuration = formatDuration(Math.max(0, now - lastAugReset));
+
+        if (!last) {
+            ui.log(`🔄 RESET TRACKING: Current run ${runDuration} | No history yet`, "info");
+            return;
+        }
+
+        ui.log(`🔄 RESET TRACKING: Run ${runDuration} | Last: ${last.durationLabel} → ${formatMoney(last.finalCash)} (Hack ${last.finalHackLevel}, ${last.purchasedAugCount} augs)`, "info");
+    } catch (e) {
+        ui.log(`🔄 RESET TRACKING: Unavailable`, "info");
+    }
 }

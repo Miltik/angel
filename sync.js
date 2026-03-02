@@ -33,67 +33,47 @@ export async function main(ns) {
         "utils.js",
         "scanner.js",
         "start.js",
-        "status.js",
-        "networkMap.js",
-        "backdoor.js",
-        "xpFarm.js",
-        "karma.js", // Karma display script
-
-        // Tools
-        "recursive-nuke.js", // Recursive nuke script
         
         // Modules
-        "modules/uiManager.js",          // New: DOM UI framework
+        "modules/uiManager.js",
         "modules/hacking.js",
         "modules/maxprofit.js",
         "modules/maxgang.js",
         "modules/servers.js",
         "modules/augments.js",
         "modules/programs.js",
-        "modules/activities.js",         // Unified: activity + faction management
+        "modules/activities.js",
         "modules/sleeves.js",
         "modules/stocks.js",
         "modules/gang.js",
         "modules/bladeburner.js",
         "modules/hacknet.js",
-        "modules/dashboard.js",          // New: Real-time monitoring
-        "modules/networkMap.js",         // Canonical network map module
-        "modules/xpFarm.js",             // Canonical XP farm module
-        "modules/backdoor.js",           // Canonical backdoor launcher module
-        "modules/uiLauncher.js",         // New: Clickable window visibility launcher
-        "modules/contracts.js",          // New: Coding contracts solver
-        "modules/loot.js",               // New: Loot collector and archiver
-        "modules/find_contracts.js",     // New: helper to list .cct files across servers
-        "modules/formulas.js",           // New: Formulas.exe farming
-        "modules/corporation.js",        // New: integrated corporation automation module
-        "modules/backdoorRunner.js",     // New: Full backdoor runner (launched by backdoor.js)
-        "modules/resetMonitor.js",       // New: Persistent reset tracking utility
-        "modules/contracts-simple.js",   // New: Simplified contracts module for testing
+        "modules/dashboard.js",
+        "modules/networkMap.js",
+        "modules/xpFarm.js",
+        "modules/backdoor.js",
+        "modules/uiLauncher.js",
+        "modules/contracts.js",
+        "modules/loot.js",
+        "modules/find_contracts.js",
+        "modules/formulas.js",
+        "modules/corporation.js",
+        "modules/backdoorRunner.js",
+        "modules/resetMonitor.js",
+        "modules/contracts-simple.js",
         
-        // Tools
-        "snapshot.js",                   // New: System state capture
-        "windowLayoutSnapshot.js",       // New: Capture and persist UI window layout defaults
-        "angel_windowdefaults.json",     // Default DOM window layout
-        "angel_windowstates.json",       // Baseline/current DOM window layout
-        "angel-ram.js",                  // New: RAM calculator
-        "early-hack.js",
-        "resetMonitor.js",               // New: Reset history viewer
-        "corpManager.js",                // Backward-compatible wrapper to modules/corporation.js
-        "share-all.js",                  // Share all free RAM to current faction
-        "share.js",                      // Worker script for share-all.js
-        "test-contracts.js",             // Diagnostic: test contracts module startup
-        "test-contracts-deps.js",        // Diagnostic: test contracts dependencies
-        "test-contracts-minimal.js",     // Diagnostic: minimal contracts startup test
-        "standalones/networkMap.js",     // Independent launcher: network map
-        "standalones/xpFarm.js",         // Independent launcher: XP farm
-        "standalones/backdoor.js",       // Independent launcher: backdoor flow
+        // Configuration files
+        "angel_windowdefaults.json",
+        "angel_windowstates.json",
         
         // Workers
         "workers/hack.js",
         "workers/grow.js",
         "workers/weaken.js",
         "workers/share.js",
-        "loot/loot.txt",                 // Seed file to initialize loot archive path
+        
+        // Data
+        "loot/loot.txt",
     ];
     
     // ========================================

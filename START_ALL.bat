@@ -15,11 +15,11 @@ REM Get script directory
 set SCRIPT_DIR=%~dp0
 
 echo Starting Backend Server...
-start "ANGEL Backend" cmd /k "cd server && npm start"
+start "ANGEL Backend" cmd /k "cd /d "%SCRIPT_DIR%server" && npm start"
 timeout /t 3 /nobreak
 
 echo Starting Web Dashboard...
-start "ANGEL Dashboard" cmd /k "cd web && npm run dev"
+start "ANGEL Dashboard" cmd /k "cd /d "%SCRIPT_DIR%web" && npm run dev"
 timeout /t 3 /nobreak
 
 echo.

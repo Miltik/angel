@@ -603,11 +603,23 @@ async function syncToBackend(ns, telemetryConfig) {
         // Load remote backend config from main config
         let backendConfig = {};
         try {
-            const { config } = await import('/angel/config.js');
-            backendConfig = config.remoteBackend || {};
-            ns.print(`✅ Loaded backend config: enabled=${backendConfig.enabled}`);
+            // Read config.js as text and extract backend settings
+            const configContent = ns.read('/angel/config.js');
+            
+            // Extract remoteBackend config using regex
+            const backendMatch = configContent.match(/remoteBackend:\s*{([^}]+{[^}]+}[^}]*)*[^}]*}/);
+            const enabledMatch = configContent.match(/enabled:\s*(true|false)/);
+            const urlMatch = configContent.match(/url:\s*"([^"]+)"/);
+            const intervalMatch = configContent.match(/telemetryIntervalMs:\s*(\d+)/);
+            
+            backendConfig.enabled = enabledMatch ? enabledMatch[1] === 'true' : false;
+            backendConfig.url = urlMatch ? urlMatch[1] : 'http://localhost:3000';
+            backendConfig.telemetryIntervalMs = intervalMatch ? parseInt(intervalMatch[1]) : 10000;
+            backendConfig.enableLogging = true;
+            
+            ns.print(`✅ Loaded backend config: enabled=${backendConfig.enabled}, url=${backendConfig.url}`);
         } catch (e) {
-            ns.print(`❌ Config import failed: ${e.message}`);
+            ns.print(`❌ Config read failed: ${e.message}`);
             return;
         }
 

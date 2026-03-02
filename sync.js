@@ -57,6 +57,9 @@ export async function main(ns) {
         "modules/bladeburner.js",
         "modules/hacknet.js",
         "modules/dashboard.js",          // New: Real-time monitoring
+        "modules/networkMap.js",         // Canonical network map module
+        "modules/xpFarm.js",             // Canonical XP farm module
+        "modules/backdoor.js",           // Canonical backdoor launcher module
         "modules/uiLauncher.js",         // New: Clickable window visibility launcher
         "modules/contracts.js",          // New: Coding contracts solver
         "modules/loot.js",               // New: Loot collector and archiver
@@ -81,6 +84,9 @@ export async function main(ns) {
         "test-contracts.js",             // Diagnostic: test contracts module startup
         "test-contracts-deps.js",        // Diagnostic: test contracts dependencies
         "test-contracts-minimal.js",     // Diagnostic: minimal contracts startup test
+        "standalones/networkMap.js",     // Independent launcher: network map
+        "standalones/xpFarm.js",         // Independent launcher: XP farm
+        "standalones/backdoor.js",       // Independent launcher: backdoor flow
         
         // Workers
         "workers/hack.js",
@@ -210,6 +216,9 @@ function ensureLootArchiveSeed(ns) {
 function stopRunningAngelScripts(ns) {
     const scripts = [
         "/angel/angel.js",
+        "/angel/modules/backdoor.js",
+        "/angel/modules/networkMap.js",
+        "/angel/modules/xpFarm.js",
         "/angel/modules/loot.js",
         "/angel/modules/contracts.js",
         "/angel/modules/contracts-simple.js",

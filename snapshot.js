@@ -74,8 +74,8 @@ export async function main(ns) {
             { path: "/angel/modules/hacknet.js", name: "🌐 Hacknet" },
             { path: "/angel/modules/contracts.js", name: "📋 Contracts" },
             { path: "/angel/modules/formulas.js", name: "📐 Formulas" },
-            { path: "/angel/xpFarm.js", name: "⚡ XP Farm" },
-            { path: "/angel/networkMap.js", name: "🗺️  Network Map" },
+            { path: "/angel/modules/xpFarm.js", name: "⚡ XP Farm" },
+            { path: "/angel/modules/networkMap.js", name: "🗺️  Network Map" },
             { path: "/angel/modules/dashboard.js", name: "📊 Dashboard" },
         ];
         

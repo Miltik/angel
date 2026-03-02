@@ -99,6 +99,15 @@ run /angel/status.js --detailed
 | `run /angel/status.js` | View system status |
 | `run /angel/scanner.js` | Scan and display network |
 | `run /angel/install.js` | Check installation |
+| `run /angel/standalones/xpFarm.js` | Run XP farm independently |
+| `run /angel/standalones/networkMap.js` | Run network map independently |
+| `run /angel/standalones/backdoor.js` | Run backdoor flow independently |
+
+## Runtime Layout
+
+- Canonical orchestrator runtime scripts live in `/angel/modules/`.
+- `/angel/xpFarm.js`, `/angel/networkMap.js`, and `/angel/backdoor.js` are compatibility wrappers.
+- Use `/angel/standalones/*` when launching those tools outside normal orchestrator flow.
 
 ## What ANGEL Does Automatically
 

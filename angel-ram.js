@@ -43,10 +43,10 @@ export async function main(ns) {
             { name: "share.js", path: "/angel/workers/share.js" },
         ],
         tools: [
-            { name: "xpFarm", path: "/angel/xpFarm.js" },
+            { name: "xpFarm", path: "/angel/modules/xpFarm.js" },
             { name: "snapshot", path: "/angel/snapshot.js" },
-            { name: "backdoor", path: "/angel/backdoor.js" },
-            { name: "networkMap", path: "/angel/networkMap.js" },
+            { name: "backdoor", path: "/angel/modules/backdoor.js" },
+            { name: "networkMap", path: "/angel/modules/networkMap.js" },
         ]
     };
     

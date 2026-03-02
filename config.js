@@ -557,13 +557,13 @@ export const SCRIPTS = {
     hacknet: "/angel/modules/hacknet.js",
     dashboard: "/angel/modules/dashboard.js",
     uiLauncher: "/angel/modules/uiLauncher.js",
-    networkMap: "/angel/networkMap.js",
+    networkMap: "/angel/modules/networkMap.js",
     contracts: "/angel/modules/contracts.js",
     loot: "/angel/modules/loot.js",
     formulas: "/angel/modules/formulas.js",
     corporation: "/angel/modules/corporation.js",
-    xpFarm: "/angel/xpFarm.js",
-    backdoor: "/angel/backdoor.js",
+    xpFarm: "/angel/modules/xpFarm.js",
+    backdoor: "/angel/modules/backdoor.js",
     
     // Workers (actual hacking scripts)
     hack: "/angel/workers/hack.js",

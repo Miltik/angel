@@ -48,18 +48,34 @@ The system will automatically:
 ├── scanner.js            # Network scanning and rooting
 ├── sync.js               # GitHub sync script
 ├── bootstrap.js          # Bootstrap installer
+├── backdoor.js           # Compatibility launcher -> modules/backdoor.js
+├── networkMap.js         # Compatibility launcher -> modules/networkMap.js
+├── xpFarm.js             # Compatibility launcher -> modules/xpFarm.js
 ├── modules/
+│   ├── backdoor.js       # Canonical backdoor launcher used by orchestrator
+│   ├── networkMap.js     # Canonical network map used by orchestrator
+│   ├── xpFarm.js         # Canonical XP farm used by orchestrator
 │   ├── hacking.js        # Automated hacking operations
 │   ├── servers.js        # Server purchase and management
 │   ├── factions.js       # Faction automation (SF4)
 │   ├── augments.js       # Augmentation management (SF4)
 │   └── programs.js       # TOR, programs, and backdoors
+├── standalones/
+│   ├── backdoor.js       # Independent launcher -> modules/backdoor.js
+│   ├── networkMap.js     # Independent launcher -> modules/networkMap.js
+│   └── xpFarm.js         # Independent launcher -> modules/xpFarm.js
 └── workers/
     ├── hack.js           # Hack worker script
     ├── grow.js           # Grow worker script
     ├── weaken.js         # Weaken worker script
     └── share.js          # Share worker script
 ```
+
+### Runtime Path Policy
+
+- ANGEL orchestrator runtime scripts are canonical in `modules/`.
+- Root-level `backdoor.js`, `networkMap.js`, and `xpFarm.js` are compatibility wrappers.
+- Use `standalones/` scripts when you want to run those tools independently of orchestrator flow.
 
 ## ⚙️ Configuration
 

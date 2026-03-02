@@ -19,7 +19,7 @@ import { createWindow } from "/angel/modules/uiManager.js";
 import { initializeResetMonitor, getResetHistory, recordResetSnapshot } from "/angel/modules/resetMonitor.js";
 
 const PHASE_PORT = 7;
-const XP_FARM_SCRIPT = "/angel/xpFarm.js";
+const XP_FARM_SCRIPT = "/angel/modules/xpFarm.js";
 const XP_FARM_WORKER = "/angel/workers/weaken.js";
 const XP_FARM_MARKER = "__angel_xpfarm__";
 let lastUpdate = 0;

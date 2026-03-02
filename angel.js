@@ -356,6 +356,15 @@ async function ensureModulesRunning(ns) {
         });
         await ns.sleep(1500);
     }
+    
+    // Telemetry module - analytics (optional, non-blocking)
+    if (config.telemetry?.enabled) {
+        await ensureModuleRunning(ns, SCRIPTS.telemetry, "Telemetry", [], {
+            deferIfInsufficientRam: true,
+            lowRamLogIntervalMs: 60000,
+        });
+        await ns.sleep(1000);
+    }
 
     // UI Launcher module - optional, non-blocking
     if (config.orchestrator.enableUILauncher) {

@@ -522,6 +522,16 @@ export const config = {
             "johnson-ortho",
         ],
     },
+    
+    // Telemetry and analytics
+    telemetry: {
+        enabled: true,                   // Master switch for telemetry system
+        sampleIntervalMs: 60000,        // Sample system metrics every 60s
+        aggregateIntervalMs: 300000,    // Compute aggregates every 5min
+        maxHistoryRuns: 3,              // Keep last 3 completed runs in history
+        detailedLogging: false,         // Enable verbose event capture
+        maxEventsPerRun: 1000,          // Cap event storage per run
+    },
 };
 
 // Ports for inter-script communication
@@ -559,6 +569,11 @@ export const SCRIPTS = {
     corporation: "/angel/modules/corporation.js",
     xpFarm: "/angel/modules/xpFarm.js",
     backdoor: "/angel/modules/backdoor.js",
+    
+    // Telemetry
+    telemetry: "/angel/telemetry/telemetry.js",
+    telemetryReport: "/angel/telemetry/report.js",
+    telemetryUI: "/angel/telemetry/ui.js",
     
     // Workers (actual hacking scripts)
     hack: "/angel/workers/hack.js",

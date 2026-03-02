@@ -64,6 +64,12 @@ export async function main(ns) {
         "workers/weaken.js",
         "workers/share.js",
         
+        // Telemetry
+        "telemetry/telemetry.js",
+        "telemetry/report.js",
+        "telemetry/ui.js",
+        "telemetry/README.md",
+        
         // Data
         "loot/loot.txt",
     ];

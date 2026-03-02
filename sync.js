@@ -69,6 +69,7 @@ export async function main(ns) {
         "telemetry/report.js",
         "telemetry/ui.js",
         "telemetry/README.md",
+        "telemetry/MANUAL_LAUNCH.txt",
         
         // Data
         "loot/loot.txt",

@@ -1,0 +1,310 @@
+================================================================================
+                    ANGEL TELEMETRY - MANUAL LAUNCH GUIDE
+================================================================================
+
+QUICK START
+-----------
+If telemetry is not auto-starting with Angel, launch it manually:
+
+    run /angel/telemetry/telemetry.js &
+
+The & runs it in the background so it doesn't block your terminal.
+
+
+WHAT IS TELEMETRY?
+------------------
+Telemetry monitors Angel's performance throughout your BitNode run:
+- Tracks module execution (counts, failures, durations)
+- Records money/XP rates over time
+- Detects bottlenecks and performance issues
+- Provides optimization suggestions
+- Compares current run vs. historical runs
+
+
+MANUAL LAUNCH COMMANDS
+-----------------------
+
+1. START BACKGROUND MONITORING
+   
+   run /angel/telemetry/telemetry.js &
+   
+   This starts collecting data. Leave it running for best results.
+
+
+2. VIEW REAL-TIME DASHBOARD
+   
+   run /angel/telemetry/ui.js
+   
+   Opens a live monitoring window that updates every 2 seconds.
+   Shows current performance, top modules, bottlenecks, and growth charts.
+
+
+3. GENERATE SUMMARY REPORT
+   
+   run /angel/telemetry/report.js --summary
+   
+   Quick overview of current run:
+   - Run duration
+   - Current money and XP rates
+   - Module activity stats
+   - Detected bottlenecks
+
+
+4. VIEW MODULE BREAKDOWN
+   
+   run /angel/telemetry/report.js --modules
+   
+   Detailed table showing each module's:
+   - Execution count
+   - Failure count
+   - Average runtime
+   - Success rate
+
+
+5. SEE MILESTONE TIMELINE
+   
+   run /angel/telemetry/report.js --timeline
+   
+   Chronological view of:
+   - When milestones were achieved
+   - Money/XP growth over time
+   - Recent significant events
+
+
+6. COMPARE TO HISTORY
+   
+   run /angel/telemetry/report.js --history
+   
+   Compare current run to previous runs:
+   - Historical run summaries
+   - Average vs. current performance
+   - Trend analysis
+
+
+7. GET OPTIMIZATION TIPS
+   
+   run /angel/telemetry/report.js --optimize
+   
+   Actionable recommendations:
+   - Bottleneck detection with severity
+   - Specific suggestions per module
+   - Config tuning advice
+
+
+8. FULL REPORT (ALL SECTIONS)
+   
+   run /angel/telemetry/report.js
+
+
+TYPICAL WORKFLOW
+----------------
+
+STEP 1: Start monitoring
+    run /angel/telemetry/telemetry.js &
+
+STEP 2: Let Angel run for 10-15 minutes to collect data
+
+STEP 3: Check real-time status
+    run /angel/telemetry/ui.js
+
+STEP 4: Generate optimization report
+    run /angel/telemetry/report.js --optimize
+
+STEP 5: Tune config.js based on suggestions
+
+STEP 6: After augment reset, compare to history
+    run /angel/telemetry/report.js --history
+
+
+CHECKING IF TELEMETRY IS RUNNING
+---------------------------------
+
+Run:  ps | grep telemetry
+
+If you see /angel/telemetry/telemetry.js in the output, it's running.
+If not, launch it with:  run /angel/telemetry/telemetry.js &
+
+
+STOPPING TELEMETRY
+------------------
+
+To stop:  kill /angel/telemetry/telemetry.js
+
+Note: Data is saved to localStorage, so stopping telemetry won't lose
+your data. When you restart it, it will continue tracking the current run.
+
+
+TROUBLESHOOTING
+---------------
+
+PROBLEM: "No telemetry data available"
+SOLUTION: Wait 1-2 minutes after starting telemetry.js for initial data
+          collection. If still no data, check that telemetry.js is running.
+
+PROBLEM: UI not updating
+SOLUTION: Telemetry engine (telemetry.js) must be running in background.
+          UI just displays the data, it doesn't collect it.
+
+PROBLEM: Reports show old data
+SOLUTION: Telemetry saves run data until augment reset. If you manually
+          stopped/started Angel, telemetry continues tracking the same run.
+
+PROBLEM: Out of localStorage space
+SOLUTION: Edit config.js and reduce:
+          - telemetry.maxHistoryRuns (default: 3)
+          - telemetry.maxEventsPerRun (default: 1000)
+
+
+CONFIGURATION
+-------------
+
+Edit /angel/config.js to change telemetry settings:
+
+telemetry: {
+    enabled: true,                   // Auto-start with Angel
+    sampleIntervalMs: 60000,        // Sample every 60s
+    aggregateIntervalMs: 300000,    // Aggregate every 5min
+    maxHistoryRuns: 3,              // Keep last 3 runs
+    detailedLogging: false,         // Verbose event capture
+    maxEventsPerRun: 1000,          // Cap event storage
+}
+
+Set enabled: false to prevent telemetry from auto-starting.
+You can still launch it manually even if disabled in config.
+
+
+PERFORMANCE IMPACT
+------------------
+
+RAM:  ~2-3MB (negligible)
+CPU:  <1% overhead
+Disk: None (uses localStorage only)
+
+Telemetry is designed to never interfere with Angel's operation.
+All tracking calls fail silently if errors occur.
+
+
+WHAT GETS TRACKED
+-----------------
+
+AUTOMATIC (no module changes needed):
+- System metrics every 60s (money, XP, RAM usage)
+- Module execution counts when modules report completion
+- Run duration and timestamps
+
+OPTIONAL (requires module integration):
+- Module-specific events (deployments, purchases, errors)
+- Custom milestones (achievements, thresholds)
+- Detailed execution metrics
+
+See /angel/telemetry/README.md for module integration guide.
+
+
+READING REPORTS IN-GAME
+-----------------------
+
+All reports output to the script's log window.
+To review, either:
+- Keep the report script window open
+- Scroll back through the log
+- Run the report multiple times to see changes over time
+
+
+EXAMPLE: DAILY TUNING ROUTINE
+------------------------------
+
+Morning:
+  run /angel/telemetry/telemetry.js &
+  run /angel/telemetry/ui.js
+
+During work:
+  (Let Angel run and collect data)
+
+Evening:
+  run /angel/telemetry/report.js --optimize
+  
+  Review suggestions like:
+  - "hacking.js runs too frequently - increase interval"
+  - "gang.js RAM starved - reduce worker threads"
+  
+  Edit /angel/config.js based on recommendations
+  
+  Restart Angel to apply changes
+
+Next day:
+  run /angel/telemetry/report.js --history
+  
+  Compare today vs. yesterday to see if changes helped
+
+
+TIPS FOR BEST RESULTS
+----------------------
+
+1. Let telemetry run for entire BitNode
+   - More data = better insights
+   - Historical comparison needs complete runs
+
+2. Don't stop/restart Angel unnecessarily
+   - Breaks data continuity
+   - Telemetry tracks from augment reset to augment reset
+
+3. Check optimize report weekly
+   - Performance degrades as game progresses
+   - Config that worked early may not work late
+
+4. Review history after each reset
+   - Learn what works across multiple runs
+   - Identify patterns and optimal strategies
+
+5. Enable detailed logging temporarily when debugging
+   - Set telemetry.detailedLogging: true
+   - Captures verbose event data
+   - Remember to disable after debugging (increases storage)
+
+
+ADVANCED USAGE
+--------------
+
+Exporting data:
+  Currently telemetry stores data in localStorage only.
+  To export, you'd need to write custom script to read localStorage
+  and write to file. See telemetry.js functions:
+  - getCurrentRun()
+  - getRunHistory()
+
+Clearing old data:
+  Open browser console (F12), run:
+    localStorage.removeItem('angelTelemetryHistory')
+    localStorage.removeItem('angelTelemetryCurrentRun')
+
+Custom metrics:
+  See /angel/telemetry/README.md for recordModuleMetric() API
+  and integration examples.
+
+
+GETTING HELP
+------------
+
+For detailed documentation:  cat /angel/telemetry/README.md
+For module integration:      cat /angel/telemetry/README.md (see Examples)
+For report formats:          run /angel/telemetry/report.js (see bottom)
+
+
+================================================================================
+                              QUICK REFERENCE
+================================================================================
+
+START:     run /angel/telemetry/telemetry.js &
+LIVE UI:   run /angel/telemetry/ui.js
+SUMMARY:   run /angel/telemetry/report.js --summary
+OPTIMIZE:  run /angel/telemetry/report.js --optimize
+HISTORY:   run /angel/telemetry/report.js --history
+FULL:      run /angel/telemetry/report.js
+
+CHECK:     ps | grep telemetry
+STOP:      kill /angel/telemetry/telemetry.js
+
+CONFIG:    Edit /angel/config.js (telemetry section)
+DOCS:      cat /angel/telemetry/README.md
+
+================================================================================

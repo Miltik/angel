@@ -47,8 +47,12 @@ export async function main(ns) {
             
             // Report telemetry every 5 seconds for live dashboard updates
             const now = Date.now();
-            if (now - telemetryState.lastReportTime >= 5000) {
+            const timeSinceLastReport = now - telemetryState.lastReportTime;
+            if (timeSinceLastReport >= 5000) {
+                ns.print(`⏰ Timing check: ${timeSinceLastReport}ms since last report, calling reportTelemetry()`);
                 reportTelemetry(ns);
+            } else if (lastState.loopCount % 5 === 0) {
+                ns.print(`⏰ Not ready: only ${timeSinceLastReport}ms since last report (need 5000ms)`);
             }
             
             if (!bought) {

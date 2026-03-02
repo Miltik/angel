@@ -177,6 +177,16 @@ export async function main(ns) {
         ns.tprint("");
         ns.tprint("All files synced successfully!");
         ns.tprint("");
+        
+        // Auto-launch telemetry if not running
+        if (!ns.isRunning("/angel/telemetry/telemetry.js", "home")) {
+            ns.run("/angel/telemetry/telemetry.js");
+            ns.tprint("▶ Telemetry system started");
+        } else {
+            ns.tprint("✓ Telemetry system already running");
+        }
+        
+        ns.tprint("");
         ns.tprint("To start ANGEL:");
         ns.tprint("  run /angel/start.js");
         ns.tprint("");

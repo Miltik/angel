@@ -6,7 +6,7 @@ import { config } from "/angel/config.js";
 import { createWindow } from "/angel/modules/uiManager.js";
 import { formatMoney } from "/angel/utils.js";
 
-const TELEMETRY_PORT = 20;
+const HACKNET_TELEMETRY_PORT = 21;
 
 // State tracking
 let lastState = {
@@ -136,9 +136,9 @@ function writeHacknetMetrics(ns, metricsPayload) {
             timestamp: Date.now(),
             metrics: metricsPayload,
         });
-        const ok = ns.tryWritePort(TELEMETRY_PORT, payload);
+        const ok = ns.tryWritePort(HACKNET_TELEMETRY_PORT, payload);
         if (!ok) {
-            ns.print('⚠️ Failed to write hacknet metrics to port 20 (queue full)');
+            ns.print('⚠️ Failed to write hacknet metrics to port 21 (queue full)');
         }
     } catch (e) {
         ns.print(`❌ Hacknet port write error: ${e}`);

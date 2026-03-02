@@ -16,7 +16,8 @@
 // TELEMETRY PORTS
 // ============================================
 
-const TELEMETRY_PORT = 20; // Port for modules to report metrics
+const TELEMETRY_PORT = 20; // General port for modules to report metrics
+const HACKNET_TELEMETRY_PORT = 21; // Dedicated port for hacknet metrics
 
 // ============================================
 // STORAGE KEYS
@@ -353,27 +354,12 @@ function captureModuleMetrics(ns, run) {
     const runningScripts = ns.ps('home');
     const reportedMetrics = {};
     
-    // Collect metrics from telemetry port
-    let portReads = 0;
-    while (ns.peek(TELEMETRY_PORT) !== 'NULL PORT DATA') {
-        try {
-            const portData = ns.readPort(TELEMETRY_PORT);
-            const data = JSON.parse(portData);
-            if (data && data.module && data.metrics) {
-                reportedMetrics[data.module] = data.metrics;
-                portReads++;
-                // Diagnostic: log port reads
-                if (data.module === 'hacknet') {
-                    ns.print(`📥 Read port 20: hacknet with ${data.metrics.nodes || 0} nodes, ${data.metrics.upgradesCompleted || 0} upgrades`);
-                }
-            }
-        } catch (e) {
-            ns.print(`❌ Port read error: ${e}`);
-            break; // Invalid data, stop reading
-        }
-    }
-    if (portReads > 0) {
-        ns.print(`📨 Port 20 reads: ${portReads} modules reported`);
+    // Collect metrics from both general and dedicated ports
+    const readGeneral = drainTelemetryPort(ns, TELEMETRY_PORT, reportedMetrics);
+    const readHacknet = drainTelemetryPort(ns, HACKNET_TELEMETRY_PORT, reportedMetrics);
+    const totalReads = readGeneral + readHacknet;
+    if (totalReads > 0) {
+        ns.print(`📨 Telemetry reads: ${readGeneral} from port 20, ${readHacknet} from port 21`);
     }
     
     // Map known modules to script names
@@ -867,4 +853,25 @@ async function syncToBackend(ns, telemetryConfig) {
         // Log backend sync errors for debugging
         ns.print(`❌ Backend sync error: ${error.message}`);
     }
+}
+
+function drainTelemetryPort(ns, portNumber, reportedMetrics) {
+    let reads = 0;
+    while (ns.peek(portNumber) !== 'NULL PORT DATA') {
+        try {
+            const portData = ns.readPort(portNumber);
+            const data = JSON.parse(portData);
+            if (data && data.module && data.metrics) {
+                reportedMetrics[data.module] = data.metrics;
+                reads++;
+                if (data.module === 'hacknet') {
+                    ns.print(`📥 Read port ${portNumber}: hacknet with ${data.metrics.nodes || 0} nodes, ${data.metrics.upgradesCompleted || 0} upgrades`);
+                }
+            }
+        } catch (e) {
+            ns.print(`❌ Port ${portNumber} read error: ${e}`);
+            break;
+        }
+    }
+    return reads;
 }

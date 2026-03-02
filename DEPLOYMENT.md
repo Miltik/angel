@@ -1,7 +1,9 @@
-# ANGEL Production Deployment Guide
+# ANGEL Production Deployment Guide - Railway.app + Vercel
 
 ## Overview
-This guide walks through deploying the ANGEL ecosystem to production (backend, frontend, optional Discord bot).
+This guide walks through deploying the ANGEL ecosystem to production using **Railway.app (free backend)** and **Vercel (free frontend)**.
+
+**Cost: $0/month** ✅
 
 ---
 
@@ -10,12 +12,12 @@ This guide walks through deploying the ANGEL ecosystem to production (backend, f
 ```
 Bitburner (Game)
     ↓ (HTTPS)
-Backend (Production)
+Backend (Railway.app - Free)
     ├─ REST API
     ├─ WebSocket Server
     └─ SQLite Database
          ↓
-Web Dashboard (CDN)
+Web Dashboard (Vercel - Free)
     ├─ React + Vite
     ├─ Real-time updates
     └─ Chrome/Firefox
@@ -30,70 +32,61 @@ Backend
 ## Prerequisites
 
 - GitHub account (already have)
-- Render.com OR Railway.app account (free tier available)
-- Vercel OR Netlify account (free tier available)
-- Internet-facing domain (optional but recommended)
+- Railway.app account (create with GitHub)
+- Vercel account (create with GitHub)
+- Internet-facing domain (optional)
 
 ---
 
-## Phase 4.1: Backend Deployment (Render.com)
+## Phase 4.1: Backend Deployment (Railway.app)
 
-### Step 1: Prepare Backend for Production
+### Step 1: Create Railway Account
 
-Create `server/.env.production`:
+1. Go to [railway.app](https://railway.app)
+2. Click "Start Project"
+3. Select "Deploy from GitHub repo"
+4. Authorize Railway with GitHub
+5. Select the `angel` repository
 
-```env
+### Step 2: Configure Railway Deployment
+
+1. Click "Add Plugin" → "PostgreSQL" (or skip for SQLite)
+2. Click "Add Service" → "GitHub Repo"
+3. Select `angel` repository
+4. Set configuration:
+   - **Service name:** `angel-backend`
+   - **Root directory:** `server`
+   - **Environment:** Node.js
+   - **Start command:** `npm start`
+   - **Build command:** `npm install`
+
+### Step 3: Set Environment Variables
+
+In Railway dashboard:
+
+```
 NODE_ENV=production
 PORT=3000
-HOST=0.0.0.0
 DATABASE_URL=/data/angel.db
-LOG_LEVEL=info
-CORS_ORIGINS=https://your-domain.com,https://your-app.vercel.app
 ```
 
-### Step 2: Create Render Blueprint
+### Step 4: Deploy
 
-Create `render.yaml` in root:
+1. Click "Deploy" button
+2. Wait 2-3 minutes for deployment
+3. Once deployed, note the **public URL**
+   - Format: `https://angel-production-xxxxx.railway.app`
+   - Copy this URL - you'll need it for the frontend
 
-```yaml
-services:
-  - type: web
-    name: angel-backend
-    env: node
-    plan: free
-    buildCommand: cd server && npm install
-    startCommand: cd server && npm start
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: PORT
-        value: 3000
-      - key: DATABASE_URL
-        value: /data/angel.db
+### Step 5: Verify Backend
 
-  - type: web
-    name: angel-web
-    env: static
-    buildCommand: cd web && npm install && npm run build
-    staticPublishPath: dist
-    envVars: []
+Test the backend is live:
+
+```bash
+curl https://angel-production-xxxxx.railway.app/health
 ```
 
-### Step 3: Deploy to Render
-
-1. Go to [render.com](https://render.com)
-2. Click "New +" → "Web Service"
-3. Connect GitHub repository
-4. Select `angel` repo
-5. Set:
-   - **Name:** `angel-backend`
-   - **Environment:** Node
-   - **Plan:** Free
-   - **Build Command:** `cd server && npm install`
-   - **Start Command:** `cd server && npm start`
-6. Click "Create Web Service"
-7. Wait 5-10 minutes for deployment
-8. Note the **Backend URL**: `https://angel-backend-xxxxx.onrender.com`
+Should return: `{"status":"ok","timestamp":...}`
 
 ---
 
@@ -101,18 +94,17 @@ services:
 
 ### Step 1: Prepare Frontend Config
 
-Create `web/.env.production`:
+Update `web/vercel.json`:
 
-```env
-VITE_BACKEND_URL=https://angel-backend-xxxxx.onrender.com
-VITE_WS_URL=wss://angel-backend-xxxxx.onrender.com
-```
-
-Update `web/src/App.jsx` to use env variables:
-
-```javascript
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3001';
+```json
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "env": {
+    "VITE_BACKEND_URL": "@backend-url",
+    "VITE_WS_URL": "@backend-ws-url"
+  }
+}
 ```
 
 ### Step 2: Deploy to Vercel
@@ -120,17 +112,29 @@ const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3001';
 1. Go to [vercel.com](https://vercel.com)
 2. Click "Add New" → "Project"
 3. Import GitHub repo `angel`
-4. Set:
+4. Configure:
    - **Framework:** Vite
    - **Root Directory:** `web`
    - **Build Command:** `npm run build`
    - **Output Directory:** `dist`
-5. Add Environment Variables:
-   - `VITE_BACKEND_URL`: Your Render backend URL
-   - `VITE_WS_URL`: Your Render backend URL (wss://)
-6. Click "Deploy"
-7. Wait 2-3 minutes
-8. Note the **Frontend URL**: `https://angel-xxxxx.vercel.app`
+
+### Step 3: Add Environment Variables
+
+In Vercel → Settings → Environment Variables:
+
+```
+VITE_BACKEND_URL = https://your-railway-url
+VITE_WS_URL = wss://your-railway-url
+```
+
+(Replace with your actual Railway URL from Step 4.1)
+
+### Step 4: Deploy
+
+1. Click "Deploy"
+2. Wait 1-2 minutes
+3. Once deployed, note the **Vercel URL**
+   - Format: `https://angel-xxxxx.vercel.app`
 
 ---
 
@@ -138,197 +142,179 @@ const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3001';
 
 ### Update `config.js`
 
-Create conditional config loading:
-
-```javascript
-const isProd = typeof process !== 'undefined' && process.env.NODE_ENV === 'production';
-
-export const config = {
-    remoteBackend: {
-        enabled: true,
-        url: isProd ? 'https://angel-backend-xxxxx.onrender.com' : 'http://localhost:3000',
-        telemetryIntervalMs: 10000,
-        enableLogging: !isProd,
-    },
-    // ... rest of config
-};
-```
-
-### Update `sync.js` for Production
-
-Add option to specify backend:
-
-```bash
-# In Bitburner:
-run /angel/sync.js --backend https://angel-backend-xxxxx.onrender.com
-```
-
----
-
-## Phase 4.4: Update Bitburner Config (In-Game)
-
-In Bitburner terminal:
-
-```
-run /angel/sync.js
-```
-
-Then edit `config.js` in-game:
+In Bitburner, edit `/angel/config.js`:
 
 ```javascript
 remoteBackend: {
     enabled: true,
-    url: "https://angel-backend-xxxxx.onrender.com",  // Your Render URL
+    url: "https://your-railway-backend-url",  // Your Railway URL
     telemetryIntervalMs: 10000,
-    enableLogging: false,
+    enableLogging: false,  // Disable logs in production
 },
 ```
 
 ---
 
-## Phase 4.5: Discord Bot Deployment (Optional)
+## Phase 4.4: Verify Production Deployment
 
-### Deploy to Render
+### Test 1: Backend Health
 
-1. Go to Render dashboard
-2. Click "New +" → "Web Service"
-3. Create `discord/.env`:
-
-```env
-DISCORD_TOKEN=your_token_here
-BACKEND_URL=https://angel-backend-xxxxx.onrender.com
-GUILD_ID=your_guild_id
-CHANNEL_ID=your_channel_id
+```bash
+curl https://your-railway-url/health
 ```
 
-4. Deploy:
-   - **Name:** `angel-discord`
-   - **Build Command:** `cd discord && npm install`
-   - **Start Command:** `cd discord && npm start`
+Expected: `{"status":"ok"...}`
 
----
+### Test 2: Frontend Loads
 
-## Verification Checklist
+Open in browser: `https://your-vercel-url`
 
-### Backend
-- [ ] `curl https://angel-backend-xxxxx.onrender.com/health` → 200 OK
-- [ ] Check Render logs for errors
-- [ ] Database created at `/data/angel.db`
+Expected: Dashboard loads without errors
 
-### Frontend
-- [ ] `https://angel-xxxxx.vercel.app` loads in browser
-- [ ] Connect to Dashboard
-- [ ] See live telemetry updates from game
+### Test 3: Bitburner Connection
 
-### Bitburner
-- [ ] `run /angel/sync.js` completes
-- [ ] `run /angel/start.js` starts ANGEL
-- [ ] Dashboard shows live game data
+In Bitburner:
 
-### Discord (Optional)
-- [ ] Bot appears online in Discord
-- [ ] `/angel-status` command works
-- [ ] Data shows live game metrics
+```
+run /angel/sync.js
+run /angel/start.js
+```
+
+Wait 30 seconds, then in browser:
+
+```
+Open https://your-vercel-url
+```
+
+Expected: "Last Update" timestamp should be recent and updating
+
+### Test 4: API Endpoints
+
+```bash
+# Get status
+curl https://your-railway-url/api/status | jq
+
+# Should show recent lastUpdate timestamp
+```
 
 ---
 
 ## Production Monitoring
 
+### Daily Checks
+
+- Open dashboard: `https://your-vercel-url`
+- Verify "Last Update" is current (< 1 minute old)
+- Verify Money Rate and Hack Level showing
+
 ### View Logs
 
-**Render Backend:**
-```bash
-# In Render dashboard → angel-backend → Logs
-# Check for errors every 5 minutes
-```
+**Railway Backend Logs:**
+- Go to Railway dashboard
+- Select `angel-backend` service
+- Click "Logs" tab
+- Check for errors (red text)
 
-**Vercel Frontend:**
-```bash
-# In Vercel dashboard → angel → Deployments → Runtime Logs
-```
+**Vercel Frontend Logs:**
+- Go to Vercel dashboard
+- Select project
+- Click "Deployments"
+- Click latest deployment
+- View "Runtime Logs"
 
-### Database Backups
+### If Something Goes Wrong
 
-On Render (free tier):
-- Database stored in `/data/angel.db`
-- Persists across restarts
-- **Recommended:** Backup to GitHub or external storage weekly
+**Fix 1: Restart Backend**
+- Railway → `angel-backend` → "Redeploy"
 
-```bash
-# In Render terminal or local:
-cd server
-sqlite3 data/angel.db ".dump" > backup.sql
-git add backup.sql
-git commit -m "Weekly database backup"
-git push
-```
+**Fix 2: Restart Frontend**
+- Vercel → Latest Deployment → "Redeploy"
+
+**Fix 3: Clear Database**
+- SSH into Railway service (optional)
+- Delete `data/angel.db`
+- Restart backend (auto-creates database)
 
 ---
 
 ## Troubleshooting
 
-### Backend won't start
+### Dashboard shows old timestamp
 ```
-Error: Cannot find module
-→ Render didn't run npm install
-→ Check build logs, restart deployment
-```
-
-### Frontend can't reach backend
-```
-Error: Failed to fetch http://...
-→ CORS misconfigured
-→ Update CORS_ORIGINS in backend .env
-→ Verify VITE_BACKEND_URL correct
+Symptom: Last Update doesn't refresh
+→ Check Bitburner config.js has correct backend URL
+→ Verify telemetry.js is running (run /angel/start.js)
+→ Check Railway logs for errors
 ```
 
-### No telemetry in dashboard
+### 502 Bad Gateway
 ```
-Symptom: Dashboard loads but "Last Update" is old
-→ Check Bitburner console for sync errors
-→ Verify config.js remoteBackend.url correct
-→ Test: curl https://backend/api/status
+Symptom: Dashboard won't load
+→ Railway backend may be restarting
+→ Wait 30 seconds and refresh
+→ Check Railway logs
 ```
 
-### WebSocket not connecting
+### WebSocket connection failed
 ```
-Error: WebSocket connection failed
-→ Check VITE_WS_URL in frontend env
-→ Verify WSS (secure) protocol
-→ Backend must support wss://
+Symptom: Even though page loads, no live updates
+→ Verify VITE_WS_URL uses wss:// (not ws://)
+→ Check it matches your Railway URL
+→ Redeploy frontend if env vars changed
+```
+
+### Game can't reach backend
+```
+Symptom: Bitburner shows "Backend sync error"
+→ Verify config.js URL is accessible (curl it)
+→ Check URL doesn't have typos
+→ Verify Railway service is running
 ```
 
 ---
 
-## Rollback Procedure
+## Cost Summary
 
-If production breaks:
+| Service | Tier | Cost |
+|---------|------|------|
+| Railway Backend | Free | $0 |
+| Vercel Frontend | Free | $0 |
+| Discord Bot | Optional | $0 |
+| **Total** | | **$0/month** ✅ |
 
-1. **Frontend:** Vercel automatically keeps previous deployment, click "Promote to Production"
-2. **Backend:** Render keeps previous build, click "Redeploy Previous"
-3. **Bitburner:** Revert config.js to localhost URLs, run sync.js again
+**Benefits of Free Tier:**
+- ✅ No auto-sleep (always responsive)
+- ✅ 512 MB RAM (plenty for ANGEL)
+- ✅ No credit card required
+- ✅ $5 monthly credit (can upgrade features if needed)
 
 ---
 
 ## Next Steps
 
-1. ✅ Commit all production configs to GitHub
-2. ✅ Deploy backend to Render
-3. ✅ Deploy frontend to Vercel
-4. ✅ Update Bitburner config with production URLs
-5. ✅ Test full integration in production
-6. ✅ Document any issues
-7. ✅ Set up monitoring/alerts (optional)
+1. Create Railway account: https://railway.app
+2. Create Vercel account: https://vercel.app
+3. Connect GitHub (via OAuth with both)
+4. Deploy backend on Railway (5 minutes)
+5. Deploy frontend on Vercel (2 minutes)
+6. Update Bitburner config with production URLs
+7. Open dashboard and verify live telemetry
+
+**Total deployment time: 20 minutes** ⏱️
 
 ---
 
-## Support URLs
+## Production URLs
 
-- **Backend API:** `https://angel-backend-xxxxx.onrender.com`
-- **Web Dashboard:** `https://angel-xxxxx.vercel.app`
-- **GitHub:** `https://github.com/Miltik/angel`
-- **Status Page:** `https://angel-backend-xxxxx.onrender.com/health`
+After deployment, you'll have:
+
+```
+Backend API:     https://angel-xxxxx.railway.app
+Frontend URL:    https://angel-xxxxx.vercel.app
+WebSocket:       wss://angel-xxxxx.railway.app
+GitHub:          https://github.com/Miltik/angel
+```
 
 ---
 
-**Status: READY FOR PRODUCTION DEPLOYMENT** ✅
+**Status: READY FOR ZERO-COST PRODUCTION DEPLOYMENT** ✅

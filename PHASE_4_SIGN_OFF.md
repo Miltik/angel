@@ -55,20 +55,21 @@
 
 **Pre-Deployment:**
 - [ ] Review DEPLOYMENT.md completely
-- [ ] Create Render.com account (free tier)
-- [ ] Create Vercel account (free tier)
-- [ ] Prepare domain name (optional)
+- [ ] Create Railway.app account (free, with GitHub login)
+- [ ] Create Vercel account (free, with GitHub login)
+- [ ] NO credit card required for free tier
 
-**Backend Deployment (Render):**
-- [ ] Connect GitHub repository to Render
-- [ ] Deploy from `render.yaml`
-- [ ] Note backend URL: `https://angel-backend-xxxxx.onrender.com`
+**Backend Deployment (Railway.app):**
+- [ ] Connect GitHub repository to Railway
+- [ ] Select `angel` repo
+- [ ] Railway auto-detects Node.js project
+- [ ] Note backend URL: `https://angel-xxxxx.railway.app`
 - [ ] Verify `/health` endpoint responding
 
 **Frontend Deployment (Vercel):**
 - [ ] Import GitHub repository to Vercel
 - [ ] Set root directory: `web`
-- [ ] Add environment variables
+- [ ] Add environment variables (VITE_BACKEND_URL, VITE_WS_URL)
 - [ ] Deploy and note URL: `https://angel-xxxxx.vercel.app`
 
 **Post-Deployment:**
@@ -83,29 +84,37 @@
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                   PRODUCTION ENVIRONMENT                │
+│               ZERO-COST PRODUCTION (FREE)               │
 └─────────────────────────────────────────────────────────┘
 
     Bitburner (Game)
          │ HTTPS POST (telemetry)
          ↓
     ┌─────────────────────────────┐
-    │  Render Backend             │
+    │  Railway.app Backend        │
+    │  (FREE Forever)             │
     │  - Express.js API           │
     │  - WebSocket Server         │
     │  - SQLite Database          │
     │  PORT: 3000                 │
-    │  URL: https://...onrender.com
+    │  URL: https://...railway.app
+    │  • No auto-sleep            │
+    │  • 512 MB RAM               │
+    │  • $5 monthly credit        │
     └─────────────────────────────┘
          │ Real-time updates
          ├─→ WebSocket broadcast
          │
     ┌─────────────────────────────┐
     │  Vercel Frontend            │
+    │  (FREE Forever)             │
     │  - React + Vite             │
     │  - Auto-polling (5s)        │
     │  - WebSocket connections    │
     │  URL: https://....vercel.app
+    │  • No auto-sleep            │
+    │  • 100GB bandwidth/month     │
+    │  • Unlimited deployments     │
     └─────────────────────────────┘
          │
          └─→ Discord Bot (Optional)
@@ -117,12 +126,30 @@
 
 ## Deployment Timeline
 
-**Phase 4.1 - Backend:** 5-10 minutes
-**Phase 4.2 - Frontend:** 2-3 minutes
+**Phase 4.1 - Backend (Railway):** 3-5 minutes
+**Phase 4.2 - Frontend (Vercel):** 2-3 minutes
 **Phase 4.3 - Configuration:** 5 minutes
 **Phase 4.4 - Verification:** 5-10 minutes
 
-**Total deployment time: ~30 minutes**
+**Total deployment time: ~20 minutes**
+
+---
+
+## Cost Breakdown
+
+| Component | Provider | Tier | Cost | Auto-Sleep |
+|-----------|----------|------|------|-----------|
+| Backend | Railway | Free | $0 | ❌ No |
+| Frontend | Vercel | Free | $0 | ❌ No |
+| Discord Bot | N/A | Optional | $0 | N/A |
+| **TOTAL** | | | **$0/month** ✅ | Always On |
+
+**Benefits:**
+- ✅ No credit card required
+- ✅ No auto-sleep (always responsive)
+- ✅ $5 monthly credit on Railway (for upgrades)
+- ✅ 512 MB RAM (sufficient for ANGEL)
+- ✅ 100GB bandwidth/month on Vercel
 
 ---
 

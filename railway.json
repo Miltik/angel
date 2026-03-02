@@ -1,0 +1,17 @@
+{
+  "builder": "nixpacks",
+  "pollInterval": 5,
+  "services": [
+    {
+      "name": "angel-backend",
+      "dockerfile": null,
+      "railwayConfigFile": "railway.json",
+      "buildCommand": "cd server && npm install",
+      "startCommand": "cd server && npm start",
+      "config": {
+        "NODE_ENV": "production",
+        "PORT": "3000"
+      }
+    }
+  ]
+}

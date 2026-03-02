@@ -1,0 +1,9 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": "vite",
+  "env": {
+    "VITE_BACKEND_URL": "@backend-url",
+    "VITE_WS_URL": "@backend-ws-url"
+  }
+}

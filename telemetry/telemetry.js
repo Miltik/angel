@@ -605,17 +605,26 @@ async function syncToBackend(ns, telemetryConfig) {
         try {
             const { config } = await import('/angel/config.js');
             backendConfig = config.remoteBackend || {};
+            ns.print(`✅ Loaded backend config: enabled=${backendConfig.enabled}`);
         } catch (e) {
-            // Config not available
+            ns.print(`❌ Config import failed: ${e.message}`);
             return;
         }
 
-        if (!backendConfig.enabled) return;
+        if (!backendConfig.enabled) {
+            ns.print(`⚠️ Backend sync disabled in config`);
+            return;
+        }
 
         const backendUrl = backendConfig.url || 'http://localhost:3000';
         const run = loadCurrentRun();
-        if (!run) return;
+        if (!run) {
+            ns.print(`⚠️ No current run data to sync`);
+            return;
+        }
 
+        ns.print(`🔄 Syncing to backend: ${backendUrl}`);
+        
         // Prepare telemetry payload
         const payload = {
             runId: run.startTime,
@@ -638,16 +647,18 @@ async function syncToBackend(ns, telemetryConfig) {
         };
 
         // Send to backend
+        ns.print(`📤 POST to ${backendUrl}/api/telemetry with ${Object.keys(payload.modules).length} modules`);
         const response = await fetch(`${backendUrl}/api/telemetry`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
         });
 
+        ns.print(`📨 Response: ${response.status} ${response.statusText}`);
+
         if (!response.ok) {
-            if (backendConfig.enableLogging) {
-                ns.print(`⚠️ Backend sync failed: ${response.status}`);
-            }
+            const text = await response.text();
+            ns.print(`❌ Backend error: ${response.status} - ${text.substring(0, 100)}`);
             return;
         }
 

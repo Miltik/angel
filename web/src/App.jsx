@@ -31,32 +31,113 @@ function ModuleCard({ module }) {
   const moneyIcon = module.current?.moneyRate > 1000000 ? '💎'
     : module.current?.moneyRate > 100000 ? '💰'
     : '📊'
+  
+  const memoryWarning = module.current?.memory > 50 ? '⚠️' : '🧠'
+  
+  const execEfficiency = module.current?.avgExecTime > 0 
+    ? '⚡' 
+    : '💤'
 
   return (
     <div className="module-card">
       <div className="module-header">
-        <div className="module-name">{module.name}</div>
-        <div className={`module-status status-${module.status}`}>
-          {module.status.toUpperCase()}
+        <div className="module-title">
+          <span className="module-status-icon">{statusIcon}</span>
+          <span className="module-name">{module.name}</span>
+        </div>
+        <div className="module-meta">
+          <span className="module-status-badge">{module.status.toUpperCase()}</span>
         </div>
       </div>
       
-      <div className="module-data-lines">
-        <div className="data-line">
+      <div className="module-data-grid">
+        {/* Row 1: Money Metrics */}
+        <div className="data-row">
           <span className="data-icon">{moneyIcon}</span>
-          <span className="data-label">Earnings:</span>
-          <span className="data-value">${(module.current?.moneyRate || 0).toLocaleString(undefined, {maximumFractionDigits: 0})}/s</span>
+          <div className="data-content">
+            <span className="data-label">Earnings</span>
+            <div className="data-values">
+              <span className="data-value primary">${(module.current?.moneyRate || 0).toLocaleString(undefined, {maximumFractionDigits: 0})}/s</span>
+              <span className="data-subtext">avg: ${(module.aggregate?.avgMoneyRate || 0).toLocaleString(undefined, {maximumFractionDigits: 0})}/s</span>
+            </div>
+          </div>
         </div>
-        
-        <div className="data-line">
+
+        {/* Row 2: Success & Execution */}
+        <div className="data-row">
           <span className="data-icon">{successIcon}</span>
-          <span className="data-label">Success:</span>
-          <span className="data-value">{module.successRate.toFixed(1)}%</span>
-          <span className="data-stat">• {module.aggregate?.totalExecutions || 0} execs</span>
+          <div className="data-content">
+            <span className="data-label">Success Rate</span>
+            <div className="data-values">
+              <span className="data-value">{module.successRate.toFixed(1)}%</span>
+              <span className="data-subtext">{module.aggregate?.totalExecutions || 0} execs • {module.aggregate?.totalFailures || 0} fails</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Row 3: XP Generation */}
+        <div className="data-row">
+          <span className="data-icon">⚡</span>
+          <div className="data-content">
+            <span className="data-label">XP Rate</span>
+            <div className="data-values">
+              <span className="data-value">{(module.current?.xpRate || 0).toFixed(1)}/s</span>
+              <span className="data-subtext">avg: {(module.aggregate?.avgXpRate || 0).toFixed(1)}/s</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Row 4: Memory Usage */}
+        <div className="data-row">
+          <span className="data-icon">{memoryWarning}</span>
+          <div className="data-content">
+            <span className="data-label">Memory</span>
+            <div className="data-values">
+              <span className="data-value">{(module.current?.memory || 0).toLocaleString(undefined, {maximumFractionDigits: 1})} GB</span>
+              <span className="data-subtext">avg: {(module.aggregate?.avgMemory || 0).toLocaleString(undefined, {maximumFractionDigits: 1})} GB</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Row 5: Execution Performance */}
+        <div className="data-row">
+          <span className="data-icon">{execEfficiency}</span>
+          <div className="data-content">
+            <span className="data-label">Execution Time</span>
+            <div className="data-values">
+              <span className="data-value">{(module.current?.avgExecTime || 0).toFixed(0)}ms</span>
+              <span className="data-subtext">avg: {(module.aggregate?.avgExecTime || 0).toFixed(0)}ms</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Row 6: Data Collection & Status */}
+        <div className="data-row">
+          <span className="data-icon">📊</span>
+          <div className="data-content">
+            <span className="data-label">Observations</span>
+            <div className="data-values">
+              <span className="data-value">{module.aggregate?.samples || 0} samples</span>
+              <span className="data-subtext">last: {formatRelativeTime(module.lastUpdate)}</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
   )
+}
+
+function formatRelativeTime(timestamp) {
+  if (!timestamp) return 'never'
+  const now = Date.now()
+  const diff = now - timestamp
+  const seconds = Math.floor(diff / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const hours = Math.floor(minutes / 60)
+  
+  if (hours > 0) return `${hours}h ago`
+  if (minutes > 0) return `${minutes}m ago`
+  return `${seconds}s ago`
 }
 
 // Stat item component

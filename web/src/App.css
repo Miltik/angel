@@ -599,6 +599,22 @@ html, body {
   border-left-color: var(--color-secondary);
 }
 
+.module-line.inactive {
+  opacity: 0.6;
+  border-left-color: var(--color-text-dim);
+}
+
+.module-line.inactive .module-name {
+  color: var(--color-text-dim);
+  text-shadow: none;
+}
+
+.no-data-text {
+  color: var(--color-text-dim);
+  font-style: italic;
+  font-size: var(--font-size-sm);
+}
+
 .line-text {
   display: flex;
   align-items: center;

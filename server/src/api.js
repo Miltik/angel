@@ -198,6 +198,14 @@ export function setupApiRoutes(app) {
     // ============================================
     app.get('/api/modules', async (req, res) => {
         try {
+            // All known modules in the system
+            const KNOWN_MODULES = [
+                'activities', 'augments', 'backdoor', 'backdoorRunner', 'bladeburner',
+                'contracts', 'corporation', 'formulas', 'gang', 'hacking', 'hacknet',
+                'loot', 'networkMap', 'programs', 'servers', 'sleeves', 'stocks',
+                'xpFarm', 'bladeburner'
+            ];
+
             // Get latest sample per module
             const moduleStats = await query(`
                 SELECT 
@@ -241,10 +249,11 @@ export function setupApiRoutes(app) {
                 ORDER BY total_executions DESC
             `);
 
-            // Enrich latest data with aggregate stats
-            const enriched = moduleStats.map(mod => {
+            // Create a map of module data
+            const dataMap = {};
+            moduleStats.forEach(mod => {
                 const agg = aggregates.find(a => a.module_name === mod.module_name) || {};
-                return {
+                dataMap[mod.module_name] = {
                     name: mod.module_name,
                     status: mod.module_status || 'inactive',
                     current: {
@@ -270,6 +279,41 @@ export function setupApiRoutes(app) {
                     lastUpdate: mod.timestamp
                 };
             });
+
+            // Build complete module list with all known modules
+            const enriched = KNOWN_MODULES.map(moduleName => {
+                if (dataMap[moduleName]) {
+                    return dataMap[moduleName];
+                } else {
+                    // Return placeholder for modules without data
+                    return {
+                        name: moduleName,
+                        status: 'idle',
+                        current: {
+                            memory: 0,
+                            moneyRate: 0,
+                            xpRate: 0,
+                            executions: 0,
+                            failures: 0,
+                            avgExecTime: 0,
+                        },
+                        aggregate: {
+                            samples: 0,
+                            avgMemory: 0,
+                            avgMoneyRate: 0,
+                            avgXpRate: 0,
+                            totalExecutions: 0,
+                            totalFailures: 0,
+                            avgExecTime: 0,
+                        },
+                        successRate: 100,
+                        lastUpdate: null
+                    };
+                }
+            });
+
+            // Sort by money rate (active modules first)
+            enriched.sort((a, b) => (b.current?.moneyRate || 0) - (a.current?.moneyRate || 0));
 
             res.json({
                 success: true,

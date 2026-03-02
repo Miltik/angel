@@ -21,8 +21,11 @@ function StatusCard({ title, children, className = '' }) {
 // Module card component
 function ModuleCard({ module }) {
   const statusIcon = module.status === 'active' ? '🟢' 
+    : module.status === 'running' ? '🟢'
     : module.status === 'idle' ? '🟡' 
     : '🔴'
+  
+  const hasData = module.aggregate?.samples > 0 || module.current?.moneyRate > 0
   
   const successIcon = module.successRate > 95 ? '✅' 
     : module.successRate > 80 ? '⚠️' 
@@ -31,37 +34,50 @@ function ModuleCard({ module }) {
   
   const moneyIcon = module.current?.moneyRate > 1000000 ? '💎'
     : module.current?.moneyRate > 100000 ? '💰'
-    : '📈'
+    : module.current?.moneyRate > 0 ? '📈'
+    : '⏸️'
 
   return (
-    <div className="module-line">
+    <div className={`module-line ${!hasData ? 'inactive' : ''}`}>
       {/* Line 1: Name, Status, Primary Metric */}
       <div className="line-text">
         <span className="line-icon">{statusIcon}</span>
         <span className="module-name">{module.name}</span>
         <span className="line-divider">|</span>
         <span className="status-text">{module.status.toUpperCase()}</span>
-        <span className="line-divider">|</span>
-        <span className="line-icon">{moneyIcon}</span>
-        <span className="metric-label">Money:</span>
-        <span className="metric-value">${(module.current?.moneyRate || 0).toLocaleString(undefined, {maximumFractionDigits: 0})}/s</span>
+        {hasData && (
+          <>
+            <span className="line-divider">|</span>
+            <span className="line-icon">{moneyIcon}</span>
+            <span className="metric-label">Money:</span>
+            <span className="metric-value">${(module.current?.moneyRate || 0).toLocaleString(undefined, {maximumFractionDigits: 0})}/s</span>
+          </>
+        )}
+        {!hasData && (
+          <>
+            <span className="line-divider">|</span>
+            <span className="no-data-text">No telemetry data</span>
+          </>
+        )}
       </div>
 
-      {/* Line 2: Success, Executions, Memory */}
-      <div className="line-text sub-text">
-        <span className="spacing"></span>
-        <span className="line-icon">{successIcon}</span>
-        <span className="metric-label">Success:</span>
-        <span className="metric-value">{module.successRate.toFixed(1)}%</span>
-        <span className="sub-metric">({module.aggregate?.totalExecutions || 0} execs)</span>
-        <span className="line-divider">|</span>
-        <span className="line-icon">🧠</span>
-        <span className="metric-label">Memory:</span>
-        <span className="metric-value">{(module.current?.memory || 0).toLocaleString(undefined, {maximumFractionDigits: 1})} GB</span>
-      </div>
+      {/* Line 2: Success, Executions, Memory - Only if has data */}
+      {hasData && (
+        <div className="line-text sub-text">
+          <span className="spacing"></span>
+          <span className="line-icon">{successIcon}</span>
+          <span className="metric-label">Success:</span>
+          <span className="metric-value">{module.successRate.toFixed(1)}%</span>
+          <span className="sub-metric">({module.aggregate?.totalExecutions || 0} execs)</span>
+          <span className="line-divider">|</span>
+          <span className="line-icon">🧠</span>
+          <span className="metric-label">Memory:</span>
+          <span className="metric-value">{(module.current?.memory || 0).toLocaleString(undefined, {maximumFractionDigits: 1})} GB</span>
+        </div>
+      )}
 
-      {/* Bar Graph: Success Rate */}
-      {module.successRate < 100 && (
+      {/* Bar Graph: Success Rate - Only if has data and success < 100% */}
+      {hasData && module.successRate < 100 && (
         <div className="bar-line">
           <span className="spacing"></span>
           <span className="bar-label">Success Rate</span>

@@ -426,7 +426,7 @@ function App() {
             <div className="modules-section">
               <div className="modules-header">
                 <h2>📦 Active Modules ({modules.length})</h2>
-                <span className="module-hint">3 per row • Scroll to view all</span>
+                <span className="module-hint">Vertical scroll • View all modules</span>
               </div>
               <div className="modules-scroll">
                 {modules.map((module, idx) => (

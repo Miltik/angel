@@ -36,10 +36,7 @@ export async function main(ns) {
         "start.js",
         "bootstrap.js",
         
-        // Documentation
-        "README.md",
-        "GETTING_STARTED.md",
-        "ANGEL_LITE_README.md",
+        // Quick start (in-game reference - markdown files stay on GitHub)
         "WELCOME.txt",
         
         // Modules
@@ -71,11 +68,10 @@ export async function main(ns) {
         "workers/weaken.js",
         "workers/share.js",
         
-        // Telemetry
+        // Telemetry (in-game quick reference only - README on GitHub)
         "telemetry/telemetry.js",
         "telemetry/report.js",
         "telemetry/ui.js",
-        "telemetry/README.md",
         "telemetry/MANUAL_LAUNCH.txt",
         
         // Data

@@ -35,7 +35,6 @@ export async function main(ns) {
         "utils.js",
         "scanner.js",
         "start.js",
-        "status.js",
         "bootstrap.js",
         
         // Quick start (in-game reference - markdown files stay on GitHub)
@@ -193,7 +192,7 @@ export async function main(ns) {
         ns.tprint("  run /angel/start.js");
         ns.tprint("");
         ns.tprint("To check status:");
-        ns.tprint("  run /angel/status.js");
+        ns.tprint("  run /angel/telemetry/report.js --summary");
     }
     
     ns.tprint("");

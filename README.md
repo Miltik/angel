@@ -1,375 +1,310 @@
 # ANGEL - Automated Network Game Entity Logic
 
-A modular orchestrator for Bitburner that automates core game mechanics. Designed for SF1 (Source-File 1) and SF4 (Source-File 4) gameplay.
+A comprehensive automation orchestrator for Bitburner that manages hacking operations, server infrastructure, augmentations, factions, and more.
 
-## 📝 Recent Update
+**Never stop automating.** Angel runs continuously from early game through BitNode completion and auto-restarts after resets.
 
-- **2026-02-16**: Merged phase/activity coordinator + reset monitor output into `modules/dashboard.js` and removed legacy `modules/milestones.js`.
-- **2026-02-16**: Fixed Hacknet post-reset behavior so nodes/upgrades are bought in early game. Added adaptive bootstrap budgeting (`bootstrapNodeTarget`, `bootstrapSpendRatio`) plus scaled reserve controls (`reserveScale`, `minReserveMoney`) in `config.js`.
+---
+
+## ✨ Key Features
+
+- **Automated Hacking**: Intelligent target selection, dynamic worker deployment across network
+- **Server Management**: Auto-purchase and upgrade servers as funds permit
+- **Augmentation Management**: Queue and install augments automatically (SF4)
+- **Faction Automation**: Auto-join and work for reputation (SF4)
+- **BitNode Continuity**: Auto-restart after resets with Angel-Lite bootstrap
+- **Telemetry System**: Performance monitoring, bottleneck detection, optimization suggestions
+- **Real-Time Dashboard**: Live monitoring of all operations
+- **Gang Operations**: Full gang management when available
+- **Corporation**: Automated company management when available
+- **Stock Market**: Automated trading when available
+- **Bladeburner**: Task automation when ava ilable
+
+---
 
 ## 🚀 Quick Start
 
-### Method 1: GitHub Sync (Recommended)
+**New users:** See **[GETTING_STARTED.md](GETTING_STARTED.md)** for complete installation guide.
 
-1. Push this repository to GitHub
-2. Edit [sync.js](sync.js) and update the GitHub repository settings
-3. In Bitburner, run: `wget <your-raw-github-url>/sync.js /angel/sync.js`
-4. Then run: `run /angel/sync.js`
+### Fastest Setup (3 commands)
 
-### Method 2: Bootstrap Script (Easiest)
+1. **Configure sync.js** with your GitHub details
+2. **In Bitburner:**
+   ```bash
+   wget https://raw.githubusercontent.com/YourUser/angel/main/sync.js /angel/sync.js
+   run /angel/sync.js
+   run /angel/start.js
+   ```
 
-1. Push this repository to GitHub
-2. Edit [bootstrap.js](bootstrap.js) with your GitHub URL
-3. Copy only bootstrap.js to Bitburner
-4. Run: `run bootstrap.js`
-5. Then run: `run /angel/sync.js`
+**That's it!** Angel is running.
 
-### Method 3: Manual Copy
+---
 
-1. Copy all files from this directory to `/angel/` on your Bitburner home server
-2. Run the orchestrator: `run /angel/angel.js`
+## 📋 What Angel Does
 
-### What Happens Next
+### Core Automation
+✓ **Network Management**: Scans network, roots servers, deploys workers
+✓ **Hacking Operations**: Intelligent target selection, prep + batch coordination
+✓ **Income Generation**: Optimized money farming across entire network
+✓ **Server Fleet**: Auto-purchases and upgrades servers to 1PB each
 
-The system will automatically:
-   - Scan and root all accessible servers
-   - Start automated hacking operations
-   - Manage server purchases and upgrades
-   - Handle faction work (if SF4 available)
-   - Manage augmentation purchases (if SF4 available)
+### Advanced Features (When Available)
+✓ **Augmentations** (SF4): Auto-purchase, queue management, smart reset timing
+✓ **Factions** (SF4): Auto-join priority factions, reputation farming
+✓ **Gang**: Full gang management, territory warfare, equipment optimization
+✓ **Corporation**: Automated company creation and growth
+✓ **Stocks**: Automated trading with 4S + TIX API
+✓ **Bladeburner**: Task automation and rank farming
+✓ **Hacknet**: Node purchasing and upgrade optimization
+✓ **Programs**: Auto-creates or purchases all port openers and tools
+
+### Monitoring & Analytics
+✓ **Real-Time Dashboard**: Live stats, module status, progress tracking
+✓ **Telemetry System**: Performance monitoring, historical comparison, optimization tips
+✓ **Reset Tracking**: Tracks progress across BitNode runs
+
+---
 
 ## 📁 Project Structure
 
 ```
 /angel/
-├── angel.js              # Main orchestrator
-├── config.js             # Configuration settings
-├── utils.js              # Utility functions
-├── scanner.js            # Network scanning and rooting
-├── sync.js               # GitHub sync script
-├── bootstrap.js          # Bootstrap installer
-├── backdoor.js           # Compatibility launcher -> modules/backdoor.js
-├── networkMap.js         # Compatibility launcher -> modules/networkMap.js
-├── xpFarm.js             # Compatibility launcher -> modules/xpFarm.js
-├── modules/
-│   ├── backdoor.js       # Canonical backdoor launcher used by orchestrator
-│   ├── networkMap.js     # Canonical network map used by orchestrator
-│   ├── xpFarm.js         # Canonical XP farm used by orchestrator
-│   ├── hacking.js        # Automated hacking operations
-│   ├── servers.js        # Server purchase and management
-│   ├── factions.js       # Faction automation (SF4)
-│   ├── augments.js       # Augmentation management (SF4)
-│   └── programs.js       # TOR, programs, and backdoors
-├── standalones/
-│   ├── backdoor.js       # Independent launcher -> modules/backdoor.js
-│   ├── networkMap.js     # Independent launcher -> modules/networkMap.js
-│   └── xpFarm.js         # Independent launcher -> modules/xpFarm.js
-└── workers/
-    ├── hack.js           # Hack worker script
-    ├── grow.js           # Grow worker script
-    ├── weaken.js         # Weaken worker script
-    └── share.js          # Share worker script
+├── angel.js                    # Main orchestrator
+├── angel-lite.js               # Bootstrap for low-RAM scenarios
+├── config.js                   # Configuration (edit this!)
+├── start.js                    # Launcher script
+├── utils.js                    # Shared utilities
+├── scanner .js                  # Network scanning
+├── sync.js                     # GitHub download script
+├── bootstrap.js                # Quick deploy helper
+│
+├── modules/                    # 21 automation modules
+│   ├── hacking.js              # Core hacking operations
+│   ├── servers.js              # Server management
+│   ├── augments.js             # Augmentation automation
+│   ├── activities.js           # Faction/training/company work
+│   ├── gang.js                 # Gang operations
+│   ├── corporation.js          # Corporation management
+│   ├── stocks.js               # Stock market trading
+│   ├── bladeburner.js          # Bladeburner automation
+│   ├── hacknet.js              # Hacknet optimization
+│   ├── dashboard.js            # Monitoring UI
+│   └── ... (12 more modules)
+│
+├── workers/                    # 4 worker scripts
+│   ├── hack.js                 # Hack worker
+│   ├── grow.js                 # Grow worker
+│   ├── weaken.js               # Weaken worker
+│   └── share.js                # Share worker
+│
+├── telemetry/                  # Performance analytics
+│   ├── telemetry.js            # Data collection engine
+│   ├── report.js               # Report generator
+│   ├── ui.js                   # Real-time monitoring
+│   ├── README.md               # Full documentation
+│   └── MANUAL_LAUNCH.txt       # Quick reference
+│
+└── loot/
+    └── loot.txt                # Coding contract answers
 ```
 
-### Runtime Path Policy
-
-- ANGEL orchestrator runtime scripts are canonical in `modules/`.
-- Root-level `backdoor.js`, `networkMap.js`, and `xpFarm.js` are compatibility wrappers.
-- Use `standalones/` scripts when you want to run those tools independently of orchestrator flow.
+---
 
 ## ⚙️ Configuration
 
-Edit `config.js` to customize ANGEL's behavior:
+**Main config file:** [config.js](config.js)
 
-### Orchestrator Settings
-- `loopDelay`: Main loop delay in milliseconds (default: 1000)
-- `enableHacking`: Enable/disable hacking automation
-- `enableServerMgmt`: Enable/disable server management
-- `enableFactions`: Enable/disable faction automation
-- `enableAugments`: Enable/disable augmentation automation
-- `enableCorporation`: Enable/disable integrated corporation automation (default: false)
+All options are documented inline. Key settings:
 
-### Corporation Settings
-- `autoCreate`: Auto-create a corporation once minimum funds are reached
-- `maxSpendRatioPerCycle`: Caps spending per management cycle for stability
-- `minimumCashBuffer`: Keeps a cash reserve so corp automation doesn't drain funds
-- `primaryIndustry` / `primaryDivision`: Early bootstrap division settings
-- `productIndustry` / `productDivision`: Product division settings for late-game growth
+```javascript
+// Enable/disable major features
+orchestrator: {
+    enableHacking: true,
+    enableDashboard: true,
+    // ... more options
+}
 
-### Hacking Settings
-- `targetMoneyThreshold`: Hack when money is above this % of max (default: 0.75)
-- `targetSecurityThreshold`: Only hack when security is within this of min (default: 5)
-- `reservedHomeRam`: RAM to reserve on home server in GB (default: 32)
-- `shareExcessRam`: Use excess RAM for share() to boost faction rep
+// Augmentation behavior (SF4)
+augmentations: {
+    enabled: true,
+    resetScript: "/angel/angel-lite.js",  // Auto-restart after reset
+    // ... more options
+}
 
-### Server Settings
-- `autoBuyServers`: Automatically purchase servers (default: true)
-- `maxServerRam`: Maximum RAM per server in GB (default: 1048576 = 1PB)
-- `purchaseThreshold`: Buy when we have this % of cost (default: 0.1)
-- `serverPrefix`: Prefix for purchased servers (default: "angel-")
-- `maxServers`: Maximum number of servers to buy (default: 25)
-
-### Faction Settings (SF4 Required)
-- `autoJoinFactions`: Automatically join factions (default: true)
-- `priorityFactions`: List of factions to prioritize
-- `workForFactionRep`: Automatically work for faction rep (default: true)
-
-### Augmentation Settings (SF4 Required)
-- `autoBuyAugments`: Automatically purchase augments (default: false)
-- `preBuyAugments`: Queue augments before reset (default: true)
-- `augmentPriority`: List of priority augmentations
-
-### Programs & Backdoor Settings
-- `autoBuyTor`: Auto-purchase TOR router (default: true)
-- `autoBuyPrograms`: Buy programs from darkweb (default: true)
-- `autoCreatePrograms`: Create programs when idle (default: true)
-- `autoBackdoor`: Backdoor faction servers automatically (default: true)
-- `purchaseThreshold`: Buy when we have this % of cost (default: 0.05)
-
-## 📦 Modules
-
-### Hacking Module (`modules/hacking.js`)
-- Automatically finds and roots hackable servers
-- Distributes hack/grow/weaken operations across all available RAM
-- Preps targets (weaken to min security, grow to max money)
-- Executes continuous hack cycles for optimal income
-
-**Run standalone:**
-```
-run /angel/modules/hacking.js
+// Telemetry
+telemetry: {
+    enabled: true,
+    sampleIntervalMs: 60000,
+    // ... more options
+}
 ```
 
-### Max Profit Module (`modules/maxprofit.js`)
-- Aggressively farms profit using every rooted/purchased server and available home RAM.
-- Prioritizes high-profit targets and dispatches worker scripts (`hack.js`, `grow.js`, `weaken.js`).
-- Designed as a manual, standalone tool — do NOT add this to your auto-start/bootstrap.
+**For first-time setup:** Most defaults work well. Just enable/disable features you want.
 
-**Run manually:**
-```
-run /angel/modules/maxprofit.js
-```
-
-### Max Gang Module (`modules/maxgang.js`)
-- Full-featured standalone gang manager: recruits, trains, ascends, equips,
-  assigns tasks, and manages territory warfare to maximize dominance.
-- Aggressive by design — intended to be started manually and run alone.
-
-**Run manually:**
-```
-run /angel/modules/maxgang.js
-```
-
-### Server Management Module (`modules/servers.js`)
-- Automatically roots new servers as they become accessible
-- Purchases new servers when funds are available
-- Upgrades existing servers to higher RAM tiers
-- Manages purchased server fleet efficiently
-
-**Run standalone:**
-```
-run /angel/modules/servers.js
-```
-
-### Faction Module (`modules/factions.js`)
-*Requires SF4 (Singularity)*
-- Automatically accepts faction invitations from priority list
-- Works for factions to gain reputation
-- Prioritizes factions based on configuration
-- Focuses on factions with valuable augmentations
-
-**Run standalone:**
-```
-run /angel/modules/factions.js
-```
-
-**Display faction status:**
-```
-run /angel/modules/factions.js --tail
-```
-
-### Augmentation Module (`modules/augments.js`)
-*Requires SF4 (Singularity)*
-- Tracks available augmentations
-- Purchases priority augmentations when affordable
-- Can auto-buy all affordable augments (disabled by default)
-- Handles augmentation installation and reset
-
-**Run standalone:**
-```
-run /angel/modules/augments.js
-```
-
-### Programs & Backdoor Module (`modules/programs.js`)
-- Automatically purchases TOR router when affordable
-- Creates or buys port opener programs (BruteSSH, FTPCrack, etc.)
-- Purchases useful programs from darkweb
-- Automatically backdoors faction servers (CSEC, NiteSec, BitRunners, etc.)
-- Tracks owned programs and port opener count
-
-**Run standalone:**
-```
-run /angel/modules/programs.js
-```
-
-**Key features:**
-- **TOR Router**: Auto-purchases when you have $200k
-- **Programs**: Creates programs when idle, buys from darkweb if needed
-- **Backdoors**: Installs backdoors on faction servers for easy invites
-- **Port Openers**: Prioritizes tools that unlock more servers
-
-### Corporation Module (`modules/corporation.js`)
-*Requires Corporation API access*
-- Integrates with orchestrator lifecycle and health reporting
-- Uses conservative spending caps and cash buffers for safety
-- Grows a primary division first, then starts product automation when funded
-- Handles cities, warehouses, offices, hiring, assignments, and product selling incrementally
-
-**Run standalone:**
-```
-run /angel/modules/corporation.js
-```
-
-## 🛠️ Utilities
-
-### Scanner (`scanner.js`)
-Network scanning and server rooting utilities.
-
-**Functions:**
-- `scanAll()`: Scan entire network
-- `getRootedServers()`: Get servers with root access
-- `getUnrootedServers()`: Get servers without root access
-- `getHackableServers()`: Get rooted servers within hacking level
-- `tryGainRoot(server)`: Attempt to root a specific server
-- `rootAll()`: Attempt to root all accessible servers
-
-**Run as script:**
-```
-run /angel/scanner.js
-```
-
-### Utils (`utils.js`)
-General utility functions for formatting, calculations, and common operations.
-
-**Key Functions:**
-- `formatMoney()`: Format currency
-- `formatRam()`: Format RAM sizes
-- `formatTime()`: Format milliseconds to readable time
-- `getAvailableRam()`: Calculate available RAM on a server
-- `getBestTarget()`: Find optimal hacking target
-- `deployFiles()`: Copy scripts to target servers
+---
 
 ## 📊 Monitoring
 
-The main orchestrator displays a real-time status dashboard showing:
-- Current money and hacking level
-- Network statistics (total/rooted/hackable servers)
-- Purchased server count and RAM
-- Available RAM across all servers
-- Module status
+### Dashboard
 
-## 🎯 Usage Examples
-
-### Basic Usage
-```javascript
-// Start the orchestrator
-run /angel/angel.js
+Real-time monitoring window (auto-launches):
+```bash
+run /angel/modules/dashboard.js
 ```
 
-### Check Network Status
-```javascript
-// Scan network and display all servers
-run /angel/scanner.js
+Shows:
+- Current money, hack level, income rates
+- Active modules and their status
+- Network statistics
+- Next milestones
+- Reset tracking
+
+### Telemetry
+
+Performance analytics across entire BitNode runs:
+
+```bash
+# Live monitoring
+run /angel/telemetry/ui.js
+
+# Summary report
+run /angel/telemetry/report.js --summary
+
+# Optimization suggestions
+run /angel/telemetry/report.js --optimize
+
+# Full manual
+cat /angel/telemetry/MANUAL_LAUNCH.txt
 ```
 
-### Manual Faction Management (SF4)
-```javascript
-// Display faction status
-run /angel/modules/factions.js
+**Tracks:**
+- Module performance (execution counts, durations, failures)
+- Money/XP rates over time
+- Bottleneck detection
+- Historical run comparison
+- Actionable optimization tips
+
+---
+
+## 🔄 BitNode Resets & Angel-Lite
+
+### The Problem
+After installing augmentations, your home RAM resets (potentially to 8GB). Full Angel needs ~15-64GB to run.
+
+### The Solution: Angel-Lite
+Lightweight bootstrap system that:
+1. Runs on 8GB RAM
+2. Generates money efficiently
+3. Auto-purchases RAM upgrades 
+4. Transitions to full Angel when ready (64GB)
+
+### Auto-Restart
+Angel is configured to **automatically restart** after augmentation installation:
+- **64GB+ RAM**: Full Angel starts immediately (~10 seconds)
+- **<64GB RAM**: Angel-Lite bootstraps, then transitions (~6-8 minutes)
+
+**This means Angel never dies across BitNode resets!**
+
+See [ANGEL_LITE_README.md](ANGEL_LITE_README.md) for details.
+
+---
+
+## 📚 Documentation
+
+### Getting Started
+- **[GETTING_STARTED.md](GETTING_STARTED.md)** - Complete setup guide (start here!)
+- [bootstrap.js](bootstrap.js) - Helper script (inline docs)
+- [sync.js](sync.js) - Sync configuration (inline docs)
+
+### Features
+- **[ANGEL_LITE_README.md](ANGEL_LITE_README.md)** - Bootstrap system
+- **[telemetry/README.md](telemetry/README.md)** - Performance monitoring
+- **[telemetry/MANUAL_LAUNCH.txt](telemetry/MANUAL_LAUNCH.txt)** - Quick reference
+- [config.js](config.js) - All options (inline comments)
+
+### Module Documentation
+Each module in `modules/` has detailed comments at the top of the file explaining:
+- Purpose and features
+- Configuration options
+- Manual usage
+- API/integration hooks
+
+---
+
+## 🛠️ Common Tasks
+
+### Start/Stop Angel
+```bash
+# Start
+run /angel/start.js
+
+# Stop all
+kill /angel/angel.js
+
+# Restart
+kill /angel/angel.js; run /angel/start.js
 ```
 
-### Manual Augmentation Purchase (SF4)
-```javascript
-// Display available augments
-run /angel/modules/augments.js
+### Update from GitHub
+```bash
+run /angel/sync.js
+kill /angel/angel.js
+run /angel/start.js
 ```
 
-## 🔧 Advanced Configuration
-
-### Custom Target Lists
-Edit the `targets` section in `config.js` to define your own server target lists:
-
-```javascript
-targets: {
-    earlyGame: ["n00dles", "foodnstuff", "sigma-cosmetics"],
-    midGame: ["iron-gym", "phantasy", "silver-helix"],
-}
+### Monitor Performance
+```bash
+run /angel/modules/dashboard.js           # Real-time
+run /angel/telemetry/report.js --summary  # Stats
 ```
 
-### Custom Priority Factions
-Edit `priorityFactions` in `config.js`:
-
-```javascript
-factions: {
-    priorityFactions: [
-        "CyberSec",
-        "Netburners",
-        "Daedalus",
-        // Add your own...
-    ],
-}
+### Manual Module Launch
+```bash
+# Any module can run standalone
+run /angel/modules/hacking.js
+run /angel/modules/gang.js
+run /angel/modules/stocks.js
+# ... etc
 ```
 
-### Custom Augmentation Priority
-Edit `augmentPriority` in `config.js`:
-
-```javascript
-augmentations: {
-    augmentPriority: [
-        "BitWire",
-        "Artificial Bio-neural Network Implant",
-        // Add your own...
-    ],
-}
+### Check What's Running
+```bash
+ps | grep angel
 ```
+
+---
 
 ## 🐛 Troubleshooting
 
-### "Insufficient RAM" errors
-- Increase `reservedHomeRam` in config if running on home server
-- Upgrade home server RAM
-- Purchase more servers
+### Angel won't start
+- **RAM too low**: Use Angel-Lite: `run /angel/angel-lite.js`
+- **Files missing**: Run sync: `run /angel/sync.js`
 
-### Modules not starting
-- Check if scripts exist in correct locations
-- Verify sufficient RAM is available
-- Check orchestrator logs for specific errors
+### No money being generated
+- **Early game**: Normal, need hack level 1+ and port openers
+- **Check logs**: `tail /angel/modules/hacking.js`
 
-### SF4 features not working
-- Verify you have Source-File 4 installed
-- Check that Singularity functions are accessible
-- Some SF4 features may have reduced functionality at lower SF4 levels
+### Module errors
+- **"SF not available"**: Normal, module will activate when prerequisite Source Files are obtained
+- **Check dashboard**: Shows which modules are active
 
-## 📝 Notes
+### Sync fails
+- **Repository must be public**
+- **Check sync.js config**: Lines 17-19 (username, repo, branch)
 
-- **SF1 (Source-File 1)**: Core hacking and server management features work without SF4
-- **SF4 (Source-File 4)**: Required for faction and augmentation automation
-- The system is designed to be modular - each module can run independently
-- All modules will auto-restart if killed (managed by orchestrator)
-- Worker scripts (hack/grow/weaken) are minimal and RAM-efficient
+**More help:** See [GETTING_STARTED.md](GETTING_STARTED.md) troubleshooting section.
 
-## 🎮 Recommended Workflow
+---
 
-1. **Early Game**: Focus on hacking automation and server purchases
-2. **Mid Game**: Enable faction work to build reputation
-3. **Late Game**: Use augmentation module to prepare for resets
-4. **Before Reset**: Purchase all desired augmentations manually or enable auto-buy
+## 🎯 Performance Tips
 
-## 🚦 Performance Tips
+1. **Enable telemetry** - Get optimization suggestions automatically
+2. **Review config.js** - Tune intervals and thresholds for your playstyle
+3. **Check optimize report** - `run /angel/telemetry/report.js --optimize`
+4. **Monitor dashboard** - Watch for bottlenecks in real-time
+5. **Reserve RAM** - Adjust `config.hacking.reservedHomeRam` if needed
 
-- Adjust `loopDelay` in config to balance responsiveness vs CPU usage
-- Use `reservedHomeRam` to ensure space for manual scripts
-- Disable unused modules to save RAM
-- Consider running modules on purchased servers if home RAM is limited
+---
 
 ## 📜 License
 
@@ -377,6 +312,17 @@ Free to use and modify for your Bitburner gameplay.
 
 ---
 
-**Version**: 1.0  
-**Compatible with**: Bitburner v2.x  
-**Source Files**: SF1, SF4 (SF4 optional for extended features)
+## 🙏 Contributing
+
+Improvements welcome! Key areas:
+- Additional modules (sleeves, contracts, etc. - though many exist)
+- Performance optimizations
+- Better target selection algorithms
+- Enhanced telemetry metrics
+- Documentation improvements
+
+---
+
+**Version**: 2.0  
+**Compatible with**: Bitburner 2.x  
+**Source Files**: Works with SF1; SF4 unlocks enhanced features

@@ -34,6 +34,12 @@ export async function main(ns) {
         "utils.js",
         "scanner.js",
         "start.js",
+        "bootstrap.js",
+        
+        // Documentation
+        "README.md",
+        "GETTING_STARTED.md",
+        "ANGEL_LITE_README.md",
         
         // Modules
         "modules/uiManager.js",

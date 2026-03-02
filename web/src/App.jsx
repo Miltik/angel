@@ -20,6 +20,15 @@ function StatusCard({ title, children, className = '' }) {
 
 // Module card component
 function ModuleCard({ module }) {
+  const formatCompactMoney = (val) => {
+    if (!val) return '$0'
+    if (val >= 1e12) return `$${(val / 1e12).toFixed(2)}t`
+    if (val >= 1e9) return `$${(val / 1e9).toFixed(2)}b`
+    if (val >= 1e6) return `$${(val / 1e6).toFixed(2)}m`
+    if (val >= 1e3) return `$${(val / 1e3).toFixed(2)}k`
+    return `$${Number(val).toFixed(0)}`
+  }
+
   const statusIcon = module.status === 'active' ? '🟢' 
     : module.status === 'running' ? '🟢'
     : module.status === 'idle' ? '🟡' 
@@ -101,6 +110,19 @@ function ModuleCard({ module }) {
           <span className="line-divider">|</span>
           <span className="metric-label">Sec Δ:</span>
           <span className="metric-value">+{details.targetSecurityDelta ?? 0}</span>
+        </div>
+      )}
+
+      {hasData && isHacking && (
+        <div className="line-text sub-text">
+          <span className="spacing"></span>
+          <span className="line-icon">💰</span>
+          <span className="metric-label">Money:</span>
+          <span className="metric-value">{formatCompactMoney(details.targetMoneyCurrent)}/{formatCompactMoney(details.targetMoneyMax)}</span>
+          <span className="line-divider">|</span>
+          <span className="line-icon">🔒</span>
+          <span className="metric-label">Security:</span>
+          <span className="metric-value">{Number(details.targetSecurityCurrent || 0).toFixed(2)}/{Number(details.targetSecurityMin || 0).toFixed(2)}</span>
         </div>
       )}
 

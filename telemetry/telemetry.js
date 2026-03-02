@@ -150,6 +150,9 @@ export async function main(ns) {
         const now = Date.now();
         
         try {
+            // Ingest module-reported metrics continuously for near-live dashboard updates
+            refreshModuleMetrics(ns);
+
             // Sample metrics
             if (now - lastSample >= config.sampleIntervalMs) {
                 sampleSystemMetrics(ns);
@@ -174,6 +177,15 @@ export async function main(ns) {
         
         await ns.sleep(5000); // Check every 5s
     }
+}
+
+function refreshModuleMetrics(ns) {
+    const run = loadCurrentRun();
+    if (!run) return;
+
+    captureModuleMetrics(ns, run);
+    run.lastUpdate = Date.now();
+    saveCurrentRun(run);
 }
 
 // ============================================

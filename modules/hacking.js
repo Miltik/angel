@@ -8,6 +8,10 @@ let lastLoggedState = {
     isPrepped: null,
     moneyPercent: null,
     securityDelta: null,
+    targetMoneyCurrent: 0,
+    targetMoneyMax: 0,
+    targetSecurityCurrent: 0,
+    targetSecurityMin: 0,
     loopCount: 0
 };
 
@@ -46,9 +50,9 @@ export async function main(ns) {
         try {
             await hackingLoop(ns, ui);
             
-            // Report metrics every 30 seconds
+            // Report metrics every 5 seconds for near-live dashboard updates
             const now = Date.now();
-            if (now - telemetryState.lastReportTime >= 30000) {
+            if (now - telemetryState.lastReportTime >= 5000) {
                 reportTelemetry(ns);
             }
         } catch (e) {
@@ -96,6 +100,10 @@ async function hackingLoop(ns, ui) {
 
     lastLoggedState.moneyPercent = Number(moneyPercent);
     lastLoggedState.securityDelta = Number(securityDelta);
+    lastLoggedState.targetMoneyCurrent = targetInfo.currentMoney || 0;
+    lastLoggedState.targetMoneyMax = targetInfo.maxMoney || 0;
+    lastLoggedState.targetSecurityCurrent = targetInfo.currentSecurity || 0;
+    lastLoggedState.targetSecurityMin = targetInfo.minSecurity || 0;
     
     // Log prep status changes or periodically
     if (isPrepped !== lastLoggedState.isPrepped || lastLoggedState.loopCount % 30 === 0) {
@@ -145,7 +153,11 @@ function reportTelemetry(ns) {
             currentTarget: lastLoggedState.target || 'none',
             phase: lastLoggedState.phase || 0,
             targetMoneyPercent: lastLoggedState.moneyPercent || 0,
+            targetMoneyCurrent: lastLoggedState.targetMoneyCurrent || 0,
+            targetMoneyMax: lastLoggedState.targetMoneyMax || 0,
             targetSecurityDelta: lastLoggedState.securityDelta || 0,
+            targetSecurityCurrent: lastLoggedState.targetSecurityCurrent || 0,
+            targetSecurityMin: lastLoggedState.targetSecurityMin || 0,
             prepState: lastLoggedState.isPrepped ? 'ready' : 'prepping',
             targetsPrepped: telemetryState.targetsPrepped,
             activeThreads: telemetryState.activeThreads,

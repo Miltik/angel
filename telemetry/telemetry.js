@@ -655,8 +655,7 @@ async function syncToBackend(ns, telemetryConfig) {
             ns.print(`📡 Telemetry synced to backend`);
         }
     } catch (error) {
-        // Silently fail - don't disrupt telemetry if backend is unavailable
-        // Just uncomment for debugging:
-        // ns.print(`Backend sync error: ${error.message}`);
+        // Log backend sync errors for debugging
+        ns.print(`❌ Backend sync error: ${error.message}`);
     }
 }

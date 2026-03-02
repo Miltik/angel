@@ -20,94 +20,40 @@ function StatusCard({ title, children, className = '' }) {
 
 // Module card component
 function ModuleCard({ module }) {
-  const failureRate = module.aggregate?.totalExecutions > 0 
-    ? (module.aggregate?.totalFailures / module.aggregate?.totalExecutions * 100)
-    : 0
+  const statusIcon = module.status === 'active' ? '🟢' 
+    : module.status === 'idle' ? '🟡' 
+    : '🔴'
   
-  const statusColor = module.status === 'active' ? 'success' 
-    : module.status === 'idle' ? 'warning' 
-    : 'danger'
+  const successIcon = module.successRate > 95 ? '✅' 
+    : module.successRate > 80 ? '⚠️' 
+    : '❌'
   
-  const performanceColor = module.current?.moneyRate > 1000000 ? 'success'
-    : module.current?.moneyRate > 100000 ? 'info'
-    : 'warning'
+  const moneyIcon = module.current?.moneyRate > 1000000 ? '💎'
+    : module.current?.moneyRate > 100000 ? '💰'
+    : '📊'
 
   return (
     <div className="module-card">
       <div className="module-header">
         <div className="module-name">{module.name}</div>
-        <div className={`module-status status-${statusColor}`}>
+        <div className={`module-status status-${module.status}`}>
           {module.status.toUpperCase()}
         </div>
       </div>
       
-      <div className="module-content">
-        <div className="module-grid">
-          <div className="module-stat">
-            <span className="label">Money/s</span>
-            <span className={`value money-${performanceColor}`}>
-              ${(module.current?.moneyRate || 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
-            </span>
-          </div>
-          
-          <div className="module-stat">
-            <span className="label">XP/s</span>
-            <span className="value">
-              {(module.current?.xpRate || 0).toFixed(2)}
-            </span>
-          </div>
-          
-          <div className="module-stat">
-            <span className="label">Memory</span>
-            <span className="value">
-              {(module.current?.memory || 0).toLocaleString()} GB
-            </span>
-          </div>
-          
-          <div className="module-stat">
-            <span className="label">Success</span>
-            <span className={`value success-${module.successRate > 95 ? 'high' : 'low'}`}>
-              {module.successRate.toFixed(1)}%
-            </span>
-          </div>
+      <div className="module-data-lines">
+        <div className="data-line">
+          <span className="data-icon">{moneyIcon}</span>
+          <span className="data-label">Earnings:</span>
+          <span className="data-value">${(module.current?.moneyRate || 0).toLocaleString(undefined, {maximumFractionDigits: 0})}/s</span>
         </div>
         
-        <div className="module-bars">
-          <div className="bar-item">
-            <span className="bar-label">Executions: {module.aggregate?.totalExecutions || 0}</span>
-            <div className="bar-container">
-              <div className="bar-fill" style={{
-                width: Math.min(100, (module.aggregate?.totalExecutions || 0) / 10) + '%'
-              }}></div>
-            </div>
-          </div>
-          
-          {failureRate > 0 && (
-            <div className="bar-item">
-              <span className="bar-label warning">Failures: {module.aggregate?.totalFailures || 0}</span>
-              <div className="bar-container danger">
-                <div className="bar-fill danger" style={{
-                  width: Math.min(100, failureRate) + '%'
-                }}></div>
-              </div>
-            </div>
-          )}
-          
-          <div className="bar-item">
-            <span className="bar-label">Avg Exec: {(module.aggregate?.avgExecTime || 0).toFixed(0)}ms</span>
-            <div className="bar-container">
-              <div className="bar-fill info" style={{
-                width: Math.min(100, (module.aggregate?.avgExecTime || 0) / 50) + '%'
-              }}></div>
-            </div>
-          </div>
+        <div className="data-line">
+          <span className="data-icon">{successIcon}</span>
+          <span className="data-label">Success:</span>
+          <span className="data-value">{module.successRate.toFixed(1)}%</span>
+          <span className="data-stat">• {module.aggregate?.totalExecutions || 0} execs</span>
         </div>
-      </div>
-      
-      <div className="module-footer">
-        <span className="last-update">
-          {module.lastUpdate ? new Date(module.lastUpdate).toLocaleTimeString() : 'No data'}
-        </span>
       </div>
     </div>
   )

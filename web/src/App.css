@@ -646,60 +646,63 @@ html, body {
   border: 1px solid var(--color-danger);
 }
 
-.module-content {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+.module-status.status-active {
+  background: rgba(0, 255, 0, 0.2);
+  color: var(--color-success);
+  border: 1px solid var(--color-success);
 }
 
-.module-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
+.module-status.status-idle {
+  background: rgba(255, 170, 0, 0.2);
+  color: var(--color-warning);
+  border: 1px solid var(--color-warning);
+}
+
+.module-data-lines {
+  display: flex;
+  flex-direction: column;
   gap: 0.75rem;
+  padding: 0.75rem 0;
 }
 
-.module-stat {
-  background: rgba(0, 0, 0, 0.2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--border-radius);
-  padding: 0.5rem;
+.data-line {
   display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: var(--font-size-base);
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(0, 238, 255, 0.1);
 }
 
-.module-stat .label {
-  font-size: var(--font-size-sm);
+.data-line:last-child {
+  border-bottom: none;
+}
+
+.data-icon {
+  font-size: 1.25rem;
+  min-width: 1.5rem;
+  text-align: center;
+}
+
+.data-label {
   color: var(--color-text-dim);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  font-weight: bold;
+  min-width: 80px;
 }
 
-.module-stat .value {
-  font-size: var(--font-size-lg);
-  font-weight: bold;
+.data-value {
   color: var(--color-primary);
+  font-weight: bold;
+  flex: 1;
   word-break: break-word;
 }
 
-.module-stat .value.money-success {
-  color: var(--color-success);
-}
-
-.module-stat .value.money-info {
-  color: var(--color-info);
-}
-
-.module-stat .value.money-warning {
-  color: var(--color-warning);
-}
-
-.module-stat .value.success-high {
-  color: var(--color-success);
-}
-
-.module-stat .value.success-low {
-  color: var(--color-warning);
+.data-stat {
+  color: var(--color-text-dim);
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
 }
 
 .module-bars {

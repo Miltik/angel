@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: angel-backend
+    runtime: node
+    plan: free
+    healthCheckPath: /health
+    buildCommand: cd server && npm install
+    startCommand: cd server && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: HOST
+        value: 0.0.0.0
+      - key: DATABASE_URL
+        value: /data/angel.db
+
+  - type: web
+    name: angel-web
+    runtime: static
+    plan: free
+    buildCommand: cd web && npm install && npm run build
+    staticPublishPath: web/dist
+    envVars:
+      - key: VITE_BACKEND_URL
+        value: https://angel-backend.onrender.com
+      - key: VITE_WS_URL
+        value: wss://angel-backend.onrender.com

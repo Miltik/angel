@@ -62,10 +62,6 @@ export async function main(ns) {
         "modules/resetMonitor.js",
         "modules/contracts-simple.js",
         
-        // Configuration files
-        "angel_windowdefaults.json",
-        "angel_windowstates.json",
-        
         // Workers
         "workers/hack.js",
         "workers/grow.js",

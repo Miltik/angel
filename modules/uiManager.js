@@ -10,44 +10,13 @@
  */
 
 const WINDOWS = new Map();
-let nsReference = null;  // Store NS reference for file I/O
 const UI_PREFS_KEY = "angelUiWindowPrefs";
 const WINDOW_DEFAULTS_KEY = "angelWindowDefaults";
+const WINDOW_STATES_KEY = "angelWindowStates";
 const STYLE_TAG_ID = "angel-ui-styles";
-const FILES = {
-    uiPrefs: ["/angel/angel_uiprefs.json", "angel_uiprefs.json"],
-    states: ["/angel/angel_windowstates.json", "angel_windowstates.json"],
-    defaults: ["/angel/angel_windowdefaults.json", "angel_windowdefaults.json"],
-};
 let windowPrefsCache = null;
 let windowDefaultsCache = null;
 const sessionVisibility = new Map();
-
-function readFirstAvailableFile(paths) {
-    if (!nsReference) return null;
-    for (const path of paths) {
-        try {
-            const content = nsReference.read(path);
-            if (content && content.trim().length > 0) {
-                return content;
-            }
-        } catch (e) {
-            // try next path
-        }
-    }
-    return null;
-}
-
-function writePrimaryAndLegacy(paths, content) {
-    if (!nsReference) return;
-    for (const path of paths) {
-        try {
-            nsReference.write(path, content, "w");
-        } catch (e) {
-            // ignore write failures per path
-        }
-    }
-}
 
 function toPixelNumber(value) {
     if (typeof value === "number" && Number.isFinite(value)) {
@@ -77,7 +46,6 @@ function buildWindowState(container, minimized) {
 function saveWindowPrefs(prefs) {
     try {
         localStorage.setItem(UI_PREFS_KEY, JSON.stringify(prefs || {}));
-        writePrimaryAndLegacy(FILES.uiPrefs, JSON.stringify(prefs || {}));
     } catch (e) {
         // ignore
     }
@@ -85,10 +53,6 @@ function saveWindowPrefs(prefs) {
 
 function loadWindowPrefs() {
     try {
-        const fileContent = readFirstAvailableFile(FILES.uiPrefs);
-        if (fileContent) {
-            return JSON.parse(fileContent) || {};
-        }
         return JSON.parse(localStorage.getItem(UI_PREFS_KEY) || "{}");
     } catch (e) {
         return {};
@@ -132,15 +96,12 @@ function persistVisibility(id, visible) {
     sessionVisibility.set(id, Boolean(visible));
 }
 
-// Window state persistence (localStorage + file backup)
+// Window state persistence (localStorage)
 function saveWindowState(id, state) {
     try {
-        const allStates = JSON.parse(localStorage.getItem("angelWindowStates") || "{}");
+        const allStates = JSON.parse(localStorage.getItem(WINDOW_STATES_KEY) || "{}");
         allStates[id] = state;
-        localStorage.setItem("angelWindowStates", JSON.stringify(allStates));
-
-        // Also save to file for persistence across game resets
-        writePrimaryAndLegacy(FILES.states, JSON.stringify(allStates));
+        localStorage.setItem(WINDOW_STATES_KEY, JSON.stringify(allStates));
     } catch (e) {
         // Silently fail if localStorage not available
     }
@@ -148,15 +109,7 @@ function saveWindowState(id, state) {
 
 function loadWindowState(id) {
     try {
-        // Try file first (survives game resets)
-        const fileContent = readFirstAvailableFile(FILES.states);
-        if (fileContent) {
-            const allStates = JSON.parse(fileContent);
-            return allStates[id] || null;
-        }
-
-        // Fall back to localStorage
-        const allStates = JSON.parse(localStorage.getItem("angelWindowStates") || "{}");
+        const allStates = JSON.parse(localStorage.getItem(WINDOW_STATES_KEY) || "{}");
         return allStates[id] || null;
     } catch (e) {
         return null;
@@ -167,7 +120,6 @@ function saveWindowDefaults(defaults) {
     try {
         const safeDefaults = defaults || {};
         localStorage.setItem(WINDOW_DEFAULTS_KEY, JSON.stringify(safeDefaults));
-        writePrimaryAndLegacy(FILES.defaults, JSON.stringify(safeDefaults));
     } catch (e) {
         // ignore
     }
@@ -175,10 +127,6 @@ function saveWindowDefaults(defaults) {
 
 function loadWindowDefaults() {
     try {
-        const fileContent = readFirstAvailableFile(FILES.defaults);
-        if (fileContent) {
-            return JSON.parse(fileContent) || {};
-        }
         return JSON.parse(localStorage.getItem(WINDOW_DEFAULTS_KEY) || "{}");
     } catch (e) {
         return {};
@@ -256,11 +204,6 @@ function createMockWindow(id, title) {
 }
 
 export function createWindow(id, title, width = 600, height = 400, ns = null) {
-    // Store NS reference for file I/O (use first non-null reference)
-    if (ns && !nsReference) {
-        nsReference = ns;
-    }
-    
     if (WINDOWS.has(id)) {
         const existing = WINDOWS.get(id);
         const preferredVisible = getPreferredVisibility(id);

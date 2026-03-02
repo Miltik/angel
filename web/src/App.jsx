@@ -10,12 +10,20 @@ function App() {
   const [error, setError] = useState(null)
 
   useEffect(() => {
-    fetchStatus()
+    fetchStatus(true)
+
+    const intervalId = setInterval(() => {
+      fetchStatus(false)
+    }, 5000)
+
+    return () => clearInterval(intervalId)
   }, [])
 
-  const fetchStatus = async () => {
+  const fetchStatus = async (showLoading = false) => {
     try {
-      setLoading(true)
+      if (showLoading) {
+        setLoading(true)
+      }
       const response = await axios.get(`${BACKEND_URL}/api/status`)
       setStatus(response.data)
       setError(null)
@@ -23,7 +31,9 @@ function App() {
       console.error('Backend unreachable:', err)
       setError('Backend not running. Start server with: cd server && npm start')
     } finally {
-      setLoading(false)
+      if (showLoading) {
+        setLoading(false)
+      }
     }
   }
 

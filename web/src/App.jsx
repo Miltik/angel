@@ -252,9 +252,10 @@ function App() {
             <p>Connecting to backend...</p>
           </div>
         ) : status ? (
-          <div className="dashboard-grid">
-            {/* System Status */}
-            <StatusCard title="🖥️ System Status" className="card-system">
+          <>
+            <div className="dashboard-grid">
+              {/* System Status */}
+              <StatusCard title="🖥️ System Status" className="card-system">
               <div className="stats-grid">
                 <StatItem 
                   label="Status"
@@ -434,6 +435,7 @@ function App() {
               </div>
             </div>
           )}
+          </>
         ) : (
           <div className="no-data">
             <span className="no-data-icon">📭</span>

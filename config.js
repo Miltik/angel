@@ -141,12 +141,9 @@ export const config = {
         loopDelay: 1000,           // Main loop delay in ms
         enableHacking: true,
         enableServerMgmt: true,
-        enableFactions: false,     // Moved into activities.js unified activity+faction module
         enableAugments: true,
         enablePrograms: true,
         enableActivities: true,    // Handles crime, training, faction, company (all phases)
-        enableTraining: false,     // Delegated to activities.js unified activity module
-        enableCompany: false,      // Integrated into activities.js unified activity selector
         enableSleeves: true,
         enableStocks: true,
         enableGang: true,
@@ -544,12 +541,9 @@ export const SCRIPTS = {
     // Modules
     hacking: "/angel/modules/hacking.js",
     serverMgmt: "/angel/modules/servers.js",
-    factions: "/angel/modules/factions.js",
     augments: "/angel/modules/augments.js",
     programs: "/angel/modules/programs.js",
     activities: "/angel/modules/activities.js",
-    training: "/angel/modules/training.js",
-    company: "/angel/modules/company.js",
     sleeves: "/angel/modules/sleeves.js",
     stocks: "/angel/modules/stocks.js",
     gang: "/angel/modules/gang.js",

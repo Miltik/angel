@@ -294,12 +294,6 @@ async function ensureModulesRunning(ns) {
         await ns.sleep(1500);
     }
     
-    // Faction module (if SF4 available)
-    if (config.orchestrator.enableFactions) {
-        await ensureModuleRunning(ns, SCRIPTS.factions, "Factions");
-        await ns.sleep(1500);
-    }
-    
     // Augmentation module (if SF4 available)
     if (config.orchestrator.enableAugments) {
         const started = await ensureModuleRunning(ns, SCRIPTS.augments, "Augmentations");
@@ -308,18 +302,6 @@ async function ensureModulesRunning(ns) {
         await ns.sleep(1500);
     }
     
-    // Training module (university/gym)
-    if (config.orchestrator.enableTraining) {
-        await ensureModuleRunning(ns, SCRIPTS.training, "Training");
-        await ns.sleep(1500);
-    }
-
-    // Company work module
-    if (config.orchestrator.enableCompany) {
-        await ensureModuleRunning(ns, SCRIPTS.company, "Company Work");
-        await ns.sleep(1500);
-    }
-
     // Activities module (unified: crime, training, faction, company)
     if (config.orchestrator.enableActivities) {
         const started = await ensureModuleRunning(ns, SCRIPTS.activities, "Activities");
@@ -604,12 +586,9 @@ export function stopAll(ns) {
     const modules = [
         SCRIPTS.hacking,
         SCRIPTS.serverMgmt,
-        SCRIPTS.factions,
         SCRIPTS.augments,
         SCRIPTS.programs,
         SCRIPTS.activities,
-        SCRIPTS.training,
-        SCRIPTS.company,
         SCRIPTS.hacknet,
         SCRIPTS.stocks,
         SCRIPTS.gang,
@@ -647,12 +626,9 @@ export function getSystemHealth(ns) {
     const modules = [
         { name: "Hacking", script: SCRIPTS.hacking, enabled: config.orchestrator.enableHacking },
         { name: "Servers", script: SCRIPTS.serverMgmt, enabled: config.orchestrator.enableServerMgmt },
-        { name: "Factions", script: SCRIPTS.factions, enabled: config.orchestrator.enableFactions },
         { name: "Augments", script: SCRIPTS.augments, enabled: config.orchestrator.enableAugments },
         { name: "Programs", script: SCRIPTS.programs, enabled: config.orchestrator.enablePrograms },
         { name: "Activities", script: SCRIPTS.activities, enabled: config.orchestrator.enableActivities },
-        { name: "Training", script: SCRIPTS.training, enabled: config.orchestrator.enableTraining },
-        { name: "Company", script: SCRIPTS.company, enabled: config.orchestrator.enableCompany },
         { name: "Hacknet", script: SCRIPTS.hacknet, enabled: config.orchestrator.enableHacknet },
         { name: "Stocks", script: SCRIPTS.stocks, enabled: config.orchestrator.enableStocks },
         { name: "Gang", script: SCRIPTS.gang, enabled: config.orchestrator.enableGang },

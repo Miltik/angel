@@ -113,16 +113,14 @@ function reportTelemetry(ns) {
         };
         reportModuleMetrics(ns, 'hacknet', metricsPayload);
         
-        // Diagnostic: confirm reporting (10% of reports)
-        if (Math.random() < 0.1) {
-            ns.print(`📊 Reported hacknet: ${nodeCount} nodes @ $${(moneyRate / 1e6).toFixed(2)}M/s`);
-        }
+        // Diagnostic: confirm reporting (100% for troubleshooting)
+        ns.print(`📊 Reported hacknet: ${nodeCount} nodes, ${telemetryState.upgradesCompleted} upgrades, $${(telemetryState.totalInvestment / 1e6).toFixed(2)}M invested`);
         
         // Update state
         telemetryState.lastMoney = currentMoney;
         telemetryState.lastReportTime = now;
     } catch (e) {
-        // Silent fail to not interrupt hacknet
+        ns.print(`❌ Hacknet telemetry error: ${e}`);
     }
 }
 

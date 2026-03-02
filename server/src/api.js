@@ -23,6 +23,11 @@ export function setupApiRoutes(app) {
                 hackLevel
             } = req.body;
 
+            // Diagnostic logging for module data
+            if (modules && modules.hacknet) {
+                console.log(`[TELEMETRY] Hacknet data received:`, JSON.stringify(modules.hacknet, null, 2));
+            }
+
             const finalTimestamp = timestamp || Date.now();
             let samplesInserted = 0;
 

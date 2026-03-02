@@ -5,7 +5,8 @@
 import { config } from "/angel/config.js";
 import { createWindow } from "/angel/modules/uiManager.js";
 import { formatMoney } from "/angel/utils.js";
-import { reportModuleMetrics } from "/angel/telemetry/telemetry.js";
+
+const TELEMETRY_PORT = 20;
 
 // State tracking
 let lastState = {
@@ -115,7 +116,7 @@ function reportTelemetry(ns) {
             budget: budgetInfo.budget,
             reserve: budgetInfo.reserve
         };
-        reportModuleMetrics(ns, 'hacknet', metricsPayload);
+        writeHacknetMetrics(ns, metricsPayload);
         
         // Diagnostic: confirm reporting (100% for troubleshooting)
         ns.print(`📊 Reported hacknet: ${nodeCount} nodes, ${telemetryState.upgradesCompleted} upgrades, $${(telemetryState.totalInvestment / 1e6).toFixed(2)}M invested`);
@@ -125,6 +126,22 @@ function reportTelemetry(ns) {
         telemetryState.lastReportTime = now;
     } catch (e) {
         ns.print(`❌ Hacknet telemetry error: ${e}`);
+    }
+}
+
+function writeHacknetMetrics(ns, metricsPayload) {
+    try {
+        const payload = JSON.stringify({
+            module: 'hacknet',
+            timestamp: Date.now(),
+            metrics: metricsPayload,
+        });
+        const ok = ns.tryWritePort(TELEMETRY_PORT, payload);
+        if (!ok) {
+            ns.print('⚠️ Failed to write hacknet metrics to port 20 (queue full)');
+        }
+    } catch (e) {
+        ns.print(`❌ Hacknet port write error: ${e}`);
     }
 }
 

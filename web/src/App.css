@@ -553,36 +553,27 @@ html, body {
 }
 
 .modules-scroll {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 1rem;
-  overflow-x: auto;
   padding: 0.5rem;
-  scroll-behavior: smooth;
-  scrollbar-width: thin;
-  scrollbar-color: var(--color-primary) var(--color-bg-light);
 }
 
-.modules-scroll::-webkit-scrollbar {
-  height: 8px;
+@media (max-width: 1400px) {
+  .modules-scroll {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
-.modules-scroll::-webkit-scrollbar-track {
-  background: var(--color-bg-light);
-  border-radius: 4px;
-}
-
-.modules-scroll::-webkit-scrollbar-thumb {
-  background: var(--color-primary);
-  border-radius: 4px;
-}
-
-.modules-scroll::-webkit-scrollbar-thumb:hover {
-  background: var(--color-secondary);
+@media (max-width: 900px) {
+  .modules-scroll {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Module Card */
 .module-card {
-  flex: 0 0 400px;
+  width: 100%;
   background: linear-gradient(135deg, rgba(17, 29, 58, 0.9) 0%, rgba(10, 14, 39, 0.95) 100%);
   border: 1px solid var(--color-border);
   border-radius: var(--border-radius);
@@ -789,6 +780,10 @@ html, body {
   .button-group {
     grid-template-columns: repeat(2, 1fr);
   }
+
+  .modules-scroll {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 480px) {
@@ -814,11 +809,7 @@ html, body {
     grid-template-columns: 1fr;
   }
 
-  .module-card {
-    flex: 0 0 320px;
-  }
-
-  .module-grid {
+  .modules-scroll {
     grid-template-columns: 1fr;
   }
 

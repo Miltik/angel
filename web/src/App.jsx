@@ -421,12 +421,12 @@ function App() {
             </StatusCard>
           </div>
 
-          {/* Modules Section - Scrollable */}
+          {/* Modules Section - Grid Layout */}
           {modules && modules.length > 0 && (
             <div className="modules-section">
               <div className="modules-header">
                 <h2>📦 Active Modules ({modules.length})</h2>
-                <span className="module-hint">← Scroll to view all modules →</span>
+                <span className="module-hint">3 per row • Scroll to view all</span>
               </div>
               <div className="modules-scroll">
                 {modules.map((module, idx) => (

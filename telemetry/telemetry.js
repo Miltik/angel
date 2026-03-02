@@ -689,7 +689,7 @@ async function syncToBackend(ns, telemetryConfig) {
                 hostname: 'home',
                 type: 'home',
             },
-            modules: {
+            moduleMeta: {
                 count: moduleCount,
                 active: activeModules,
                 activeCount: activeModules.length,

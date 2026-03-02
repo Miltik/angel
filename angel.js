@@ -111,6 +111,9 @@ function ensureLootArchiveSeed(ns) {
  * @param {NS} ns
  */
 async function orchestrate(ns) {
+    // Check for commands from remote backend
+    await checkBackendCommands(ns);
+
     // Display status
     displayStatus(ns);
     
@@ -672,4 +675,118 @@ export function getSystemHealth(ns) {
     }
     
     return health;
+}
+/**
+ * Check for commands from remote backend and execute them
+ * @param {NS} ns
+ */
+let lastCommandCheck = 0;
+async function checkBackendCommands(ns) {
+    try {
+        const backendConfig = config.remoteBackend || {};
+        if (!backendConfig.enabled) return;
+
+        const now = Date.now();
+        if (now - lastCommandCheck < (backendConfig.commandCheckIntervalMs || 30000)) {
+            return;
+        }
+        lastCommandCheck = now;
+
+        const backendUrl = backendConfig.url || 'http://localhost:3000';
+        const response = await fetch(`${backendUrl}/api/commands`);
+        
+        if (!response.ok) return;
+
+        const data = await response.json();
+        const commands = data.commands || [];
+
+        for (const cmd of commands) {
+            await executeBackendCommand(ns, cmd);
+        }
+    } catch (error) {
+        // Silently fail - don't disrupt orchestration
+    }
+}
+
+/**
+ * Execute a command from the backend
+ * @param {NS} ns
+ * @param {Object} cmd Command object with id, type, parameters
+ */
+async function executeBackendCommand(ns, cmd) {
+    try {
+        const backendUrl = config.remoteBackend?.url || 'http://localhost:3000';
+
+        switch (cmd.type) {
+            case 'pause':
+                log(ns, '⏸️ PAUSE command received from backend', 'INFO');
+                // Set a flag that modules check periodically
+                ns.write('/angel/paused', 'true', 'w');
+                await markCommandExecuted(backendUrl, cmd.id, { status: 'paused' });
+                break;
+
+            case 'resume':
+                log(ns, '▶️ RESUME command received from backend', 'INFO');
+                ns.rm('/angel/paused');
+                await markCommandExecuted(backendUrl, cmd.id, { status: 'resumed' });
+                break;
+
+            case 'report':
+                log(ns, '📊 REPORT command received from backend', 'INFO');
+                const pid = ns.exec(SCRIPTS.telemetryReport, 'home');
+                await markCommandExecuted(backendUrl, cmd.id, { 
+                    status: 'executing',
+                    reportPid: pid 
+                });
+                break;
+
+            case 'runModule':
+                const moduleName = cmd.parameters?.module;
+                if (moduleName && SCRIPTS[moduleName]) {
+                    log(ns, `▶️ Running module: ${moduleName}`, 'INFO');
+                    const pid = ns.exec(SCRIPTS[moduleName], 'home');
+                    await markCommandExecuted(backendUrl, cmd.id, {
+                        status: 'executing',
+                        modulePid: pid
+                    });
+                } else {
+                    await markCommandExecuted(backendUrl, cmd.id, {
+                        status: 'failed',
+                        error: `Unknown module: ${moduleName}`
+                    });
+                }
+                break;
+
+            default:
+                log(ns, `⚠️ Unknown backend command: ${cmd.type}`, 'WARN');
+                await markCommandExecuted(backendUrl, cmd.id, {
+                    status: 'failed',
+                    error: `Unknown command type: ${cmd.type}`
+                });
+        }
+    } catch (error) {
+        // Log but don't crash
+        log(ns, `Command execution error: ${error.message}`, 'ERROR');
+    }
+}
+
+/**
+ * Mark a command as executed in the backend
+ * @param {string} backendUrl
+ * @param {number} commandId
+ * @param {Object} result
+ */
+async function markCommandExecuted(backendUrl, commandId, result) {
+    try {
+        await fetch(`${backendUrl}/api/commands/${commandId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                status: 'executed',
+                result: result
+            })
+        });
+    } catch (error) {
+        // Silently fail - don't disrupt if backend is unavailable
+    }
 }

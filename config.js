@@ -532,6 +532,17 @@ export const config = {
         detailedLogging: false,         // Enable verbose event capture
         maxEventsPerRun: 1000,          // Cap event storage per run
     },
+
+    // Remote backend integration (for web dashboard, Discord bot, mobile)
+    remoteBackend: {
+        enabled: true,                  // Enable remote backend sync
+        url: "http://localhost:3000",   // Local backend (change for remote deployment)
+        telemetryIntervalMs: 10000,     // Send telemetry every 10s
+        commandCheckIntervalMs: 30000,  // Check for commands every 30s
+        timeoutMs: 5000,                // Request timeout
+        retryAttempts: 3,               // Retry failed requests
+        enableLogging: true,            // Log backend communication
+    },
 };
 
 // Ports for inter-script communication

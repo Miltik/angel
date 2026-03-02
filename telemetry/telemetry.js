@@ -108,6 +108,7 @@ export async function main(ns) {
     
     let lastSample = 0;
     let lastAggregate = 0;
+    let lastBackendSync = 0;
     
     ns.print('🔍 Telemetry monitoring started');
     
@@ -125,6 +126,12 @@ export async function main(ns) {
             if (now - lastAggregate >= config.aggregateIntervalMs) {
                 aggregateMetrics(ns);
                 lastAggregate = now;
+            }
+
+            // Sync to backend (if enabled)
+            if (now - lastBackendSync >= (config.telemetryIntervalMs || 10000)) {
+                await syncToBackend(ns, config);
+                lastBackendSync = now;
             }
             
         } catch (e) {
@@ -586,4 +593,70 @@ export function formatMoney(num) {
     if (num >= 1e6) return `$${(num / 1e6).toFixed(2)}M`;
     if (num >= 1e3) return `$${(num / 1e3).toFixed(2)}k`;
     return `$${num.toFixed(2)}`;
+}
+// ============================================
+// REMOTE BACKEND SYNC
+// ============================================
+
+async function syncToBackend(ns, telemetryConfig) {
+    try {
+        // Load remote backend config from main config
+        let backendConfig = {};
+        try {
+            const { config } = await import('/angel/config.js');
+            backendConfig = config.remoteBackend || {};
+        } catch (e) {
+            // Config not available
+            return;
+        }
+
+        if (!backendConfig.enabled) return;
+
+        const backendUrl = backendConfig.url || 'http://localhost:3000';
+        const run = loadCurrentRun();
+        if (!run) return;
+
+        // Prepare telemetry payload
+        const payload = {
+            runId: run.startTime,
+            timestamp: Date.now(),
+            modules: run.modules,
+            stats: {
+                uptime: Date.now() - run.startTime,
+                totalExecutions: Object.values(run.modules || {}).reduce((sum, m) => sum + (m.executions || 0), 0),
+                totalFailures: Object.values(run.modules || {}).reduce((sum, m) => sum + (m.failures || 0), 0),
+                moneyRate: run.aggregates?.length > 0 ? run.aggregates[run.aggregates.length - 1].moneyRate : 0,
+                xpRate: run.aggregates?.length > 0 ? run.aggregates[run.aggregates.length - 1].xpRate : 0,
+            },
+            memory: {
+                used: ns.getServerUsedRam('home'),
+                total: ns.getServerMaxRam('home'),
+            },
+            money: ns.getServerMoneyAvailable('home'),
+            xp: ns.getTotalScriptExpGain(),
+            hackLevel: ns.getHackingLevel(),
+        };
+
+        // Send to backend
+        const response = await fetch(`${backendUrl}/api/telemetry`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+            if (backendConfig.enableLogging) {
+                ns.print(`⚠️ Backend sync failed: ${response.status}`);
+            }
+            return;
+        }
+
+        if (backendConfig.enableLogging) {
+            ns.print(`📡 Telemetry synced to backend`);
+        }
+    } catch (error) {
+        // Silently fail - don't disrupt telemetry if backend is unavailable
+        // Just uncomment for debugging:
+        // ns.print(`Backend sync error: ${error.message}`);
+    }
 }

@@ -1,0 +1,16 @@
+{
+  "name": "angel-discord-bot",
+  "version": "1.0.0",
+  "description": "ANGEL Discord Bot - Monitor and control via Discord",
+  "main": "bot.js",
+  "type": "module",
+  "scripts": {
+    "start": "node bot.js",
+    "dev": "node --watch bot.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.13.0",
+    "axios": "^1.6.0",
+    "dotenv": "^16.3.1"
+  }
+}

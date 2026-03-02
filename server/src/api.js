@@ -352,14 +352,8 @@ export function setupApiRoutes(app) {
                 }
             });
 
-            // Sort: active modules first, then by money rate
-            enriched.sort((a, b) => {
-                // Prioritize active modules
-                if (a.isActive && !b.isActive) return -1;
-                if (!a.isActive && b.isActive) return 1;
-                // Within same active status, sort by money rate
-                return (b.current?.moneyRate || 0) - (a.current?.moneyRate || 0);
-            });
+            // Sort alphabetically for stable UI (no jumping around)
+            enriched.sort((a, b) => a.name.localeCompare(b.name));
 
             res.json({
                 success: true,

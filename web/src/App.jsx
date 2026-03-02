@@ -191,7 +191,7 @@ function App() {
 
     const intervalId = setInterval(() => {
       fetchData(false)
-    }, 5000)
+    }, 2000) // Poll every 2 seconds for near real-time updates
 
     return () => clearInterval(intervalId)
   }, [])

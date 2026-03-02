@@ -5,12 +5,18 @@
  * Lightweight background monitoring with zero interference.
  * 
  * Usage:
- *   In modules: import { recordModuleMetric } from '/angel/telemetry/telemetry.js';
+ *   In modules: import { reportModuleMetrics } from '/angel/telemetry/telemetry.js';
  *   Reports: run /angel/telemetry/report.js
  *   UI: Launched automatically by Angel orchestrator
  * 
  * @param {NS} ns
  */
+
+// ============================================
+// TELEMETRY PORTS
+// ============================================
+
+const TELEMETRY_PORT = 20; // Port for modules to report metrics
 
 // ============================================
 // STORAGE KEYS
@@ -37,11 +43,39 @@ const DEFAULT_CONFIG = {
 };
 
 // ============================================
-// MODULE METRIC RECORDER
+// MODULE METRIC REPORTING
 // ============================================
 
 /**
- * Create a telemetry recorder for a module
+ * Report module metrics to telemetry
+ * Modules should call this periodically with their current stats
+ * @param {NS} ns
+ * @param {string} moduleName - Name of the module
+ * @param {Object} metrics - Module-specific metrics
+ * @example
+ * reportModuleMetrics(ns, 'hacking', {
+ *   moneyRate: 1000000,
+ *   xpRate: 500,
+ *   targetsHit: 10,
+ *   executionCount: 500
+ * });
+ */
+export function reportModuleMetrics(ns, moduleName, metrics) {
+    try {
+        const data = {
+            module: moduleName,
+            timestamp: Date.now(),
+            metrics: metrics
+        };
+        // Write to telemetry port - will be cleared by telemetry each sample
+        ns.writePort(TELEMETRY_PORT, JSON.stringify(data));
+    } catch (e) {
+        // Silently fail - don't interrupt module operation
+    }
+}
+
+/**
+ * Create a telemetry recorder for a module (legacy compatibility)
  * @param {NS} ns
  * @param {string} moduleName
  * @returns {Object} Telemetry recorder with log methods
@@ -285,7 +319,81 @@ function sampleSystemMetrics(ns) {
         run.samples.shift();
     }
     
+    // Capture per-module metrics from running scripts
+    captureModuleMetrics(ns, run);
+    
     saveCurrentRun(run);
+}
+
+function captureModuleMetrics(ns, run) {
+    // Get list of running scripts
+    const runningScripts = ns.ps('home');
+    const reportedMetrics = {};
+    
+    // Collect metrics from telemetry port
+    while (ns.peek(TELEMETRY_PORT) !== 'NULL PORT DATA') {
+        try {
+            const portData = ns.readPort(TELEMETRY_PORT);
+            const data = JSON.parse(portData);
+            if (data && data.module && data.metrics) {
+                reportedMetrics[data.module] = data.metrics;
+            }
+        } catch (e) {
+            break; // Invalid data, stop reading
+        }
+    }
+    
+    // Map known modules to script names
+    const KNOWN_MODULES = {
+        hacking: 'hacking.js',
+        gang: 'gang.js',
+        stocks: 'stocks.js',
+        hacknet: 'hacknet.js',
+        corporation: 'corporation.js',
+        activities: 'activities.js',
+        augments: 'augments.js',
+        programs: 'programs.js',
+        servers: 'servers.js',
+        bladeburner: 'bladeburner.js',
+        contracts: 'contracts.js',
+        formulas: 'formulas.js',
+        loot: 'loot.js',
+        networkMap: 'networkMap.js',
+        sleeves: 'sleeves.js',
+        xpFarm: 'xpFarm.js',
+        backdoor: 'backdoor.js',
+        backdoorRunner: 'backdoorRunner.js',
+        uiLauncher: 'uiLauncher.js',
+    };
+    
+    // Check which modules are running and merge with reported metrics
+    for (const [moduleName, scriptName] of Object.entries(KNOWN_MODULES)) {
+        const isRunning = runningScripts.some(s => s.filename.includes(scriptName));
+        
+        if (!run.modules[moduleName]) {
+            run.modules[moduleName] = {
+                executions: 0,
+                failures: 0,
+                totalDuration: 0,
+                avgDuration: 0,
+                lastRun: 0,
+                firstRun: Date.now(),
+            };
+        }
+        
+        // Update status
+        run.modules[moduleName].active = isRunning;
+        run.modules[moduleName].lastStatusUpdate = Date.now();
+        
+        // Merge reported metrics if available
+        if (reportedMetrics[moduleName]) {
+            run.modules[moduleName] = {
+                ...run.modules[moduleName],
+                ...reportedMetrics[moduleName],
+                active: isRunning // Ensure active status is from script check
+            };
+        }
+    }
 }
 
 function aggregateMetrics(ns) {

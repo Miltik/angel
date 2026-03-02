@@ -1,4 +1,5 @@
 import { createWindow } from "/angel/modules/uiManager.js";
+import { reportModuleMetrics } from "/angel/telemetry/telemetry.js";
 
 // State tracking to avoid duplicate logs
 let lastLoggedState = {
@@ -8,6 +9,16 @@ let lastLoggedState = {
     moneyPercent: null,
     securityDelta: null,
     loopCount: 0
+};
+
+// Telemetry tracking
+let telemetryState = {
+    lastMoney: 0,
+    lastXp: 0,
+    lastReportTime: 0,
+    successfulHacks: 0,
+    targetsPrepped: 0,
+    activeThreads: 0
 };
 
 /** @param {NS} ns */
@@ -26,9 +37,20 @@ export async function main(ns) {
     
     ui.log("🚀 Beginning hacking operations", "success");
     
+    // Initialize telemetry tracking
+    telemetryState.lastMoney = ns.getServerMoneyAvailable('home');
+    telemetryState.lastXp = ns.getPlayer().exp.hacking;
+    telemetryState.lastReportTime = Date.now();
+    
     while (true) {
         try {
             await hackingLoop(ns, ui);
+            
+            // Report metrics every 30 seconds
+            const now = Date.now();
+            if (now - telemetryState.lastReportTime >= 30000) {
+                reportTelemetry(ns);
+            }
         } catch (e) {
             ui.log(`❌ Hacking loop error: ${e}`, "error");
         }
@@ -90,6 +112,46 @@ async function hackingLoop(ns, ui) {
     
     // Execute hack/grow/weaken cycle
     await executeHackCycle(ns, target, ui);
+}
+
+/**
+ * Report telemetry metrics
+ * @param {NS} ns
+ */
+function reportTelemetry(ns) {
+    try {
+        const now = Date.now();
+        const currentMoney = ns.getServerMoneyAvailable('home');
+        const currentXp = ns.getPlayer().exp.hacking;
+        const timeDelta = (now - telemetryState.lastReportTime) / 1000; // seconds
+        
+        // Calculate rates
+        const moneyRate = timeDelta > 0 ? (currentMoney - telemetryState.lastMoney) / timeDelta : 0;
+        const xpRate = timeDelta > 0 ? (currentXp - telemetryState.lastXp) / timeDelta : 0;
+        
+        // Count active threads across all hack/grow/weaken workers
+        const runningScripts = ns.ps('home');
+        telemetryState.activeThreads = runningScripts
+            .filter(s => s.filename.includes('hack.js') || s.filename.includes('grow.js') || s.filename.includes('weaken.js'))
+            .reduce((sum, s) => sum + s.threads, 0);
+        
+        // Report to telemetry
+        reportModuleMetrics(ns, 'hacking', {
+            moneyRate: Math.max(0, moneyRate), // Only report positive rates
+            xpRate: Math.max(0, xpRate),
+            currentTarget: lastLoggedState.target || 'none',
+            targetsPrepped: telemetryState.targetsPrepped,
+            activeThreads: telemetryState.activeThreads,
+            successfulHacks: telemetryState.successfulHacks
+        });
+        
+        // Update state
+        telemetryState.lastMoney = currentMoney;
+        telemetryState.lastXp = currentXp;
+        telemetryState.lastReportTime = now;
+    } catch (e) {
+        // Silent fail to not interrupt hacking
+    }
 }
 
 /**
@@ -277,6 +339,7 @@ async function prepTarget(ns, target, ui) {
     
     // Grow if money is too low (using 0.75 as threshold, from config)
     if (info.currentMoney < info.maxMoney * 0.75) {
+        telemetryState.targetsPrepped++;
         await distributeGrow(ns, target, ui);
     }
 }
@@ -289,6 +352,7 @@ async function prepTarget(ns, target, ui) {
  */
 async function executeHackCycle(ns, target, ui) {
     // Simple strategy: hack a bit, then grow/weaken to recover
+    telemetryState.successfulHacks++;
     await distributeHack(ns, target, ui);
     await ns.sleep(100);
     await distributeGrow(ns, target, ui);

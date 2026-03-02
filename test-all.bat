@@ -2,6 +2,8 @@
 REM ANGEL Remote Ecosystem - Automated Testing Script (Windows)
 REM Validates all components
 
+chcp 65001 >nul
+
 setlocal enabledelayedexpansion
 
 set BACKEND_URL=http://localhost:3000
@@ -46,18 +48,30 @@ echo.
 
 REM Test Health Check
 echo Testing Health Check...
-powershell -Command "$response = Invoke-WebRequest -Uri 'http://localhost:3000/health' -UseBasicParsing; if ($response.Content -contains 'ok') { Write-Host 'PASS' -ForegroundColor Green; exit 0 } else { Write-Host 'FAIL' -ForegroundColor Red; exit 1 }"
-if %ERRORLEVEL% equ 0 set /a TESTS_PASSED+=1 || set /a TESTS_FAILED+=1
+powershell -Command "$response = Invoke-WebRequest -Uri 'http://localhost:3000/health' -UseBasicParsing; if ($response.Content -match 'ok') { Write-Host 'PASS' -ForegroundColor Green; exit 0 } else { Write-Host 'FAIL' -ForegroundColor Red; exit 1 }"
+if %ERRORLEVEL% equ 0 (
+    set /a TESTS_PASSED+=1
+) else (
+    set /a TESTS_FAILED+=1
+)
 
 REM Test Get Status
 echo Testing Get Status...
-powershell -Command "$response = (Invoke-WebRequest -Uri 'http://localhost:3000/api/status' -UseBasicParsing).Content; if ($response -contains 'success') { Write-Host 'PASS' -ForegroundColor Green; exit 0 } else { Write-Host 'FAIL' -ForegroundColor Red; exit 1 }"
-if %ERRORLEVEL% equ 0 set /a TESTS_PASSED+=1 || set /a TESTS_FAILED+=1
+powershell -Command "try { $response = Invoke-RestMethod -Uri 'http://localhost:3000/api/status' -Method GET; if ($response.status -eq 'ok') { Write-Host 'PASS' -ForegroundColor Green; exit 0 } else { Write-Host 'FAIL' -ForegroundColor Red; exit 1 } } catch { Write-Host 'FAIL' -ForegroundColor Red; exit 1 }"
+if %ERRORLEVEL% equ 0 (
+    set /a TESTS_PASSED+=1
+) else (
+    set /a TESTS_FAILED+=1
+)
 
 REM Test Get Commands
 echo Testing Get Commands...
-powershell -Command "$response = (Invoke-WebRequest -Uri 'http://localhost:3000/api/commands' -UseBasicParsing).Content; if ($response -contains 'commands') { Write-Host 'PASS' -ForegroundColor Green; exit 0 } else { Write-Host 'FAIL' -ForegroundColor Red; exit 1 }"
-if %ERRORLEVEL% equ 0 set /a TESTS_PASSED+=1 || set /a TESTS_FAILED+=1
+powershell -Command "$response = (Invoke-WebRequest -Uri 'http://localhost:3000/api/commands' -UseBasicParsing).Content; if ($response -match 'commands') { Write-Host 'PASS' -ForegroundColor Green; exit 0 } else { Write-Host 'FAIL' -ForegroundColor Red; exit 1 }"
+if %ERRORLEVEL% equ 0 (
+    set /a TESTS_PASSED+=1
+) else (
+    set /a TESTS_FAILED+=1
+)
 
 REM Test Queue Command
 echo Testing Queue Command...
@@ -87,26 +101,10 @@ echo === Phase 3: Telemetry Data ===
 echo.
 
 echo Sending test telemetry...
-
-for /f "tokens=*" %%i in ('powershell -Command "Get-Date -UFormat '%%s000'"') do set TS=%%i
-
-REM Build JSON payload
-set PAYLOAD={"runId":"test-run","timestamp":!TS!,"modules":{"hacking":{"executions":10,"failures":0,"status":"running"}},"stats":{"uptime":1000,"moneyRate":100000,"xpRate":50},"memory":{"used":64,"total":256},"money":"1000000000","hackLevel":100}
-
-where curl >nul 2>nul
+powershell -Command "$payload = @{ runId='test-run'; timestamp=[int64]([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()); modules=@{ hacking=@{ executions=10; failures=0; status='running' } }; stats=@{ uptime=1000; moneyRate=100000; xpRate=50 }; memory=@{ used=64; total=256 }; money='1000000000'; hackLevel=100 } | ConvertTo-Json -Depth 6 -Compress; try { $response = Invoke-RestMethod -Method POST -Uri 'http://localhost:3000/api/telemetry' -ContentType 'application/json' -Body $payload; if ($response.success -eq $true) { Write-Host 'PASS - Telemetry sent' -ForegroundColor Green; exit 0 } else { Write-Host 'FAIL - Telemetry rejected' -ForegroundColor Red; exit 1 } } catch { Write-Host 'FAIL - Could not send telemetry' -ForegroundColor Red; Write-Host $_.Exception.Message; exit 1 }"
 if %ERRORLEVEL% equ 0 (
-    for /f "tokens=*" %%i in ('curl -s -X POST http://localhost:3000/api/telemetry -H "Content-Type: application/json" -d "!PAYLOAD!"') do set TEL_RESPONSE=%%i
-) else (
-    echo Warning: curl not found, skipping telemetry test
-    set TEL_RESPONSE={\"success\":true}
-)
-
-echo !TEL_RESPONSE! | findstr /M "success" >nul
-if %ERRORLEVEL% equ 0 (
-    echo PASS - Telemetry sent
     set /a TESTS_PASSED+=1
 ) else (
-    echo FAIL - Could not send telemetry
     set /a TESTS_FAILED+=1
 )
 

@@ -4,6 +4,7 @@
  */
 
 import { query, queryOne, run } from './db.js';
+import { broadcastTelemetry } from './websocket.js';
 
 export function setupApiRoutes(app) {
     // ============================================
@@ -78,6 +79,18 @@ export function setupApiRoutes(app) {
                 );
                 samplesInserted = 1;
             }
+
+            // Broadcast to WebSocket clients
+            broadcastTelemetry({
+                timestamp: finalTimestamp,
+                runId: runId || 'unknown',
+                stats,
+                memory,
+                money,
+                xp,
+                hackLevel,
+                samplesInserted
+            });
 
             res.json({ 
                 success: true, 

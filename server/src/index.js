@@ -10,7 +10,7 @@ import { createServer } from 'http';
 import dotenv from 'dotenv';
 import { initializeDatabase, closeDatabase } from './db.js';
 import { setupApiRoutes } from './api.js';
-import { setupWebSocket } from './websocket.js';
+import { setupWebSocket, broadcastTelemetry } from './websocket.js';
 
 dotenv.config();
 

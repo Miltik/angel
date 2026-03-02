@@ -22,39 +22,67 @@ export function setupApiRoutes(app) {
                 hackLevel
             } = req.body;
 
-            // Store aggregated telemetry
-            for (const module of Object.entries(modules || {})) {
-                const [moduleName, data] = module;
-                
+            const finalTimestamp = timestamp || Date.now();
+            let samplesInserted = 0;
+
+            // If modules exist, store each module
+            if (modules && Object.keys(modules).length > 0) {
+                for (const module of Object.entries(modules)) {
+                    const [moduleName, data] = module;
+                    
+                    await run(
+                        `INSERT INTO telemetry_samples 
+                        (timestamp, run_id, module_name, memory_used, money_rate, xp_rate, 
+                         hack_level, current_money, uptime, module_status, 
+                         execution_count, failure_count, avg_execution_time, raw_data)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [
+                            finalTimestamp,
+                            runId || 'unknown',
+                            moduleName,
+                            memory?.used || 0,
+                            stats?.moneyRate || 0,
+                            stats?.xpRate || 0,
+                            hackLevel || 0,
+                            money || '0',
+                            stats?.uptime || 0,
+                            data?.status || 'unknown',
+                            data?.executions || 0,
+                            data?.failures || 0,
+                            data?.avgTime || 0,
+                            JSON.stringify(data)
+                        ]
+                    );
+                    samplesInserted++;
+                }
+            } else {
+                // Store overall stats even without modules
                 await run(
                     `INSERT INTO telemetry_samples 
                     (timestamp, run_id, module_name, memory_used, money_rate, xp_rate, 
-                     hack_level, current_money, uptime, module_status, 
-                     execution_count, failure_count, avg_execution_time, raw_data)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                     hack_level, current_money, uptime, module_status, raw_data)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                     [
-                        timestamp || Date.now(),
+                        finalTimestamp,
                         runId || 'unknown',
-                        moduleName,
+                        'SYSTEM',
                         memory?.used || 0,
                         stats?.moneyRate || 0,
                         stats?.xpRate || 0,
                         hackLevel || 0,
                         money || '0',
                         stats?.uptime || 0,
-                        data?.status || 'unknown',
-                        data?.executions || 0,
-                        data?.failures || 0,
-                        data?.avgTime || 0,
-                        JSON.stringify(data)
+                        'active',
+                        JSON.stringify({ stats, memory, money, xp, hackLevel })
                     ]
                 );
+                samplesInserted = 1;
             }
 
             res.json({ 
                 success: true, 
                 message: 'Telemetry recorded',
-                samplesReceived: Object.keys(modules || {}).length
+                samplesReceived: samplesInserted
             });
         } catch (error) {
             console.error('Telemetry POST error:', error);

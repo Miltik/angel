@@ -16,7 +16,6 @@
 import { config, PORTS } from "/angel/config.js";
 import { formatMoney } from "/angel/utils.js";
 import { createWindow } from "/angel/modules/uiManager.js";
-import { initializeResetMonitor, getResetHistory, recordResetSnapshot } from "/angel/modules/resetMonitor.js";
 
 const PHASE_PORT = 7;
 const XP_FARM_SCRIPT = "/angel/modules/xpFarm.js";
@@ -68,8 +67,6 @@ export async function main(ns) {
  */
 async function updateDashboard(ns, ui) {
     await runCoordinatorFromDashboard(ns, ui);
-
-    initializeResetMonitor(ns);
 
     const now = Date.now();
     const player = ns.getPlayer();
@@ -158,7 +155,6 @@ async function updateDashboard(ns, ui) {
         // Augmentation Status
         try {
             displayAugmentationStatus(ui, ns, player);
-            displayResetMonitorStatus(ui, ns);
             ui.log("", "info");
         } catch (e) {
             // Singularity not available
@@ -1361,44 +1357,5 @@ async function triggerAugResetFromDashboard(ns, ui, queuedCount, queuedCost) {
         await ns.sleep(1000);
     }
 
-    try {
-        recordResetSnapshot(ns, {
-            trigger: "dashboard-coordinator",
-            restartScript,
-        });
-    } catch (e) {
-        // ignore monitor write errors
-    }
-
     ns.singularity.installAugmentations(restartScript);
-}
-
-function displayResetMonitorStatus(ui, ns) {
-    try {
-        const history = getResetHistory(ns);
-        const last = history.length > 0 ? history[history.length - 1] : null;
-        const now = Date.now();
-        const resetInfo = ns.getResetInfo();
-        const lastAugReset = Number(resetInfo?.lastAugReset || now);
-        const runDuration = formatDurationForReset(Math.max(0, now - lastAugReset));
-
-        if (!last) {
-            ui.log(`🔄 RESET MONITOR: Current run ${runDuration} | No reset history yet`, "info");
-            return;
-        }
-
-        ui.log(`🔄 RESET MONITOR: Run ${runDuration} | Last: ${last.durationLabel} | Cash ${formatMoney(last.finalCash)} | Hack ${last.finalHackLevel} | Augs ${last.purchasedAugCount}`, "info");
-    } catch (e) {
-        ui.log(`🔄 RESET MONITOR: Unavailable`, "info");
-    }
-}
-
-function formatDurationForReset(ms) {
-    const seconds = Math.floor(ms / 1000);
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    if (hours > 0) return `${hours}h ${minutes}m ${secs}s`;
-    if (minutes > 0) return `${minutes}m ${secs}s`;
-    return `${secs}s`;
 }

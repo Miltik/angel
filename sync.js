@@ -37,8 +37,6 @@ export async function main(ns) {
         // Modules
         "modules/uiManager.js",
         "modules/hacking.js",
-        "modules/maxprofit.js",
-        "modules/maxgang.js",
         "modules/servers.js",
         "modules/augments.js",
         "modules/programs.js",
@@ -55,12 +53,9 @@ export async function main(ns) {
         "modules/uiLauncher.js",
         "modules/contracts.js",
         "modules/loot.js",
-        "modules/find_contracts.js",
         "modules/formulas.js",
         "modules/corporation.js",
         "modules/backdoorRunner.js",
-        "modules/resetMonitor.js",
-        "modules/contracts-simple.js",
         
         // Workers
         "workers/hack.js",

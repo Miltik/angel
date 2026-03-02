@@ -40,6 +40,7 @@ export async function main(ns) {
         "README.md",
         "GETTING_STARTED.md",
         "ANGEL_LITE_README.md",
+        "WELCOME.txt",
         
         // Modules
         "modules/uiManager.js",

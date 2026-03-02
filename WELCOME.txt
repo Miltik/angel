@@ -1,0 +1,340 @@
+================================================================================
+                        ANGEL - IN-GAME QUICK START
+================================================================================
+
+WELCOME TO ANGEL!
+
+Angel is an automation system that runs continuously in the background,
+automating hacking, server management, augmentation purchases, and more.
+
+This file explains the basics. For full documentation, see README.md on GitHub
+or run: cat /angel/README.md
+
+
+WHAT ANGEL DOES
+---------------
+
+Right now, Angel is:
+✓ Scanning the network for servers
+✓ Rooting servers automatically
+✓ Deploying workers to generate money
+✓ Purchasing server upgrades
+✓ Managing your augmentations
+✓ Handling faction work (if SF4)
+✓ Tracking your progress
+
+And much more, all automatically while you play or AFK!
+
+
+MONITORING ANGEL
+----------------
+
+1. REAL-TIME DASHBOARD (Recommended)
+   
+   The dashboard window should appear automatically showing:
+   - Current money and hack level
+   - Income rates
+   - Module status
+   - Network statistics
+   
+   If it's not visible, open it manually:
+   run /angel/modules/dashboard.js
+
+
+2. TELEMETRY & ANALYTICS
+   
+   View performance data:
+   
+   run /angel/telemetry/ui.js           - Live metrics
+   run /angel/telemetry/report.js       - Full report
+   run /angel/telemetry/report.js --summary  - Quick summary
+
+
+3. LOGS
+   
+   See what Angel is doing:
+   tail /angel/angel.js
+
+
+CONTROLLING ANGEL
+-----------------
+
+START ANGEL:
+  run /angel/start.js
+
+STOP ANGEL:
+  kill /angel/angel.js
+
+CHECK IF RUNNING:
+  ps | grep angel
+
+RESTART ANGEL:
+  kill /angel/angel.js
+  run /angel/start.js
+
+
+CUSTOMIZING ANGEL
+-----------------
+
+Edit /angel/config.js to customize behavior:
+
+   enableDashboard: true/false      - Show monitoring window
+   enableTelemetry: true/false      - Track performance
+   enableHacking: true/false        - Auto-hack servers
+   enableServerMgmt: true/false     - Auto-buy servers
+   
+And many more options. See config.js for details.
+
+
+FEATURES BY GAME STAGE
+---------------------
+
+EARLY GAME (Hack Level 0-100):
+  ✓ Hacking operations
+  ✓ Program purchases (port openers)
+  ✓ Server rooting
+  ✓ Basic server purchasing
+
+MID GAME (Hack Level 100-500):
+  ✓ Faction work (if SF4)
+  ✓ Home RAM upgrades
+  ✓ Purchased server fleet
+  ✓ Money generation scaling
+
+LATE GAME (Hack Level 500+):
+  ✓ Augmentation purchases (if SF4)
+  ✓ Gang operations (when available)
+  ✓ Corporation automation (when available)
+  ✓ Stock market trading (when available)
+  ✓ Bladeburner automation (when available)
+
+RESET MANAGEMENT:
+  ✓ Auto-purchases queued augmentations
+  ✓ Auto-restarts with Angel-Lite if low RAM
+  ✓ Transitions to full Angel when ready
+  → Angel never dies!
+
+
+ANGEL-LITE (Low RAM Scenarios)
+------------------------------
+
+After a BitNode reset, you might have only 8GB home RAM.
+Angel automatically starts Angel-Lite instead, which:
+
+  1. Generates money efficiently
+  2. Purchases RAM upgrades automatically
+  3. Transitions to full Angel when ready (64GB+)
+
+Manual launch (if needed):
+  run /angel/angel-lite.js
+
+See ANGEL_LITE_README.md on GitHub or type:
+  cat /angel/ANGEL_LITE_README.md
+
+
+COMMON QUESTIONS
+----------------
+
+Q: Nothing is happening - is it working?
+A: Check dashboard. If RAM available, workers should be deployed.
+   Check logs: tail /angel/modules/hacking.js
+
+Q: How do I stop Angel temporarily?
+A: run kill /angel/angel.js
+   Then run /angel/start.js to restart
+
+Q: I'm dying in early game - can I manual hack?
+A: Yes! Angel runs in background. You can still hack manually.
+   Or change config.js enableHacking to false temporarily.
+
+Q: Where is my money going?
+A: Check dashboard for spending. Common uses:
+   - Server purchases
+   - Program purchases
+   - Augmentation purchases
+   - Server upgrades
+
+Q: Can I change what Angel does?
+A: Edit /angel/config.js - every option is documented.
+   Then restart: kill /angel/angel.js; run /angel/start.js
+
+Q: Can I run other scripts with Angel?
+A: Yes! Angel uses reserved RAM. Check config.js:
+   hacking.reservedHomeRam - RAM reserved for you (default 32GB)
+
+Q: Will Angel interfere with BitNode 8 or other special BNs?
+A: Angel adapts to available APIs. Disabled features re-enable
+   when APIs become available.
+
+
+TROUBLESHOOTING
+---------------
+
+PROBLEM: "Insufficient RAM" error
+SOLUTION: 
+  - Wait for server purchases to complete
+  - Reduce worker threads in config.js
+  - Use Angel-Lite if below 15GB RAM
+
+PROBLEM: Angel not starting
+SOLUTION:
+  - Check path correct: ls /angel/
+  - Try direct: run /angel/angel.js
+  - Check free RAM: free -h
+
+PROBLEM: Modules failing/stopping
+SOLUTION:
+  - Normal! Modules auto-restart if killed
+  - Check logs for specific errors
+  - Some modules require Source Files
+
+PROBLEM: Can't see dashboard
+SOLUTION:
+  - Enable in config.js: enableDashboard: true
+  - Manual launch: run /angel/modules/dashboard.js
+  - May not fit screen - try resizing
+
+PROBLEM: Angel reset unexpectedly
+SOLUTION:
+  - Check if augment installation triggered reset
+  - Angel auto-restarts after reset
+  - Wait 30 seconds for Angel-Lite or Angel to launch
+
+
+PERFORMANCE TIPS
+----------------
+
+1. Let telemetry run for 15-20 minutes, then:
+   run /angel/telemetry/report.js --optimize
+   
+   Follow the suggestions for better performance.
+
+2. Adjust config.js based on your playstyle:
+   - Busy playing? Reduce worker threads, increase memory reserve
+   - AFK farming? Enable all options, fewer reserved RAM
+
+3. Monitor dashboard regularly:
+   - Green indicators = working well
+   - Red indicators = needs attention
+
+
+FILES & STRUCTURE
+-----------------
+
+Angel is organized in /angel/:
+
+/angel/
+├── angel.js              - Main orchestrator
+├── angel-lite.js         - Bootstrap system
+├── config.js             - YOUR CUSTOMIZATION FILE
+├── start.js              - Launch script
+├── modules/              - Feature modules (auto-managed)
+├── workers/              - Helper scripts
+├── telemetry/            - Analytics system
+└── loot/                 - Coding contract answers
+
+Everything is managed by the orchestrator. You mainly just:
+- Edit config.js
+- Use dashboard to monitor
+- Run telemetry reports
+
+
+MORE HELP
+---------
+
+IN-GAME DOCUMENTATION:
+
+  cat /angel/README.md                    - Full overview
+  cat /angel/GETTING_STARTED.md           - Setup guide
+  cat /angel/ANGEL_LITE_README.md         - Bootstrap info
+  cat /angel/telemetry/README.md          - Analytics guide
+  cat /angel/telemetry/MANUAL_LAUNCH.txt  - Telemetry reference
+  cat /angel/config.js                    - Inline documentation
+
+LIVE MONITORING:
+
+  run /angel/modules/dashboard.js         - Real-time stats
+  run /angel/telemetry/ui.js              - Live metrics
+  tail /angel/angel.js                    - Logs
+
+
+QUICK COMMAND REFERENCE
+------------------------
+
+# Control
+run /angel/start.js                 - Start Angel
+kill /angel/angel.js                - Stop Angel
+ps | grep angel                     - Check if running
+
+# Monitor
+run /angel/modules/dashboard.js     - Dashboard
+run /angel/telemetry/ui.js          - Telemetry UI
+tail /angel/angel.js                - Watch logs
+
+# Reports
+run /angel/telemetry/report.js --summary        - Quick view
+run /angel/telemetry/report.js --optimize       - Suggestions
+run /angel/telemetry/report.js                  - Full report
+
+# Setup
+cat /angel/config.js                - View config
+# Edit in Bitburner editor, then: kill /angel/angel.js; run /angel/start.js
+
+# Bootstrap
+run /angel/angel-lite.js            - Manual bootstrap
+
+# Help
+cat /angel/GETTING_STARTED.md       - Setup help
+cat /angel/README.md                - Full docs
+
+
+IMPORTANT NOTES
+---------------
+
+✓ Angel runs continuously from BitNode start to augment install
+✓ Auto-restarts after reset via Angel-Lite
+✓ Can be stopped anytime: kill /angel/angel.js
+✓ Can be started anytime: run /angel/start.js
+✓ Main customization: /angel/config.js (well documented)
+✓ Designed to never interfere with manual play
+✓ Works with SF1 minimum; SF4 unlocks advanced features
+✓ Telemetry tracks your run for optimization insights
+✓ Dashboard shows real-time status
+
+
+GETTING STARTED SUMMARY
+-----------------------
+
+1. Angel is running (you're reading this, so it's installed!)
+
+2. Look for the dashboard window on screen
+   - Shows money, hack level, progress
+   - If not visible: run /angel/modules/dashboard.js
+
+3. Let it run for 10-15 minutes to collect data
+
+4. Check a report:
+   run /angel/telemetry/report.js --summary
+
+5. If you want to customize:
+   - Edit /angel/config.js
+   - Restart: kill /angel/angel.js; run /angel/start.js
+
+6. Check back in 1-2 hours
+   - You should have significant money generated
+   - Servers purchased
+   - Progress visible in dashboard
+
+
+YOU'RE ALL SET!
+
+Angel will handle the grinding while you focus on enjoying Bitburner.
+You can always check README.md or config.js comments if you want to
+dive deeper into configuration.
+
+Questions? Check the GETTING_STARTED.md or README.md files for detailed
+documentation!
+
+================================================================================
+                    Happy hacking! - Team Angel
+================================================================================

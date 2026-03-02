@@ -183,9 +183,20 @@ function refreshModuleMetrics(ns) {
     const run = loadCurrentRun();
     if (!run) return;
 
+    const beforeCount = Object.keys(run.modules || {}).length;
     captureModuleMetrics(ns, run);
+    const afterCount = Object.keys(run.modules || {}).length;
+    
     run.lastUpdate = Date.now();
     saveCurrentRun(run);
+    
+    // Diagnostic: log module metric ingestion
+    if (Math.random() < 0.05) { // Log 5% of refreshes
+        const hackingMod = run.modules['hacking'];
+        if (hackingMod && hackingMod.currentTarget) {
+            ns.print(`📥 Ingested: hacking -> ${hackingMod.currentTarget} @ ${hackingMod.targetMoneyPercent || 0}% money`);
+        }
+    }
 }
 
 // ============================================

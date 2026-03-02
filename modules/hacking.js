@@ -149,7 +149,7 @@ function reportTelemetry(ns) {
             .reduce((sum, s) => sum + s.threads, 0);
         
         // Report to telemetry
-        reportModuleMetrics(ns, 'hacking', {
+        const metricsPayload = {
             moneyRate: Math.max(0, moneyRate), // Only report positive rates
             xpRate: Math.max(0, xpRate),
             currentTarget: lastLoggedState.target || 'none',
@@ -164,7 +164,13 @@ function reportTelemetry(ns) {
             targetsPrepped: telemetryState.targetsPrepped,
             activeThreads: telemetryState.activeThreads,
             successfulHacks: telemetryState.successfulHacks
-        });
+        };
+        reportModuleMetrics(ns, 'hacking', metricsPayload);
+        
+        // Diagnostic: confirm reporting (comment out after testing)
+        if (Math.random() < 0.1) { // Log 10% of reports to avoid spam
+            ns.print(`📊 Reported: ${metricsPayload.currentTarget} @ ${metricsPayload.targetMoneyPercent}% money, ${metricsPayload.targetSecurityDelta} sec`);
+        }
         
         // Update state
         telemetryState.lastMoney = currentMoney;

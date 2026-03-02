@@ -354,16 +354,26 @@ function captureModuleMetrics(ns, run) {
     const reportedMetrics = {};
     
     // Collect metrics from telemetry port
+    let portReads = 0;
     while (ns.peek(TELEMETRY_PORT) !== 'NULL PORT DATA') {
         try {
             const portData = ns.readPort(TELEMETRY_PORT);
             const data = JSON.parse(portData);
             if (data && data.module && data.metrics) {
                 reportedMetrics[data.module] = data.metrics;
+                portReads++;
+                // Diagnostic: log port reads
+                if (data.module === 'hacknet') {
+                    ns.print(`📥 Read port 20: hacknet with ${data.metrics.nodes || 0} nodes, ${data.metrics.upgradesCompleted || 0} upgrades`);
+                }
             }
         } catch (e) {
+            ns.print(`❌ Port read error: ${e}`);
             break; // Invalid data, stop reading
         }
+    }
+    if (portReads > 0) {
+        ns.print(`📨 Port 20 reads: ${portReads} modules reported`);
     }
     
     // Map known modules to script names

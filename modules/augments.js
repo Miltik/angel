@@ -492,6 +492,8 @@ export function installAugmentations(ns) {
         const queued = ns.singularity.getOwnedAugmentations(false).length - 
                       ns.singularity.getOwnedAugmentations(true).length;
 
-        ns.singularity.installAugmentations("/angel/angel.js");
+        // Always restart with angel-lite.js for seamless post-reset continuity
+        // Angel-lite will auto-transition to full Angel if RAM >= 64GB
+        ns.singularity.installAugmentations("/angel/angel-lite.js");
     }
 }

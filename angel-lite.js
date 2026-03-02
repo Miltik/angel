@@ -5,6 +5,11 @@
  * Runs autonomously to generate money, purchase RAM upgrades, and automatically
  * transition to full ANGEL orchestrator when ready.
  * 
+ * AUTO-RESTART: Angel is configured to restart with this script after augmentation
+ * resets. If you already have 64GB+ RAM, it will immediately transition to full Angel.
+ * If you have less, it will bootstrap until ready, then transition. This ensures
+ * Angel never dies, regardless of post-reset RAM.
+ * 
  * Usage:
  *   run angel-lite.js
  * 

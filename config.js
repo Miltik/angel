@@ -295,7 +295,8 @@ export const config = {
             preventResetWhenDaemonReady: true,      // Hold reset once daemon run conditions are ready
             resetImmediatelyOnQueuedRedPill: true,  // If Red Pill is queued, reset now to install it
         },
-        resetScript: "/angel/start.js",
+        // Script to run after augmentation reset (angel-lite auto-transitions to full Angel when ready)
+        resetScript: "/angel/angel-lite.js",
         resetCountdownSec: 10,
         augmentPriority: [
             // Hacking augments

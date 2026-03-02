@@ -1462,7 +1462,8 @@ function getQueuedCostForReset(ns, queued) {
 
 async function triggerAugResetFromDashboard(ns, ui, queuedCount, queuedCost) {
     const countdown = config.augmentations?.resetCountdownSec ?? 10;
-    const restartScript = config.augmentations?.resetScript || "/angel/start.js";
+    // Always use angel-lite.js for auto-restart (it will auto-transition to full Angel if ready)
+    const restartScript = config.augmentations?.resetScript || "/angel/angel-lite.js";
     ui.log(`🔄 RESET TRIGGER: ${queuedCount} augs queued (cost: ${formatMoney(queuedCost)})`, "warn");
 
     for (let i = countdown; i > 0; i--) {

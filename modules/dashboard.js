@@ -202,37 +202,136 @@ async function updateDashboard(ns, ui) {
     try {
         // Display header
         ui.clear();
-        ui.log("═══════════════════════════════════════════════════════════════════", "info");
-        ui.log("                   🏆 ANGEL MODULE DASHBOARD 🏆                    ", "info");
-        ui.log("═══════════════════════════════════════════════════════════════════", "info");
+        ui.log("╔═══════════════════════════════════════════════════════════════════════════════╗", "info");
+        ui.log("║                     🏆 ANGEL COMPREHENSIVE DASHBOARD 🏆                       ║", "info");
+        ui.log("╚═══════════════════════════════════════════════════════════════════════════════╝", "info");
         ui.log("", "info");
         
-        // Overview Section
-        displayCompactOverview(ui, ns, player, currentPhase, phaseProgress, nextPhase, money, moneyRate, xpRate);
+        // Game Phase
+        displayPhaseStatus(ui, ns, player, currentPhase, phaseProgress, nextPhase);
         ui.log("", "info");
-        ui.log("─────────────────────── MODULE STATUS ────────────────────────", "info");
         
-        // All Modules in Compact Format
-        displayModuleStatus(ui, ns, player, "Hacking", () => getHackingStatusCompact(ui, player, ns));
-        displayModuleStatus(ui, ns, player, "XP Farm", () => getXPFarmStatusCompact(ui, ns));
-        displayModuleStatus(ui, ns, player, "Activity", () => getCurrentActivityCompact(ui, ns));
-        displayModuleStatus(ui, ns, player, "Factions", () => getFactionStatusCompact(ui, ns, player));
-        displayModuleStatus(ui, ns, player, "Augments", () => getAugmentStatusCompact(ui, ns, player));
-        displayModuleStatus(ui, ns, player, "Reset", () => getResetStatusCompact(ui, ns));
-        displayModuleStatus(ui, ns, player, "Sleeves", () => getSleevesStatusCompact(ui, ns));
-        displayModuleStatus(ui, ns, player, "Gang", () => getGangStatusCompact(ui, ns));
-        displayModuleStatus(ui, ns, player, "Bladeburner", () => getBladeburnerStatusCompact(ui, ns));
-        displayModuleStatus(ui, ns, player, "Stocks", () => getStockStatusCompact(ui, ns));
-        displayModuleStatus(ui, ns, player, "Hacknet", () => getHacknetStatusCompact(ui, ns));
-        displayModuleStatus(ui, ns, player, "Programs", () => getProgramsStatusCompact(ui, ns));
-        displayModuleStatus(ui, ns, player, "Contracts", () => getContractsStatusCompact(ui, ns));
-        displayModuleStatus(ui, ns, player, "Loot", () => getLootStatusCompact(ui, ns));
-        displayModuleStatus(ui, ns, player, "Formulas", () => getFormulasStatusCompact(ui, ns));
-        displayModuleStatus(ui, ns, player, "Network", () => getNetworkStatusCompact(ui, ns));
-        
+        // Money and XP Rates
+        displayEconomicsMetrics(ui, ns, money, player, moneyRate, xpRate);
         ui.log("", "info");
-        ui.log(`─────────────────────────────────────────────────────────────────`, "info");
-        ui.log(`🕐 ${new Date().toLocaleTimeString()} | Auto-refresh: 2s | Scroll for more ↓`, "info");
+        
+        // Hacking Status
+        displayHackingStatus(ui, player, ns);
+        displayXPFarmStatus(ui, ns);
+        ui.log("", "info");
+        
+        // Current Activity (what player is doing right now)
+        try {
+            displayCurrentActivity(ui, ns);
+            ui.log("", "info");
+        } catch (e) {
+            // Singularity not available
+        }
+        
+        // Faction Status
+        try {
+            displayFactionStatus(ui, ns, player);
+            ui.log("", "info");
+        } catch (e) {
+            // Singularity not available
+        }
+        
+        // Sleeves Status
+        try {
+            displaySleevesStatus(ui, ns);
+            ui.log("", "info");
+        } catch (e) {
+            // Sleeves not available
+        }
+        
+        // Gang Status (if available)
+        if (ns.gang.inGang && ns.gang.inGang()) {
+            try {
+                displayGangStatus(ui, ns);
+                ui.log("", "info");
+            } catch (e) {
+                // Gang not available
+            }
+        }
+        
+        // Bladeburner Status (if available)
+        try {
+            if (hasBladeburnerAccess(ns)) {
+                displayBladeburnerStatus(ui, ns);
+                ui.log("", "info");
+            }
+        } catch (e) {
+            // Bladeburner not available
+        }
+        
+        // Augmentation Status
+        try {
+            displayAugmentationStatus(ui, ns, player);
+            displayResetStatus(ui, ns);
+            ui.log("", "info");
+        } catch (e) {
+            // Singularity not available
+        }
+        
+        // Stock Status (if available)
+        if (hasStockAccess(ns)) {
+            try {
+                displayStockStatus(ui, ns);
+                ui.log("", "info");
+            } catch (e) {
+                // Stocks not available
+            }
+        }
+        
+        // Hacknet Status
+        try {
+            displayHacknetStatus(ui, ns);
+            ui.log("", "info");
+        } catch (e) {
+            // Hacknet error
+        }
+        
+        // Programs Status
+        try {
+            displayProgramsStatus(ui, ns);
+            ui.log("", "info");
+        } catch (e) {
+            // Singularity not available
+        }
+        
+        // Coding Contracts Status
+        try {
+            displayContractsStatus(ui, ns);
+            ui.log("", "info");
+        } catch (e) {
+            // Contracts not available
+        }
+
+        // Loot archive status
+        try {
+            displayLootStatus(ui, ns);
+            ui.log("", "info");
+        } catch (e) {
+            // Loot not available
+        }
+        
+        // Formulas.exe Farm Status
+        try {
+            displayFormulasStatus(ui, ns);
+            ui.log("", "info");
+        } catch (e) {
+            // Formulas not available
+        }
+        
+        // Network & Combat Stats
+        try {
+            displayNetworkStatus(ui, ns);
+            ui.log("", "info");
+        } catch (e) {
+            // Network error
+        }
+        
+        ui.log(`🕐 Last updated: ${new Date().toLocaleTimeString()} | Refresh: 2s`, "info");
     } catch (e) {
         ui.log(`Dashboard update error: ${e.message || e}`, "error");
         throw e;
@@ -1399,409 +1498,5 @@ function displayResetStatus(ui, ns) {
         ui.log(`🔄 RESET TRACKING: Run ${runDuration} | Last: ${last.durationLabel} → ${formatMoney(last.finalCash)} (Hack ${last.finalHackLevel}, ${last.purchasedAugCount} augs)`, "info");
     } catch (e) {
         ui.log(`🔄 RESET TRACKING: Unavailable`, "info");
-    }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// COMPACT MODULE STATUS FUNCTIONS
-// ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * Display compact overview with key metrics
- */
-function displayCompactOverview(ui, ns, player, currentPhase, progress, nextPhase, money, moneyRate, xpRate) {
-    const phaseNames = ["Bootstrap", "Early", "Mid-Game", "Gang", "Late"];
-    const currentName = phaseNames[currentPhase] || "Unknown";
-    const progressBar = "█".repeat(Math.floor(progress * 15)) + "░".repeat(15 - Math.floor(progress * 15));
-    
-    ui.log(`Phase: ${currentName} [${progressBar}] ${(progress * 100).toFixed(0)}%`, "info");
-    ui.log(`Money: ${formatMoney(money)} (${moneyRate >= 0 ? '+' : ''}${formatMoney(moneyRate)}/s) | XP Rate: ${formatMoney(xpRate)}/s`, "info");
-    ui.log(`Hack Lvl: ${player.skills.hacking} | Combat: STR ${player.skills.strength} DEX ${player.skills.dexterity} DEF ${player.skills.defense} AGI ${player.skills.agility}`, "info");
-}
-
-/**
- * Generic module status display
- */
-function displayModuleStatus(ui, ns, player, moduleName, statusFunc) {
-    try {
-        const status = statusFunc();
-        if (status) {
-            ui.log(`${moduleName.padEnd(12)} │ ${status}`, "info");
-        }
-    } catch (e) {
-        ui.log(`${moduleName.padEnd(12)} │ ✗ Unavailable`, "info");
-    }
-}
-
-/**
- * Compact status functions for each module
- */
-function getHackingStatusCompact(ui, player, ns) {
-    const serverCount = countRootedServers(ns);
-    const purchasedServers = countPurchasedServers(ns);
-    const totalRam = calculateTotalRam(ns);
-    const usedRam = calculateUsedRam(ns);
-    const ramPct = ((usedRam / totalRam) * 100).toFixed(0);
-    
-    return `✓ ${serverCount} rooted | ${purchasedServers} purchased | RAM: ${ramPct}% (${(usedRam/1024).toFixed(1)}/${(totalRam/1024).toFixed(1)}TB)`;
-}
-
-function getXPFarmStatusCompact(ui, ns) {
-    let mode = "inactive";
-    let totalThreads = 0;
-    let activeServers = 0;
-    let target = "-";
-    
-    try {
-        const rooted = scanAll(ns).filter(server => ns.hasRootAccess(server));
-        const homeProcesses = ns.ps("home");
-        const xpProcess = homeProcesses.find(p => isSameScriptPath(p.filename, XP_FARM_SCRIPT));
-        
-        if (xpProcess) {
-            mode = parseXPFarmMode(xpProcess.args || []);
-        }
-        
-        for (const server of rooted) {
-            const processes = ns.ps(server).filter(proc => isSameScriptPath(proc.filename, XP_FARM_WORKER));
-            for (const proc of processes) {
-                const args = proc.args || [];
-                if (args.some(arg => String(arg) === XP_FARM_MARKER)) {
-                    totalThreads += proc.threads || 0;
-                    activeServers++;
-                    if (target === "-" && args.length > 0) {
-                        target = String(args[0]);
-                    }
-                    break;
-                }
-            }
-        }
-        
-        if (totalThreads === 0) {
-            return "⏸ Inactive";
-        }
-        
-        return `✓ ${mode} | ${totalThreads} threads on ${activeServers} servers → ${target}`;
-    } catch (e) {
-        return `⏸ ${mode}`;
-    }
-}
-
-function getCurrentActivityCompact(ui, ns) {
-    try {
-        const work = ns.singularity.getCurrentWork();
-        if (!work) return "⏸ Idle";
-        
-        if (work.type === "FACTION") {
-            return `✓ ${work.factionName} (${work.factionWorkType})`;
-        } else if (work.type === "COMPANY") {
-            return `✓ ${work.companyName} (Company work)`;
-        } else if (work.type === "CRIME") {
-            return `✓ Crime: ${work.crimeType}`;
-        } else if (work.type === "CLASS") {
-            return `✓ Studying ${work.classType}`;
-        } else if (work.type === "CREATE_PROGRAM") {
-            const percent = work.cyclesWorked ? (work.cyclesWorked / 100).toFixed(0) : 0;
-            return `✓ Creating ${work.programName} (${percent}%)`;
-        } else if (work.type === "GRAFTING") {
-            return `✓ Grafting augmentation`;
-        }
-        return `✓ ${work.type}`;
-    } catch (e) {
-        return null;
-    }
-}
-
-function getFactionStatusCompact(ui, ns, player) {
-    try {
-        const factions = player.factions || [];
-        const invites = ns.singularity.checkFactionInvitations();
-        
-        if (factions.length === 0 && invites.length === 0) {
-            return "⏸ None joined | No invites";
-        }
-        
-        const factionInfo = factions.map(f => ({
-            name: f,
-            rep: ns.singularity.getFactionRep(f)
-        })).sort((a, b) => b.rep - a.rep);
-        
-        const topRep = factionInfo[0];
-        const inviteText = invites.length > 0 ? ` | ${invites.length} invites` : "";
-        
-        return `✓ ${factions.length} joined | Top: ${topRep.name} (${formatMoney(topRep.rep)})${inviteText}`;
-    } catch (e) {
-        return null;
-    }
-}
-
-function getAugmentStatusCompact(ui, ns, player) {
-    try {
-        const ownedCount = player.augmentations ? player.augmentations.length : 0;
-        const purchased = ns.singularity.getOwnedAugmentations(true);
-        const installed = ns.singularity.getOwnedAugmentations(false);
-        
-        let queuedCount = 0;
-        let queuedCost = 0;
-        
-        if (Array.isArray(purchased) && Array.isArray(installed)) {
-            queuedCount = Math.max(0, purchased.length - installed.length);
-            if (queuedCount > 0) {
-                const queued = purchased.filter(aug => !installed.includes(aug));
-                for (const aug of queued) {
-                    queuedCost += ns.singularity.getAugmentationPrice(aug);
-                }
-            }
-        }
-        
-        const resetThreshold = config.augmentations?.minQueuedAugs || 7;
-        const status = queuedCount >= resetThreshold ? "🔴 READY TO RESET" : "⏳ Building";
-        const queueInfo = queuedCount > 0 ? `${queuedCount} queued (${formatMoney(queuedCost)})` : "No queue";
-        
-        return `${status} | ${ownedCount} installed | ${queueInfo}`;
-    } catch (e) {
-        return null;
-    }
-}
-
-function getResetStatusCompact(ui, ns) {
-    try {
-        const history = loadResetHistory();
-        const state = loadResetState();
-        const resetInfo = ns.getResetInfo();
-        const lastAugReset = Number(resetInfo?.lastAugReset || Date.now());
-        const playtimeMs = Date.now() - lastAugReset;
-        
-        const historyCount = history.length;
-        const currentDuration = formatDuration(playtimeMs);
-        
-        if (historyCount === 0) {
-            return `✓ Current run: ${currentDuration} | No history`;
-        }
-        
-        const lastReset = history[history.length - 1];
-        return `✓ Current: ${currentDuration} | Last reset: ${lastReset.durationLabel} | ${historyCount} total resets`;
-    } catch (e) {
-        return "✓ Tracking active";
-    }
-}
-
-function getSleevesStatusCompact(ui, ns) {
-    try {
-        const numSleeves = ns.sleeve.getNumSleeves();
-        if (numSleeves === 0) return "✗ Not unlocked";
-        
-        let working = 0;
-        let recovering = 0;
-        let syncing = 0;
-        let avgSync = 0;
-        
-        for (let i = 0; i < numSleeves; i++) {
-            const task = ns.sleeve.getTask(i);
-            const stats = ns.sleeve.getSleeve(i);
-            avgSync += stats.sync;
-            
-            if (task) {
-                if (task.type === "RECOVERY") {
-                    recovering++;
-                } else if (task.type === "SYNCHRO") {
-                    syncing++;
-                } else {
-                    working++;
-                }
-            }
-        }
-        
-        avgSync = Math.floor(avgSync / numSleeves);
-        return `✓ ${numSleeves} sleeves | ${working} working, ${syncing} syncing, ${recovering} recovering | Avg sync: ${avgSync}%`;
-    } catch (e) {
-        return null;
-    }
-}
-
-function getGangStatusCompact(ui, ns) {
-    try {
-        if (!ns.gang.inGang()) return "✗ Not in gang";
-        
-        const info = ns.gang.getGangInformation();
-        const members = ns.gang.getMemberNames();
-        const territory = (info.territory * 100).toFixed(1);
-        
-        return `✓ ${info.faction} | ${members.length} members | ${territory}% territory | ${formatMoney(info.respect)} respect`;
-    } catch (e) {
-        return null;
-    }
-}
-
-function getBladeburnerStatusCompact(ui, ns) {
-    try {
-        if (!ns.bladeburner.inBladeburner()) return "✗ Not joined";
-        
-        const rank = ns.bladeburner.getRank();
-        const stamina = ns.bladeburner.getStamina();
-        const staminaPct = ((stamina[0] / stamina[1]) * 100).toFixed(0);
-        const currentAction = ns.bladeburner.getCurrentAction();
-        
-        let actionText = "Idle";
-        if (currentAction && currentAction.type !== "Idle") {
-            actionText = `${currentAction.name}`;
-        }
-        
-        return `✓ Rank ${rank.toFixed(0)} | ${actionText} | Stamina: ${staminaPct}%`;
-    } catch (e) {
-        return null;
-    }
-}
-
-function getStockStatusCompact(ui, ns) {
-    try {
-        if (!hasStockAccess(ns)) return "✗ No market access";
-        
-        const symbols = ns.stock.getSymbols();
-        if (!symbols || !Array.isArray(symbols)) return "⏸ No data";
-        
-        let totalInvested = 0;
-        let totalValue = 0;
-        let holdings = 0;
-        
-        for (const sym of symbols) {
-            const pos = ns.stock.getPosition(sym);
-            if (pos && pos[0] > 0) {
-                holdings++;
-                totalInvested += pos[0] * pos[1];
-                totalValue += pos[0] * ns.stock.getBidPrice(sym);
-            }
-        }
-        
-        if (holdings === 0) return "⏸ No holdings";
-        
-        const gain = totalValue - totalInvested;
-        const gainPct = ((gain / totalInvested) * 100).toFixed(1);
-        
-        return `✓ ${holdings} positions | ${formatMoney(totalValue)} value | ${gain >= 0 ? '+' : ''}${formatMoney(gain)} (${gainPct}%)`;
-    } catch (e) {
-        return null;
-    }
-}
-
-function getHacknetStatusCompact(ui, ns) {
-    try {
-        const numNodes = ns.hacknet.numNodes();
-        if (numNodes === 0) return "⏸ No nodes";
-        
-        let totalProduction = 0;
-        for (let i = 0; i < numNodes; i++) {
-            const node = ns.hacknet.getNodeStats(i);
-            totalProduction += node.production;
-        }
-        
-        return `✓ ${numNodes} nodes | ${formatMoney(totalProduction)}/s (${formatMoney(totalProduction * 3600)}/hr)`;
-    } catch (e) {
-        return "⏸ No nodes";
-    }
-}
-
-function getProgramsStatusCompact(ui, ns) {
-    try {
-        const programs = [
-            "BruteSSH.exe", "FTPCrack.exe", "relaySMTP.exe", "HTTPWorm.exe", "SQLInject.exe",
-            "DeepscanV1.exe", "DeepscanV2.exe", "ServerProfiler.exe", "AutoLink.exe", "Formulas.exe"
-        ];
-        
-        const owned = programs.filter(p => ns.fileExists(p, "home"));
-        const missing = programs.filter(p => !ns.fileExists(p, "home"));
-        
-        if (missing.length === 0) {
-            return `✓ All ${owned.length} programs owned`;
-        }
-        
-        const work = ns.singularity.getCurrentWork();
-        if (work && work.type === "CREATE_PROGRAM") {
-            const percent = work.cyclesWorked ? (work.cyclesWorked / 100).toFixed(0) : 0;
-            return `⏳ Creating ${work.programName} (${percent}%) | ${owned.length}/${programs.length} owned`;
-        }
-        
-        return `⏳ ${owned.length}/${programs.length} owned | Next: ${missing[0]}`;
-    } catch (e) {
-        return null;
-    }
-}
-
-function getContractsStatusCompact(ui, ns) {
-    try {
-        let contractCount = 0;
-        const servers = getAllServersForDashboard(ns);
-        
-        for (const server of servers) {
-            try {
-                const contracts = ns.ls(server, ".cct");
-                contractCount += contracts.length;
-            } catch (e) {
-                // Ignore
-            }
-        }
-        
-        if (contractCount === 0) {
-            return "✓ No pending contracts";
-        }
-        
-        return `⏳ ${contractCount} pending contracts on network`;
-    } catch (e) {
-        return "✓ No contracts";
-    }
-}
-
-function getLootStatusCompact(ui, ns) {
-    try {
-        const lootFiles = ns.ls("home", "/angel/loot/").filter(file => file !== "/angel/loot/loot.txt");
-        const seedExists = ns.fileExists("/angel/loot/loot.txt", "home");
-        
-        if (!seedExists && lootFiles.length === 0) {
-            return "⏸ Not initialized";
-        }
-        
-        return `✓ ${lootFiles.length} archived files${seedExists ? " | seed ready" : ""}`;
-    } catch (e) {
-        return "⏸ Not initialized";
-    }
-}
-
-function getFormulasStatusCompact(ui, ns) {
-    try {
-        const hasFormulas = ns.fileExists("Formulas.exe", "home");
-        
-        if (!hasFormulas) {
-            return "⏳ Not acquired | Searching...";
-        }
-        
-        return "✓ Active | Optimizations enabled";
-    } catch (e) {
-        return "⏸ Not available";
-    }
-}
-
-function getNetworkStatusCompact(ui, ns) {
-    try {
-        const player = ns.getPlayer();
-        const stats = [
-            { name: "Strength", val: player.skills.strength },
-            { name: "Defense", val: player.skills.defense },
-            { name: "Dexterity", val: player.skills.dexterity },
-            { name: "Agility", val: player.skills.agility }
-        ];
-        
-        const servers = getAllServersForDashboard(ns);
-        const backdoorCount = servers.filter(s => {
-            try {
-                return ns.getServer(s).backdoorInstalled;
-            } catch {
-                return false;
-            }
-        }).length;
-        
-        const avgCombat = Math.floor(stats.reduce((sum, s) => sum + s.val, 0) / stats.length);
-        
-        return `✓ ${servers.length} servers scanned | ${backdoorCount} backdoored | Avg combat: ${avgCombat}`;
-    } catch (e) {
-        return "✓ Network active";
     }
 }

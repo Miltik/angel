@@ -18,6 +18,101 @@ function StatusCard({ title, children, className = '' }) {
   )
 }
 
+// Module card component
+function ModuleCard({ module }) {
+  const failureRate = module.aggregate?.totalExecutions > 0 
+    ? (module.aggregate?.totalFailures / module.aggregate?.totalExecutions * 100)
+    : 0
+  
+  const statusColor = module.status === 'active' ? 'success' 
+    : module.status === 'idle' ? 'warning' 
+    : 'danger'
+  
+  const performanceColor = module.current?.moneyRate > 1000000 ? 'success'
+    : module.current?.moneyRate > 100000 ? 'info'
+    : 'warning'
+
+  return (
+    <div className="module-card">
+      <div className="module-header">
+        <div className="module-name">{module.name}</div>
+        <div className={`module-status status-${statusColor}`}>
+          {module.status.toUpperCase()}
+        </div>
+      </div>
+      
+      <div className="module-content">
+        <div className="module-grid">
+          <div className="module-stat">
+            <span className="label">Money/s</span>
+            <span className={`value money-${performanceColor}`}>
+              ${(module.current?.moneyRate || 0).toLocaleString(undefined, {maximumFractionDigits: 0})}
+            </span>
+          </div>
+          
+          <div className="module-stat">
+            <span className="label">XP/s</span>
+            <span className="value">
+              {(module.current?.xpRate || 0).toFixed(2)}
+            </span>
+          </div>
+          
+          <div className="module-stat">
+            <span className="label">Memory</span>
+            <span className="value">
+              {(module.current?.memory || 0).toLocaleString()} GB
+            </span>
+          </div>
+          
+          <div className="module-stat">
+            <span className="label">Success</span>
+            <span className={`value success-${module.successRate > 95 ? 'high' : 'low'}`}>
+              {module.successRate.toFixed(1)}%
+            </span>
+          </div>
+        </div>
+        
+        <div className="module-bars">
+          <div className="bar-item">
+            <span className="bar-label">Executions: {module.aggregate?.totalExecutions || 0}</span>
+            <div className="bar-container">
+              <div className="bar-fill" style={{
+                width: Math.min(100, (module.aggregate?.totalExecutions || 0) / 10) + '%'
+              }}></div>
+            </div>
+          </div>
+          
+          {failureRate > 0 && (
+            <div className="bar-item">
+              <span className="bar-label warning">Failures: {module.aggregate?.totalFailures || 0}</span>
+              <div className="bar-container danger">
+                <div className="bar-fill danger" style={{
+                  width: Math.min(100, failureRate) + '%'
+                }}></div>
+              </div>
+            </div>
+          )}
+          
+          <div className="bar-item">
+            <span className="bar-label">Avg Exec: {(module.aggregate?.avgExecTime || 0).toFixed(0)}ms</span>
+            <div className="bar-container">
+              <div className="bar-fill info" style={{
+                width: Math.min(100, (module.aggregate?.avgExecTime || 0) / 50) + '%'
+              }}></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div className="module-footer">
+        <span className="last-update">
+          {module.lastUpdate ? new Date(module.lastUpdate).toLocaleTimeString() : 'No data'}
+        </span>
+      </div>
+    </div>
+  )
+}
+
 // Stat item component
 function StatItem({ label, value, unit = '', color = null, icon = null }) {
   return (
@@ -55,27 +150,32 @@ function ProgressBar({ value, max, label, color = 'primary' }) {
 
 function App() {
   const [status, setStatus] = useState(null)
+  const [modules, setModules] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [lastUpdateTime, setLastUpdateTime] = useState(null)
 
   useEffect(() => {
-    fetchStatus(true)
+    fetchData(true)
 
     const intervalId = setInterval(() => {
-      fetchStatus(false)
+      fetchData(false)
     }, 5000)
 
     return () => clearInterval(intervalId)
   }, [])
 
-  const fetchStatus = async (showLoading = false) => {
+  const fetchData = async (showLoading = false) => {
     try {
       if (showLoading) {
         setLoading(true)
       }
-      const response = await axios.get(`${BACKEND_URL}/api/status`)
-      setStatus(response.data)
+      const [statusRes, modulesRes] = await Promise.all([
+        axios.get(`${BACKEND_URL}/api/status`),
+        axios.get(`${BACKEND_URL}/api/modules`)
+      ])
+      setStatus(statusRes.data)
+      setModules(modulesRes.data.modules || [])
       setLastUpdateTime(new Date())
       setError(null)
     } catch (err) {
@@ -95,7 +195,7 @@ function App() {
         parameters: {}
       })
       await new Promise(resolve => setTimeout(resolve, 500))
-      await fetchStatus(false)
+      await fetchData(false)
     } catch (err) {
       console.error('Command error:', err)
     }
@@ -304,7 +404,7 @@ function App() {
                 </button>
                 <button 
                   className="btn btn-secondary"
-                  onClick={() => fetchStatus(false)}
+                  onClick={() => fetchData(false)}
                   title="Manually refresh dashboard"
                 >
                   🔄 Refresh
@@ -319,6 +419,21 @@ function App() {
               </div>
             </StatusCard>
           </div>
+
+          {/* Modules Section - Scrollable */}
+          {modules && modules.length > 0 && (
+            <div className="modules-section">
+              <div className="modules-header">
+                <h2>📦 Active Modules ({modules.length})</h2>
+                <span className="module-hint">← Scroll to view all modules →</span>
+              </div>
+              <div className="modules-scroll">
+                {modules.map((module, idx) => (
+                  <ModuleCard key={idx} module={module} />
+                ))}
+              </div>
+            </div>
+          )}
         ) : (
           <div className="no-data">
             <span className="no-data-icon">📭</span>

@@ -194,6 +194,96 @@ export function setupApiRoutes(app) {
     });
 
     // ============================================
+    // MODULES ENDPOINT - Detailed per-module stats
+    // ============================================
+    app.get('/api/modules', async (req, res) => {
+        try {
+            // Get latest sample per module
+            const moduleStats = await query(`
+                SELECT 
+                    module_name,
+                    timestamp,
+                    memory_used,
+                    money_rate,
+                    xp_rate,
+                    hack_level,
+                    module_status,
+                    execution_count,
+                    failure_count,
+                    avg_execution_time,
+                    uptime
+                FROM telemetry_samples
+                WHERE module_name != 'SYSTEM'
+                AND (module_name, timestamp) IN (
+                    SELECT module_name, MAX(timestamp) 
+                    FROM telemetry_samples 
+                    WHERE module_name != 'SYSTEM'
+                    GROUP BY module_name
+                )
+                ORDER BY money_rate DESC
+            `);
+
+            // Get aggregate stats per module (last hour)
+            const aggregates = await query(`
+                SELECT 
+                    module_name,
+                    COUNT(*) as sample_count,
+                    AVG(memory_used) as avg_memory,
+                    AVG(money_rate) as avg_money_rate,
+                    AVG(xp_rate) as avg_xp_rate,
+                    MAX(execution_count) as total_executions,
+                    MAX(failure_count) as total_failures,
+                    AVG(avg_execution_time) as avg_exec_time
+                FROM telemetry_samples
+                WHERE module_name != 'SYSTEM'
+                AND timestamp > datetime('now', '-1 hour')
+                GROUP BY module_name
+                ORDER BY total_executions DESC
+            `);
+
+            // Enrich latest data with aggregate stats
+            const enriched = moduleStats.map(mod => {
+                const agg = aggregates.find(a => a.module_name === mod.module_name) || {};
+                return {
+                    name: mod.module_name,
+                    status: mod.module_status || 'inactive',
+                    current: {
+                        memory: mod.memory_used || 0,
+                        moneyRate: mod.money_rate || 0,
+                        xpRate: mod.xp_rate || 0,
+                        executions: mod.execution_count || 0,
+                        failures: mod.failure_count || 0,
+                        avgExecTime: mod.avg_execution_time || 0,
+                    },
+                    aggregate: {
+                        samples: agg.sample_count || 0,
+                        avgMemory: agg.avg_memory || 0,
+                        avgMoneyRate: agg.avg_money_rate || 0,
+                        avgXpRate: agg.avg_xp_rate || 0,
+                        totalExecutions: agg.total_executions || 0,
+                        totalFailures: agg.total_failures || 0,
+                        avgExecTime: agg.avg_exec_time || 0,
+                    },
+                    successRate: agg.total_executions > 0 
+                        ? ((agg.total_executions - agg.total_failures) / agg.total_executions * 100)
+                        : 100,
+                    lastUpdate: mod.timestamp
+                };
+            });
+
+            res.json({
+                success: true,
+                count: enriched.length,
+                modules: enriched,
+                timestamp: Date.now()
+            });
+        } catch (error) {
+            console.error('Modules GET error:', error);
+            res.status(500).json({ success: false, error: error.message });
+        }
+    });
+
+    // ============================================
     // COMMANDS ENDPOINT - Queue a command
     // ============================================
     app.post('/api/commands', async (req, res) => {

@@ -39,7 +39,6 @@ let lastState = {
     lastActivityChange: -10,
     pendingInvites: null,
     plannedActivity: null,
-    lastCrimeStarted: null,
     lastTraining: null,
     lastFaction: null,
     lastCompany: null
@@ -200,32 +199,7 @@ async function processActivity(ns, gamePhase, ui) {
             ui.log(`🔁 Switching from ${currentWork.type} to faction rep grind`, "info");
         } else {
             setActivityMode(ns, desiredModeFromWork(currentWork));
-            if (currentWork.type === "CRIME") {
-                const bestCrime = getBestCrime(ns);
-                const currentCrime = String(currentWork.crimeType || "");
-                const currentScore = getCrimeExpectedValue(ns, currentCrime);
-                const shouldUpgradeCrime =
-                    bestCrime.crime &&
-                    currentCrime &&
-                    bestCrime.crime !== currentCrime &&
-                    bestCrime.score > currentScore * 1.1;
-
-                if (shouldUpgradeCrime) {
-                    ns.singularity.stopAction();
-                    ui.log(`🔁 Upgrading crime: ${currentCrime} → ${bestCrime.crime}`, "info");
-                } else {
-                    const activityKey = `${currentWork.type}-${currentWork.crimeType || currentWork.factionName || currentWork.companyName || ""}`;
-                    const shouldLog = activityKey !== lastState.currentActivity || lastState.loopCount % 12 === 0;
-                    if (shouldLog) {
-                        const chance = ns.singularity.getCrimeChance(currentCrime);
-                        ui.log(`🔪 Crime in progress: ${currentCrime} (${(chance * 100).toFixed(1)}% success)`, "info");
-                        lastState.currentActivity = activityKey;
-                    }
-                    return;
-                }
-            }
-
-        // Display what's in progress (only on change or periodically)
+            // Display what's in progress (only on change or periodically)
             const activityKey = `${currentWork.type}-${currentWork.crimeType || currentWork.factionName || currentWork.companyName || ""}`;
             const shouldLog = activityKey !== lastState.currentActivity || lastState.loopCount % 12 === 0;
         
@@ -470,35 +444,19 @@ function hasAnyViableFactionWork(ns) {
 async function doCrime(ns, ui) {
     setActivityMode(ns, "crime");
 
-    // Preferred path: dedicated crime worker handles execution
-    if (ns.isRunning(CRIME_SCRIPT, "home")) {
-        if (lastState.loopCount % 24 === 0) {
-            ui.log(`🔪 Delegated to crime worker`, "info");
+    // Dedicated crime worker should always execute crimes now
+    if (!ns.isRunning(CRIME_SCRIPT, "home")) {
+        const pid = ns.exec(CRIME_SCRIPT, "home");
+        if (pid === 0 && lastState.loopCount % 12 === 0) {
+            ui.log(`⚠️ Crime mode requested but crime worker is not running`, "warn");
         }
-        await ns.sleep(5000);
-        return;
     }
 
-    // Fallback path: local crime execution if worker is unavailable
-    const crime = selectCrime(ns);
-    if (!crime) {
-        if (lastState.loopCount % 24 === 0) {
-            ui.log(`⚠️  No suitable crime found`, "warn");
-        }
-        await ns.sleep(5000);
-        return;
+    if (lastState.loopCount % 24 === 0) {
+        ui.log(`🔪 Delegated to crime worker`, "info");
     }
 
-    const duration = ns.singularity.commitCrime(crime, config.crime?.focus || "maximum");
-    const chance = ns.singularity.getCrimeChance(crime);
-    
-    // Only log if crime changed or periodically
-    if (crime !== lastState.lastCrimeStarted || lastState.loopCount - lastState.lastActivityChange > 12) {
-        ui.log(`🔪 Starting ${crime} | ${(duration / 1000).toFixed(1)}s | ${(chance * 100).toFixed(0)}% success`, "info");
-        lastState.lastCrimeStarted = crime;
-        lastState.lastActivityChange = lastState.loopCount;
-    }
-    await ns.sleep(duration + 500);
+    await ns.sleep(5000);
 }
 
 /**
@@ -748,13 +706,6 @@ async function doCompanyWork(ns, ui) {
     await ns.sleep(180000);
 }
 
-/**
- * Select best crime by expected value (money/time × success chance)
- */
-function selectCrime(ns) {
-    return getBestCrime(ns).crime || "Shoplift";
-}
-
 function getBestCrime(ns) {
     const crimes = [
         "Shoplift",
@@ -795,17 +746,6 @@ function getBestCrime(ns) {
     }
 
     return best || fallback || { crime: "Shoplift", score: 0, chance: 1 };
-}
-
-function getCrimeExpectedValue(ns, crime) {
-    try {
-        if (!crime) return 0;
-        const stats = ns.singularity.getCrimeStats(crime);
-        const chance = ns.singularity.getCrimeChance(crime);
-        return (stats.money * chance) / Math.max(1, stats.time);
-    } catch (e) {
-        return 0;
-    }
 }
 
 /**

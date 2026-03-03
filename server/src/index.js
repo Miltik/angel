@@ -16,7 +16,7 @@ import { setupWebSocket, broadcastTelemetry } from './websocket.js';
 dotenv.config();
 
 const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || 'localhost';
+const HOST = process.env.HOST || '0.0.0.0';  // Listen on all interfaces for WiFi access
 
 const app = express();
 const server = createServer(app);
@@ -45,7 +45,15 @@ function checkExistingServer() {
 // Middleware
 app.use(express.json());
 app.use(cors({
-    origin: ['http://localhost:5173', 'http://localhost:3000'],
+    origin: function(origin, callback) {
+        // Allow localhost, local network IPs, and undefined (same-origin requests)
+        const localNetworkRegex = /^http:\/\/(localhost|127\.0\.0\.1|192\.168\.|10\.|172\.)/;
+        if (!origin || origin === 'http://localhost:5173' || origin === 'http://localhost:3000' || localNetworkRegex.test(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('CORS blocked'));
+        }
+    },
     credentials: true
 }));
 

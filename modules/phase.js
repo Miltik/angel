@@ -1,5 +1,6 @@
 import { config } from "/angel/config.js";
 import { createWindow } from "/angel/modules/uiManager.js";
+import { PHASE_PORT, TELEMETRY_PORT } from "/angel/ports.js";
 
 /**
  * Phase Tracking Module
@@ -16,9 +17,6 @@ import { createWindow } from "/angel/modules/uiManager.js";
  * - Phase 3: Gang Phase (H:500-799, Money $500M+)
  * - Phase 4: Late Game (H:800+, Stats 70+)
  */
-
-const PHASE_PORT = 7;
-const TELEMETRY_PORT = 20;
 
 // State tracking
 let lastState = {

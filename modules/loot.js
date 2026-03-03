@@ -1,9 +1,9 @@
 import { createWindow } from "/angel/modules/uiManager.js";
 import { config } from "/angel/config.js";
 import { isScriptDeathError } from "/angel/utils.js";
+import { TELEMETRY_PORT } from "/angel/ports.js";
 
 const LOOT_VERSION = "2026-03-01-r4";
-const TELEMETRY_PORT = 20;
 
 const state = {
     loopCount: 0,

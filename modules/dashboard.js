@@ -16,8 +16,7 @@
 import { config } from "/angel/config.js";
 import { formatMoney } from "/angel/utils.js";
 import { createWindow } from "/angel/modules/uiManager.js";
-
-const PHASE_PORT = 7;
+import { PHASE_PORT } from "/angel/ports.js";
 const XP_FARM_SCRIPT = "/angel/modules/xpFarm.js";
 const XP_FARM_WORKER = "/angel/workers/weaken.js";
 const XP_FARM_MARKER = "__angel_xpfarm__";

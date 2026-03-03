@@ -7,7 +7,7 @@
 import { createWindow } from "/angel/modules/uiManager.js";
 import { formatMoney, isScriptDeathError } from "/angel/utils.js";
 
-const TELEMETRY_PORT = 20;
+import { TELEMETRY_PORT } from "/angel/ports.js";
 
 let lastState = {
     hasFormulas: false,

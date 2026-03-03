@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import axios from 'axios'
 import './App.css'
 
@@ -12,6 +12,7 @@ const getBackendUrl = () => {
   return 'http://localhost:3000'
 }
 const BACKEND_URL = getBackendUrl()
+const WS_URL = BACKEND_URL.replace('http', 'ws')
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
@@ -635,15 +636,98 @@ function App() {
   const [error, setError] = useState(null)
   const [lastUpdateTime, setLastUpdateTime] = useState(null)
   const [controlLoading, setControlLoading] = useState(null)
+  const [wsConnected, setWsConnected] = useState(false)
+  
+  const wsRef = useRef(null)
+  const reconnectTimerRef = useRef(null)
+  const fallbackIntervalRef = useRef(null)
 
+  // WebSocket setup with fallback to polling
   useEffect(() => {
+    // Initial data fetch
     fetchData(true)
 
-    const intervalId = setInterval(() => {
-      fetchData(false)
-    }, 2000) // Poll every 2 seconds for near real-time updates
+    // Set up WebSocket connection
+    const connectWebSocket = () => {
+      try {
+        const ws = new WebSocket(WS_URL)
+        wsRef.current = ws
 
-    return () => clearInterval(intervalId)
+        ws.onopen = () => {
+          console.log('✓ WebSocket connected')
+          setWsConnected(true)
+          setError(null)
+          
+          // Clear fallback polling when WebSocket connects
+          if (fallbackIntervalRef.current) {
+            clearInterval(fallbackIntervalRef.current)
+            fallbackIntervalRef.current = null
+          }
+        }
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data)
+            
+            // Real-time telemetry update
+            if (data.type === 'telemetry') {
+              // Refresh data on telemetry updates
+              fetchData(false)
+            }
+          } catch (err) {
+            console.error('WebSocket message error:', err)
+          }
+        }
+
+        ws.onerror = (error) => {
+          console.error('WebSocket error:', error)
+          setWsConnected(false)
+        }
+
+        ws.onclose = () => {
+          console.log('WebSocket disconnected, will reconnect...')
+          setWsConnected(false)
+          wsRef.current = null
+          
+          // Start fallback polling
+          if (!fallbackIntervalRef.current) {
+            fallbackIntervalRef.current = setInterval(() => {
+              fetchData(false)
+            }, 2000) // Poll every 2 seconds as fallback
+          }
+          
+          // Attempt reconnect after 5 seconds
+          reconnectTimerRef.current = setTimeout(() => {
+            connectWebSocket()
+          }, 5000)
+        }
+      } catch (err) {
+        console.error('WebSocket connection failed:', err)
+        setWsConnected(false)
+        
+        // Start fallback polling immediately
+        if (!fallbackIntervalRef.current) {
+          fallbackIntervalRef.current = setInterval(() => {
+            fetchData(false)
+          }, 2000)
+        }
+      }
+    }
+
+    connectWebSocket()
+
+    // Cleanup
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close()
+      }
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current)
+      }
+      if (fallbackIntervalRef.current) {
+        clearInterval(fallbackIntervalRef.current)
+      }
+    }
   }, [])
 
   const fetchData = async (showLoading = false) => {
@@ -849,9 +933,12 @@ function App() {
           <p className="subtitle">Real-time Game Monitoring & Control</p>
         </div>
         <div className="header-status">
+          <span className={`ws-status ${wsConnected ? 'connected' : 'disconnected'}`} title={wsConnected ? 'WebSocket connected (real-time updates)' : 'WebSocket disconnected (polling fallback)'}>
+            {wsConnected ? '🟢 Live' : '🟡 Polling'}
+          </span>
           {lastUpdateTime && (
             <span className="update-time">
-              Last update: {lastUpdateTime.toLocaleTimeString()}
+              {lastUpdateTime.toLocaleTimeString()}
             </span>
           )}
         </div>

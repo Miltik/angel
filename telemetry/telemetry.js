@@ -12,16 +12,7 @@
  * @param {NS} ns
  */
 
-// ============================================
-// TELEMETRY PORTS
-// ============================================
-
-const TELEMETRY_PORT = 20; // General port for modules to report metrics
-const HACKNET_TELEMETRY_PORT = 21; // Dedicated port for hacknet metrics
-
-// ============================================
-// STORAGE KEYS
-// ============================================
+import { TELEMETRY_PORT, HACKNET_TELEMETRY_PORT } from "/angel/ports.js";
 
 const STORAGE_KEYS = {
     CURRENT_RUN: 'angelTelemetryCurrentRun',

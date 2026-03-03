@@ -2,9 +2,7 @@ import { config } from "/angel/config.js";
 import { formatMoney, formatRam } from "/angel/utils.js";
 import { rootAll } from "/angel/scanner.js";
 import { createWindow } from "/angel/modules/uiManager.js";
-
-const PHASE_PORT = 7;
-const TELEMETRY_PORT = 20;
+import { PHASE_PORT, TELEMETRY_PORT } from "/angel/ports.js";
 
 // State tracking to avoid log spam
 let lastState = {

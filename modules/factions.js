@@ -1,7 +1,6 @@
 import { config } from "/angel/config.js";
 import { createWindow } from "/angel/modules/uiManager.js";
-
-const TELEMETRY_PORT = 20;
+import { TELEMETRY_PORT } from "/angel/ports.js";
 const CRIME_FACTIONS = [
     "Slum Snakes",
     "Tetrads",

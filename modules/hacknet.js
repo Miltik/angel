@@ -5,8 +5,7 @@
 import { config } from "/angel/config.js";
 import { createWindow } from "/angel/modules/uiManager.js";
 import { formatMoney, isScriptDeathError } from "/angel/utils.js";
-
-const HACKNET_TELEMETRY_PORT = 21;
+import { HACKNET_TELEMETRY_PORT } from "/angel/ports.js";
 
 // State tracking
 let lastState = {

@@ -226,6 +226,10 @@ const commands = [
         description: '❓ Show all available commands and usage'
     },
     {
+        name: 'angel-countdown',
+        description: '⏰ Time remaining until next augment reset'
+    },
+    {
         name: 'angel-uptime',
         description: '⏱️ Show session uptime and reset history'
     },
@@ -304,6 +308,9 @@ client.on('interactionCreate', async (interaction) => {
                 break;
             case 'angel-help':
                 await handleHelpCommand(interaction);
+                break;
+            case 'angel-countdown':
+                await handleCountdownCommand(interaction);
                 break;
             case 'angel-uptime':
                 await handleUptimeCommand(interaction);
@@ -1054,6 +1061,79 @@ function formatUptime(seconds) {
     if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
     
     return parts.join(' ');
+}
+
+// NEW: COUNTDOWN COMMAND - Time until next augment reset
+async function handleCountdownCommand(interaction) {
+    await interaction.deferReply();
+
+    try {
+        const response = await axios.get(`${BACKEND_URL}/api/modules`);
+        const modules = response.data.modules || [];
+        
+        const augmentModule = modules.find(m => m.name === 'augments');
+        
+        if (!augmentModule || !augmentModule.details) {
+            await interaction.editReply('⏰ No reset countdown available (augments module not active)');
+            return;
+        }
+
+        const details = augmentModule.details;
+        const resetCountdown = details.resetCountdown || details.untilReset || null;
+        const installed = details.installed || details.installedCount || 0;
+        const queued = details.queued || details.queuedCount || 0;
+        const ready = details.ready || details.readyToReset || false;
+
+        const embed = new EmbedBuilder()
+            .setTitle('⏰ Augment Reset Countdown')
+            .setTimestamp();
+
+        if (ready) {
+            embed.setColor(ANGEL_COLORS.success);
+            embed.setDescription('🎉 **READY TO RESET!**\n\nAll queued augments installed. Ready for next BitNode.');
+            embed.addFields(
+                { name: 'Installed', value: installed.toString(), inline: true },
+                { name: 'Status', value: '✅ Complete', inline: true }
+            );
+        } else if (queued > 0) {
+            embed.setColor(ANGEL_COLORS.accent);
+            
+            let countdownText = 'Calculating...';
+            if (resetCountdown) {
+                const seconds = Math.floor(resetCountdown / 1000);
+                if (seconds < 300) {
+                    countdownText = `⚡ **${formatDuration(seconds)}** (IMMINENT!)`;
+                } else if (seconds < 3600) {
+                    countdownText = `🕐 **${formatDuration(seconds)}**`;
+                } else {
+                    countdownText = `⏳ **${formatDuration(seconds)}**`;
+                }
+            }
+            
+            embed.setDescription(`Reset in progress...\n${countdownText}`);
+            embed.addFields(
+                { name: 'Installed', value: installed.toString(), inline: true },
+                { name: 'Queued', value: queued.toString(), inline: true },
+                { name: 'Progress', value: `${installed}/${installed + queued}`, inline: true }
+            );
+            
+            const progress = installed / (installed + queued);
+            const progressBar = `${'█'.repeat(Math.floor(progress * 10))}${'░'.repeat(10 - Math.floor(progress * 10))}`;
+            embed.addFields({ name: 'Installation Progress', value: progressBar, inline: false });
+        } else {
+            embed.setColor(ANGEL_COLORS.warning);
+            embed.setDescription('⏸️ No augments queued for installation yet.');
+            embed.addFields(
+                { name: 'Installed', value: installed.toString(), inline: true },
+                { name: 'Queued', value: '0', inline: true }
+            );
+        }
+
+        await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+        console.error('Countdown error:', error.message);
+        await interaction.editReply('❌ Failed to fetch reset countdown');
+    }
 }
 
 // NEW: ERROR ALERTS COMMAND

@@ -11,6 +11,7 @@ import { formatMoney, formatRam, formatNumber, log, deployFiles } from "/angel/u
 import { scanAll, rootAll, getRootedServers, getHackableServers } from "/angel/scanner.js";
 import { getTotalAvailableRam } from "/angel/modules/hacking.js";
 import { getServerStats } from "/angel/modules/servers.js";
+import { DAEMON_LOCK_PORT } from "/angel/ports.js";
 
 let backdoorState = {
     lastCheckTime: 0,
@@ -27,8 +28,6 @@ let startupState = {
     lastDeferredLog: {},
     lastModuleIssueLog: {},
 };
-
-const DAEMON_LOCK_PORT = 15;
 
 export async function main(ns) {
     ns.disableLog("ALL");

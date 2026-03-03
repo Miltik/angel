@@ -14,6 +14,7 @@
 import { config, PORTS } from "/angel/config.js";
 import { formatMoney } from "/angel/utils.js";
 import { createWindow } from "/angel/modules/uiManager.js";
+import { PHASE_PORT, TELEMETRY_PORT, DAEMON_LOCK_PORT } from "/angel/ports.js";
 import {
     syncFactionMembership,
     getMissingCrimeFactions,
@@ -22,12 +23,9 @@ import {
     getFactionOpportunitySummary,
 } from "/angel/modules/factions.js";
 
-const PHASE_PORT = 7;
-const TELEMETRY_PORT = 20;
 const ACTIVITY_OWNER = "activity";
 const ACTIVITY_LOCK_TTL = 180000;
 const CRIME_SCRIPT = "/angel/modules/crime.js";
-const DAEMON_LOCK_PORT = 15;
 
 // State tracking
 let lastState = {

@@ -84,11 +84,38 @@ html, body {
 }
 
 .header-status {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
   font-size: var(--font-size-sm);
+}
+
+.ws-status {
+  padding: 0.4rem 0.8rem;
+  border-radius: var(--border-radius);
+  font-weight: bold;
+  font-size: var(--font-size-sm);
+  transition: all 0.3s ease;
+}
+
+.ws-status.connected {
   color: var(--color-success);
   background: rgba(0, 255, 0, 0.1);
-  padding: 0.5rem 1rem;
   border: 1px solid var(--color-success);
+  box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+}
+
+.ws-status.disconnected {
+  color: var(--color-warning);
+  background: rgba(255, 170, 0, 0.1);
+  border: 1px solid var(--color-warning);
+}
+
+.update-time {
+  color: var(--color-text-dim);
+  padding: 0.4rem 0.8rem;
+  background: rgba(0, 238, 255, 0.05);
+  border: 1px solid var(--color-border);
   border-radius: var(--border-radius);
 }
 

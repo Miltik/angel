@@ -19,7 +19,7 @@ import { calcThreads, getAvailableRam } from "/angel/utils.js";
 import { createWindow } from "/angel/modules/uiManager.js";
 
 const XP_FARM_MARKER = "__angel_xpfarm__";
-const TELEMETRY_PORT = 20;
+import { TELEMETRY_PORT } from "/angel/ports.js";
 
 let lastState = {
     target: "",

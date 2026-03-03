@@ -1,10 +1,7 @@
 import { config } from "/angel/config.js";
 import { formatMoney } from "/angel/utils.js";
 import { createWindow } from "/angel/modules/uiManager.js";
-
-const PHASE_PORT = 7;
-const TELEMETRY_PORT = 20;
-const DAEMON_LOCK_PORT = 15;
+import { PHASE_PORT, TELEMETRY_PORT, DAEMON_LOCK_PORT } from "/angel/ports.js";
 
 // State tracking
 let lastState = {

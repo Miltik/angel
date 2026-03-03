@@ -743,6 +743,16 @@ function App() {
     : 0
   const resetSinceMs = Number(status?.overview?.reset?.timeSinceResetMs || status?.current?.uptime || 0)
   const resetAugs = status?.overview?.reset?.installedAtReset
+  const augmentsModule = modulesArray.find(m => String(m?.name || '').toLowerCase() === 'augments')
+  const augmentsDetails = augmentsModule?.details || {}
+  const resetCountdown = augmentsDetails?.resetCountdown || {}
+  const targetAugName = resetCountdown?.targetAugName || 'Unknown'
+  const targetAugFaction = resetCountdown?.targetAugFaction || 'Unknown'
+  const liveTargetCost = Number(resetCountdown?.targetAugCost || 0)
+  const liveRepNeeded = Number(resetCountdown?.repNeeded || 0)
+  const displayCost = status?.overview?.reset?.lastResetTotalAugCost || liveTargetCost || 0
+  const displayRep = status?.overview?.reset?.lastResetTotalAugRep || liveRepNeeded || 0
+  const hasLiveTarget = Boolean(resetCountdown && Object.keys(resetCountdown).length > 0)
   const modulesForControls = [...modulesArray].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
 
   return (
@@ -841,11 +851,18 @@ function App() {
                       <span className="reset-label">Augs:</span>
                       <span className="reset-run">{resetAugs === null || resetAugs === undefined ? '?' : Number(resetAugs)}</span>
                       <span className="reset-separator">|</span>
+                      {hasLiveTarget && (
+                        <>
+                          <span className="reset-label">Target:</span>
+                          <span className="reset-run">{targetAugName} ({targetAugFaction})</span>
+                          <span className="reset-separator">|</span>
+                        </>
+                      )}
                       <span className="reset-label">Cost:</span>
-                      <span className="reset-run">{status?.overview?.reset?.lastResetTotalAugCost ? formatCompactMoney(status.overview.reset.lastResetTotalAugCost) : '?'}</span>
+                      <span className="reset-run">{displayCost > 0 ? formatCompactMoney(displayCost) : '?'}</span>
                       <span className="reset-separator">|</span>
                       <span className="reset-label">Rep:</span>
-                      <span className="reset-run">{status?.overview?.reset?.lastResetTotalAugRep ? formatCompactMoney(status.overview.reset.lastResetTotalAugRep) : '?'}</span>
+                      <span className="reset-run">{displayRep > 0 ? formatCompactMoney(displayRep) : (hasLiveTarget ? 'READY' : '?')}</span>
                     </div>
                   </div>
                 </div>

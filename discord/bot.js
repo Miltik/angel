@@ -49,12 +49,35 @@ const normalizeStatusPayload = (payload = {}) => {
     };
 };
 
+const parseRawData = (row = {}) => {
+    try {
+        return row?.raw_data ? JSON.parse(row.raw_data) : {};
+    } catch {
+        return {};
+    }
+};
+
+const toNum = (value, fallback = 0) => {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+};
+
+const progressBar = (percent, width = 14) => {
+    const bounded = Math.max(0, Math.min(100, toNum(percent, 0)));
+    const filled = Math.round((bounded / 100) * width);
+    return `${'█'.repeat(filled)}${'░'.repeat(Math.max(0, width - filled))}`;
+};
+
 // Slash commands - comprehensive monitoring & control
 const commands = [
     // === MONITORING ===
     {
         name: 'angel-status',
         description: '📊 Get real-time ANGEL system status and metrics'
+    },
+    {
+        name: 'angel-status-full',
+        description: '🧾 Full terminal-style ANGEL dashboard snapshot'
     },
     {
         name: 'angel-modules',
@@ -144,6 +167,9 @@ client.on('interactionCreate', async (interaction) => {
             case 'angel-status':
                 await handleStatusCommand(interaction);
                 break;
+            case 'angel-status-full':
+                await handleStatusFullCommand(interaction);
+                break;
             case 'angel-modules':
                 await handleModulesCommand(interaction);
                 break;
@@ -197,11 +223,24 @@ async function handleStatusCommand(interaction) {
         const response = await axios.get(`${BACKEND_URL}/api/status`);
         const normalized = normalizeStatusPayload(response.data);
         const latestData = normalized.latestData;
+        const overview = response.data?.overview || {};
+        const phase = toNum(overview?.phase?.current, 0);
+        const phasePct = toNum(overview?.phase?.percent, 0);
+        const phaseLabel = ['Bootstrap', 'Early', 'Mid', 'Gang', 'Late'][Math.max(0, Math.min(4, phase))] || 'Unknown';
         const activeModules = normalized.activeModules || (Array.isArray(response.data?.modules) ? response.data.modules.length : 0);
+
+        const compact = [
+            `Phase: ${phaseLabel} [${progressBar(phasePct, 10)}] ${phasePct.toFixed(0)}%`,
+            `Money: $${formatNum(toNum(latestData?.current_money))} | Rate: $${formatNum(toNum(latestData?.money_rate))}/s`,
+            `XP: ${String(latestData?.hack_level ?? 'N/A')} | Rate: ${formatNum(toNum(latestData?.xp_rate))}/s`,
+            `RAM: ${(toNum(latestData?.memory_used) / 1024).toFixed(1)}GB | Modules: ${activeModules}`,
+            `Uptime: ${formatUptime(toNum(latestData?.uptime))} | Status: ${latestData?.module_status === 'running' ? 'Running' : 'Idle'}`,
+        ].join('\n');
 
         const embed = new EmbedBuilder()
             .setColor(0x00ff00)
-            .setTitle('📊 ANGEL Real-Time Status')
+            .setTitle('📊 ANGEL Status Snapshot')
+            .setDescription(`\`\`\`\n${compact}\n\`\`\``)
             .setTimestamp(new Date(normalized.lastUpdate))
             .addFields(
                 {
@@ -250,6 +289,74 @@ async function handleStatusCommand(interaction) {
     } catch (error) {
         console.error('Status error:', error.message);
         await interaction.editReply('❌ Failed to fetch status');
+    }
+}
+
+async function handleStatusFullCommand(interaction) {
+    await interaction.deferReply();
+
+    try {
+        const [statusResponse, modulesResponse] = await Promise.all([
+            axios.get(`${BACKEND_URL}/api/status`),
+            axios.get(`${BACKEND_URL}/api/modules`),
+        ]);
+
+        const statusPayload = statusResponse.data || {};
+        const normalized = normalizeStatusPayload(statusPayload);
+        const latestData = normalized.latestData;
+        const raw = parseRawData(latestData);
+        const overview = statusPayload.overview || {};
+
+        const modules = Array.isArray(modulesResponse?.data?.modules) ? modulesResponse.data.modules : [];
+        const topIncome = modules
+            .filter(m => toNum(m.money_rate) > 0)
+            .sort((a, b) => toNum(b.money_rate) - toNum(a.money_rate))
+            .slice(0, 3)
+            .map(m => `${m.module_name}:${formatNum(toNum(m.money_rate))}/s`)
+            .join(' | ') || 'None';
+
+        const phase = toNum(overview?.phase?.current, 0);
+        const phasePct = toNum(overview?.phase?.percent, 0);
+        const phaseLabel = ['Bootstrap', 'Early Scaling', 'Mid-Game', 'Gang', 'Late'][Math.max(0, Math.min(4, phase))] || 'Unknown';
+
+        const currentMoney = toNum(latestData?.current_money);
+        const moneyRate = toNum(latestData?.money_rate);
+        const xpRate = toNum(latestData?.xp_rate);
+        const hackLevel = String(latestData?.hack_level ?? 'N/A');
+        const memoryUsedGb = (toNum(latestData?.memory_used) / 1024).toFixed(1);
+        const totalSamples = normalized.totalSamples;
+        const activeModules = modules.length;
+        const targetsPrepped = toNum(raw?.targetsPrepped, 0);
+        const currentTarget = raw?.currentTarget || 'n/a';
+        const prepState = raw?.prepState || 'n/a';
+        const threadCount = toNum(raw?.activeThreads, 0);
+        const successfulHacks = toNum(raw?.successfulHacks, 0);
+
+        const dashboardLines = [
+            `ANGEL COMPREHENSIVE DASHBOARD`,
+            `────────────────────────────────────────`,
+            `PHASE: ${phaseLabel} [${progressBar(phasePct, 14)}] ${phasePct.toFixed(1)}%`,
+            `MONEY: $${formatNum(currentMoney)} | Rate: $${formatNum(moneyRate)}/s | Daily: $${formatNum(moneyRate * 86400)}`,
+            `INCOME SOURCES: ${topIncome}`,
+            `XP: Level ${hackLevel} | Rate: ${formatNum(xpRate)}/s`,
+            `RAM: ${memoryUsedGb}GB used | Active modules: ${activeModules}`,
+            `HACKING: target=${currentTarget} | prep=${prepState} | prepped=${targetsPrepped}`,
+            `THREADS: ${formatNum(threadCount, 0)} | successful hacks: ${formatNum(successfulHacks, 0)}`,
+            `UPTIME: ${formatUptime(toNum(latestData?.uptime))}`,
+            `SAMPLES: ${totalSamples} | Last module: ${latestData?.module_name || 'n/a'}`,
+        ];
+
+        const embed = new EmbedBuilder()
+            .setColor(0x4da3ff)
+            .setTitle('🧾 ANGEL Status (Full)')
+            .setDescription(`\`\`\`\n${dashboardLines.join('\n')}\n\`\`\``)
+            .setFooter({ text: `Last update: ${new Date(normalized.lastUpdate).toLocaleString()}` })
+            .setTimestamp(new Date(normalized.lastUpdate));
+
+        await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+        console.error('Status full error:', error.message);
+        await interaction.editReply('❌ Failed to fetch full status dashboard');
     }
 }
 
@@ -533,7 +640,7 @@ async function handleHelpCommand(interaction) {
         .addFields(
             {
                 name: '📊 Monitoring Commands',
-                value: '`/angel-status` - Real-time system metrics\n`/angel-modules` - Module status\n`/angel-income` - Income breakdown\n`/angel-performance` - Efficiency metrics\n`/angel-health` - System health check',
+                value: '`/angel-status` - Compact status snapshot\n`/angel-status-full` - Full dashboard view\n`/angel-modules` - Module status\n`/angel-income` - Income breakdown\n`/angel-performance` - Efficiency metrics\n`/angel-health` - System health check',
                 inline: false
             },
             {
@@ -663,10 +770,19 @@ async function registerSlashCommands() {
         const rest = new REST({ version: '10' }).setToken(TOKEN);
 
         console.log('Registering slash commands...');
-        await rest.put(
-            Routes.applicationCommands(client.user.id),
-            { body: commands }
-        );
+        if (GUILD_ID) {
+            await rest.put(
+                Routes.applicationGuildCommands(client.user.id, GUILD_ID),
+                { body: commands }
+            );
+            console.log(`✓ Registered as guild commands for ${GUILD_ID}`);
+        } else {
+            await rest.put(
+                Routes.applicationCommands(client.user.id),
+                { body: commands }
+            );
+            console.log('✓ Registered as global commands (may take time to appear)');
+        }
 
         console.log(`✓ ${commands.length} slash commands registered\n`);
     } catch (error) {

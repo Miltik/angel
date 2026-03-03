@@ -219,17 +219,51 @@ async function solveAllContracts(ns, ui) {
                 }
                 
                 if (solution !== null && solution !== undefined) {
+                    const startTime = performance.now();
                     const reward = ns.codingcontract.attempt(solution, contractName, server);
+                    const executionTime = performance.now() - startTime;
+                    
                     if (reward) {
                         ui.log(`✓ ${contractType} on ${server}: ${reward}`, "success");
                         lastState.contractsSolved++;
                         const moneyMatch = reward.match(/\$([\d,]+)/);
+                        const rewardAmount = moneyMatch ? parseInt(moneyMatch[1].replace(/,/g, "")) : 0;
                         if (moneyMatch) {
-                            lastState.totalRewards += parseInt(moneyMatch[1].replace(/,/g, ""));
+                            lastState.totalRewards += rewardAmount;
                         }
                         count++;
+                        
+                        // Report solver metric to port 20
+                        try {
+                            ns.writePort(TELEMETRY_PORT, JSON.stringify({
+                                type: 'solver_metric',
+                                contractType,
+                                solverName: contractType.toLowerCase().replace(/\s+/g, '_'),
+                                success: 1,
+                                executionTimeMs: executionTime,
+                                rewardAmount,
+                                timestamp: Date.now()
+                            }));
+                        } catch (e) {
+                            // Port write failed, continue
+                        }
                     } else {
                         ui.log(`❌ Failed: ${contractType} on ${server}`, "warn");
+                        
+                        // Report failed solver metric
+                        try {
+                            ns.writePort(TELEMETRY_PORT, JSON.stringify({
+                                type: 'solver_metric',
+                                contractType,
+                                solverName: contractType.toLowerCase().replace(/\s+/g, '_'),
+                                success: 0,
+                                executionTimeMs: executionTime,
+                                rewardAmount: 0,
+                                timestamp: Date.now()
+                            }));
+                        } catch (e) {
+                            // Port write failed, continue
+                        }
                     }
                 }
             }

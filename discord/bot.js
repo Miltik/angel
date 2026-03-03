@@ -152,6 +152,74 @@ const commands = [
         description: '🔓 Manually unlock daemon advancement (progression will begin if ready)'
     },
     
+    // === NEW: MONITORING & ALERTS ===
+    {
+        name: 'angel-errors',
+        description: '⚠️ Show recent critical errors and alerts'
+    },
+    {
+        name: 'angel-heatmap',
+        description: '🔥 Resource usage heatmap by module'
+    },
+    {
+        name: 'angel-solvers',
+        description: '🧩 Contract solver performance metrics'
+    },
+    {
+        name: 'angel-pause-module',
+        description: '⏸️ Pause a specific module',
+        options: [
+            {
+                name: 'module',
+                description: 'Module to pause',
+                type: 3,
+                required: true,
+                choices: [
+                    { name: 'activities', value: 'activities' },
+                    { name: 'augments', value: 'augments' },
+                    { name: 'hacking', value: 'hacking' },
+                    { name: 'stocks', value: 'stocks' },
+                    { name: 'gang', value: 'gang' },
+                    { name: 'corporation', value: 'corporation' },
+                    { name: 'contracts', value: 'contracts' },
+                    { name: 'programs', value: 'programs' },
+                    { name: 'servers', value: 'servers' },
+                    { name: 'bladeburner', value: 'bladeburner' }
+                ]
+            },
+            {
+                name: 'reason',
+                description: 'Reason for pause (optional)',
+                type: 3,
+                required: false
+            }
+        ]
+    },
+    {
+        name: 'angel-resume-module',
+        description: '▶️ Resume a paused module',
+        options: [
+            {
+                name: 'module',
+                description: 'Module to resume',
+                type: 3,
+                required: true,
+                choices: [
+                    { name: 'activities', value: 'activities' },
+                    { name: 'augments', value: 'augments' },
+                    { name: 'hacking', value: 'hacking' },
+                    { name: 'stocks', value: 'stocks' },
+                    { name: 'gang', value: 'gang' },
+                    { name: 'corporation', value: 'corporation' },
+                    { name: 'contracts', value: 'contracts' },
+                    { name: 'programs', value: 'programs' },
+                    { name: 'servers', value: 'servers' },
+                    { name: 'bladeburner', value: 'bladeburner' }
+                ]
+            }
+        ]
+    },
+    
     // === INFORMATION ===
     {
         name: 'angel-help',
@@ -218,6 +286,21 @@ client.on('interactionCreate', async (interaction) => {
                 break;
             case 'angel-daemon-unlock':
                 await handleDaemonUnlockCommand(interaction);
+                break;
+            case 'angel-errors':
+                await handleErrorsCommand(interaction);
+                break;
+            case 'angel-heatmap':
+                await handleHeatmapCommand(interaction);
+                break;
+            case 'angel-solvers':
+                await handleSolversCommand(interaction);
+                break;
+            case 'angel-pause-module':
+                await handlePauseModuleCommand(interaction);
+                break;
+            case 'angel-resume-module':
+                await handleResumeModuleCommand(interaction);
                 break;
             case 'angel-help':
                 await handleHelpCommand(interaction);
@@ -973,7 +1056,168 @@ function formatUptime(seconds) {
     return parts.join(' ');
 }
 
-// Register slash commands with Discord
+// NEW: ERROR ALERTS COMMAND
+async function handleErrorsCommand(interaction) {
+    await interaction.deferReply();
+
+    try {
+        // Fetch recent errors from backend
+        const response = await axios.get(`${BACKEND_URL}/api/errors?mins=60`);
+        const errors = response.data.errors || [];
+
+        if (errors.length === 0) {
+            const embed = new EmbedBuilder()
+                .setColor(ANGEL_COLORS.success)
+                .setTitle('✅ No Critical Errors')
+                .setDescription('System running smoothly!')
+                .setTimestamp();
+            await interaction.editReply({ embeds: [embed] });
+            return;
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor(ANGEL_COLORS.danger)
+            .setTitle(`⚠️ Recent Errors (${errors.length})`)
+            .setTimestamp();
+
+        errors.slice(0, 10).forEach((err, idx) => {
+            const timeAgo = Math.round((Date.now() - err.timestamp) / 1000);
+            embed.addFields({
+                name: `${idx + 1}. ${err.module_name || 'SYSTEM'} - ${err.error_type}`,
+                value: `\`${err.error_message.substring(0, 80)}\`\n⏱️ ${timeAgo}s ago | 🔴 ${err.severity}`,
+                inline: false
+            });
+        });
+
+        await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+        console.error('Errors command:', error.message);
+        await interaction.editReply('❌ Failed to fetch error data');
+    }
+}
+
+// NEW: RESOURCE HEATMAP COMMAND
+async function handleHeatmapCommand(interaction) {
+    await interaction.deferReply();
+
+    try {
+        const response = await axios.get(`${BACKEND_URL}/api/modules`);
+        const modules = response.data.modules || [];
+
+        // Sort by memory usage
+        const sorted = modules.slice(0, 15).sort((a, b) => 
+            (b.details?.memory || 0) - (a.details?.memory || 0)
+        );
+
+        const embed = new EmbedBuilder()
+            .setColor(ANGEL_COLORS.warning)
+            .setTitle('🔥 Resource Heatmap')
+            .setDescription('Top modules by memory usage and status')
+            .setTimestamp();
+
+        sorted.forEach(mod => {
+            const mem = mod.details?.memory || 0;
+            const memBar = progressBar(Math.min(100, (mem / 200) * 100));
+            const status = mod.isActive ? '🟢 Active' : mod.status === 'running' ? '🟡 Running' : '⚫ Idle';
+            embed.addFields({
+                name: `${mod.name.toUpperCase()}`,
+                value: `${memBar} ${formatNum(mem)}MB | ${status}`,
+                inline: false
+            });
+        });
+
+        await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+        console.error('Heatmap error:', error.message);
+        await interaction.editReply('❌ Failed to fetch heatmap data');
+    }
+}
+
+// NEW: SOLVER METRICS COMMAND
+async function handleSolversCommand(interaction) {
+    await interaction.deferReply();
+
+    try {
+        const response = await axios.get(`${BACKEND_URL}/api/solver-metrics`);
+        const metrics = response.data.metrics || [];
+
+        if (metrics.length === 0) {
+            await interaction.editReply('📊 No solver metrics yet');
+            return;
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor(ANGEL_COLORS.primary)
+            .setTitle('🧩 Contract Solver Performance')
+            .setTimestamp();
+
+        metrics.slice(0, 10).forEach(m => {
+            embed.addFields({
+                name: `${m.contract_type}`,
+                value: `✅ ${m.successful}/${m.total_attempts} (${m.success_rate}%) | 💰 $${formatNum(m.total_rewards)} | ⏱️ ${formatNum(m.avg_time_ms)}ms`,
+                inline: false
+            });
+        });
+
+        await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+        console.error('Solvers error:', error.message);
+        await interaction.editReply('❌ Failed to fetch solver metrics');
+    }
+}
+
+// NEW: PAUSE MODULE COMMAND
+async function handlePauseModuleCommand(interaction) {
+    await interaction.deferReply();
+
+    try {
+        const moduleName = interaction.options.getString('module');
+        const reason = interaction.options.getString('reason') || 'Manual pause via Discord';
+
+        const response = await axios.post(`${BACKEND_URL}/api/modules/pause`, {
+            moduleName,
+            reason,
+            pausedBy: interaction.user.username
+        });
+
+        const embed = new EmbedBuilder()
+            .setColor(ANGEL_COLORS.warning)
+            .setTitle(`⏸️ ${moduleName} Paused`)
+            .setDescription(`Reason: ${reason}`)
+            .addFields({ name: 'Paused By', value: interaction.user.username, inline: true })
+            .setTimestamp();
+
+        await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+        console.error('Pause module error:', error.message);
+        await interaction.editReply('❌ Failed to pause module');
+    }
+}
+
+// NEW: RESUME MODULE COMMAND
+async function handleResumeModuleCommand(interaction) {
+    await interaction.deferReply();
+
+    try {
+        const moduleName = interaction.options.getString('module');
+
+        const response = await axios.post(`${BACKEND_URL}/api/modules/resume`, {
+            moduleName,
+            resumedBy: interaction.user.username
+        });
+
+        const embed = new EmbedBuilder()
+            .setColor(ANGEL_COLORS.success)
+            .setTitle(`▶️ ${moduleName} Resumed`)
+            .addFields({ name: 'Resumed By', value: interaction.user.username, inline: true })
+            .setTimestamp();
+
+        await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+        console.error('Resume module error:', error.message);
+        await interaction.editReply('❌ Failed to resume module');
+    }
+}
 async function registerSlashCommands() {
     try {
         const rest = new REST({ version: '10' }).setToken(TOKEN);

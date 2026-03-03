@@ -148,138 +148,106 @@ export function setupApiRoutes(app) {
 
     // ============================================
     // STATUS ENDPOINT - Get current game state with dashboard data
+    // OPTIMIZED: Reduced from 5+ queries to 2 main queries
     // ============================================
     app.get('/api/status', async (req, res) => {
-        // Declare these outside try block to ensure scope
         let memoryTotal = 0;
         let targetAngelLiteRam = 64;
         
         try {
             const oneHourAgo = Date.now() - (60 * 60 * 1000);
 
-            // Get latest single sample
-            const latest = await queryOne(
-                `SELECT * FROM telemetry_samples 
-                 ORDER BY timestamp DESC LIMIT 1`
-            );
-
-            // Get recent samples (last 10) for trends
+            // OPTIMIZED Query 1: Get all recent samples with module breakdown in one go
             const recentSamples = await query(
                 `SELECT * FROM telemetry_samples 
-                 ORDER BY timestamp DESC LIMIT 10`
+                 ORDER BY timestamp DESC LIMIT 100`
             );
 
-            // Get module breakdown
-            const moduleStats = await query(
-                `SELECT module_name, COUNT(*) as sample_count,
-                        AVG(memory_used) as avg_memory,
-                        AVG(money_rate) as avg_money_rate,
-                        AVG(xp_rate) as avg_xp_rate,
-                        MAX(execution_count) as total_executions,
-                        MAX(failure_count) as total_failures,
-                        AVG(module_status LIKE '%active%') as active_percent
-                 FROM telemetry_samples 
-                 WHERE timestamp > ?
-                 GROUP BY module_name
-                 ORDER BY sample_count DESC`,
-                [oneHourAgo]
+            // OPTIMIZED Query 2: Get module-specific latest data (phase, augments, activities)
+            const latestByModule = await query(
+                `SELECT module_name, raw_data FROM telemetry_samples
+                 WHERE module_name IN ('phase', 'augments', 'activities')
+                 AND timestamp = (
+                    SELECT MAX(timestamp) FROM telemetry_samples ts2
+                    WHERE ts2.module_name = telemetry_samples.module_name
+                 )`
             );
 
-            // Get pending commands
-            const pendingCommands = await query(
+            // Parse single requests into a lookup map
+            const moduleDataMap = {};
+            latestByModule.forEach(row => {
+                try {
+                    moduleDataMap[row.module_name] = row.raw_data ? JSON.parse(row.raw_data) : {};
+                } catch (e) {
+                    moduleDataMap[row.module_name] = {};
+                }
+            });
+
+            const latest = recentSamples[0] || {};
+            const latestRaw = latest?.raw_data ? (() => { try { return JSON.parse(latest.raw_data); } catch { return {}; } })() : {};
+            
+            // Build module stats from recentSamples (no extra query needed)
+            const moduleStats = {};
+            recentSamples.forEach(sample => {
+                if (!moduleStats[sample.module_name]) {
+                    moduleStats[sample.module_name] = {
+                        sample_count: 0,
+                        avg_memory: 0,
+                        avg_money_rate: 0,
+                        avg_xp_rate: 0,
+                        total_executions: 0,
+                        total_failures: 0
+                    };
+                }
+                moduleStats[sample.module_name].sample_count++;
+                moduleStats[sample.module_name].avg_memory += (sample.memory_used || 0);
+                moduleStats[sample.module_name].avg_money_rate += (sample.money_rate || 0);
+                moduleStats[sample.module_name].avg_xp_rate += (sample.xp_rate || 0);
+                moduleStats[sample.module_name].total_executions = Math.max(
+                    moduleStats[sample.module_name].total_executions,
+                    sample.execution_count || 0
+                );
+                moduleStats[sample.module_name].total_failures = Math.max(
+                    moduleStats[sample.module_name].total_failures,
+                    sample.failure_count || 0
+                );
+            });
+            
+            // Average the sums
+            Object.values(moduleStats).forEach(stat => {
+                if (stat.sample_count > 0) {
+                    stat.avg_memory = stat.avg_memory / stat.sample_count;
+                    stat.avg_money_rate = stat.avg_money_rate / stat.sample_count;
+                    stat.avg_xp_rate = stat.avg_xp_rate / stat.sample_count;
+                }
+            });
+
+            // Get pending commands count
+            const pendingCount = await queryOne(
                 `SELECT COUNT(*) as count FROM commands WHERE status = 'pending'`
             );
 
-            const latestAugments = await queryOne(
-                `SELECT raw_data FROM telemetry_samples
-                 WHERE module_name = 'augments'
-                 ORDER BY timestamp DESC
-                 LIMIT 1`
-            );
-
-            const latestActivities = await queryOne(
-                `SELECT raw_data FROM telemetry_samples
-                 WHERE module_name = 'activities'
-                 ORDER BY timestamp DESC
-                 LIMIT 1`
-            );
-
-            let latestRaw = {};
-            try {
-                latestRaw = latest?.raw_data ? JSON.parse(latest.raw_data) : {};
-            } catch {
-                latestRaw = {};
-            }
-
-            let augmentsRaw = {};
-            try {
-                augmentsRaw = latestAugments?.raw_data ? JSON.parse(latestAugments.raw_data) : {};
-            } catch {
-                augmentsRaw = {};
-            }
-
-            let activitiesRaw = {};
-            try {
-                activitiesRaw = latestActivities?.raw_data ? JSON.parse(latestActivities.raw_data) : {};
-            } catch {
-                activitiesRaw = {};
-            }
-
-            let phaseRaw = {};
-            try {
-                const latestPhase = await queryOne(
-                    `SELECT raw_data FROM telemetry_samples
-                     WHERE module_name = 'phase'
-                     ORDER BY timestamp DESC
-                     LIMIT 1`
-                );
-                phaseRaw = latestPhase?.raw_data ? JSON.parse(latestPhase.raw_data) : {};
-            } catch {
-                phaseRaw = {};
-            }
+            const phaseRaw = moduleDataMap['phase'] || {};
+            const augmentsRaw = moduleDataMap['augments'] || {};
+            const activitiesRaw = moduleDataMap['activities'] || {};
 
             const runStartFromRunId = Number(latest?.run_id);
             const metaRun = latestRaw?.__telemetry?.runMeta || latestRaw?.runMeta || {};
             const runStartedAt = Number(metaRun.startedAt || runStartFromRunId || 0) || null;
+            memoryTotal = Number(latestRaw?.__telemetry?.memoryTotal || 0);
             const startedWithInstalledAugs = Number.isFinite(Number(metaRun.startedWithInstalledAugs))
                 ? Number(metaRun.startedWithInstalledAugs)
                 : null;
-            memoryTotal = Number(latestRaw?.__telemetry?.memoryTotal || 0);
-            targetAngelLiteRam = 64;
             const currentPhase = Number.isFinite(Number(phaseRaw?.phase))
                 ? Number(phaseRaw.phase)
                 : null;
 
-            // Get all samples to calculate session money and prior reset info
-            const sessionSamples = await query(`
-                SELECT * FROM telemetry_samples 
-                WHERE timestamp > ?
-                ORDER BY timestamp ASC
-            `, [runStartedAt ? runStartedAt - (24 * 60 * 60 * 1000) : Date.now() - (24 * 60 * 60 * 1000)]);
-            
-            // Find samples before current run and after previous one
-            const currentRunSamples = sessionSamples.filter(s => s.timestamp >= (runStartedAt || Date.now() - 300000));
-            const priorRunSamples = sessionSamples.filter(s => s.timestamp < (runStartedAt || Date.now() - 300000));
-            
-            // Calculate session money gain (current money now vs when run started)
-            const sessionMoneyStart = currentRunSamples.length > 0 ? Number(currentRunSamples[0].current_money || 0) : Number(latest?.current_money || 0);
+            // Use already-fetched recentSamples for session money calculation
+            const sessionMoneyStart = recentSamples.length > 0 ? Number(recentSamples[recentSamples.length - 1].current_money || 0) : 0;
             const currentMoney = Number(latest?.current_money || 0);
             const sessionMoneyGain = Math.max(0, currentMoney - sessionMoneyStart);
             
-            // Get info about previous run/reset
-            let lastResetTime = null;
-            let lastResetHackLevel = null;
-            let lastResetMoney = null;
-            if (priorRunSamples.length > 0) {
-                const lastPriorSample = priorRunSamples[priorRunSamples.length - 1];
-                lastResetTime = lastPriorSample.timestamp;
-                lastResetHackLevel = lastPriorSample.hack_level;
-                lastResetMoney = lastPriorSample.current_money;
-            }
-
-            const timeSinceLastResetMs = lastResetTime ? Math.max(0, Date.now() - lastResetTime) : null;
-
-            // Calculate aggregates
+            // Calculate aggregates from already-fetched recentSamples
             const totalSamples = recentSamples.length;
             const avgMemory = recentSamples.length > 0
                 ? recentSamples.reduce((sum, s) => sum + (s.memory_used || 0), 0) / recentSamples.length
@@ -897,6 +865,142 @@ export function setupApiRoutes(app) {
             }, 500);
         } catch (error) {
             console.error('Admin restart error:', error);
+            res.status(500).json({ success: false, error: error.message });
+        }
+    });
+
+    // ============================================
+    // NEW: MODULE CONTROL ENDPOINTS
+    // ============================================
+    app.post('/api/modules/pause', async (req, res) => {
+        try {
+            const { moduleName, reason, pausedBy } = req.body;
+            await run(
+                `INSERT OR REPLACE INTO module_control (module_name, is_paused, paused_at, paused_by, reason, updated_at)
+                 VALUES (?, 1, CURRENT_TIMESTAMP, ?, ?, CURRENT_TIMESTAMP)`,
+                [moduleName, pausedBy || 'system', reason || null]
+            );
+            
+            res.json({ success: true, message: `${moduleName} paused` });
+        } catch (error) {
+            console.error('Module pause error:', error);
+            res.status(500).json({ success: false, error: error.message });
+        }
+    });
+
+    app.post('/api/modules/resume', async (req, res) => {
+        try {
+            const { moduleName, resumedBy } = req.body;
+            await run(
+                `UPDATE module_control SET is_paused = 0, resume_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                 WHERE module_name = ?`,
+                [moduleName]
+            );
+            
+            res.json({ success: true, message: `${moduleName} resumed` });
+        } catch (error) {
+            console.error('Module resume error:', error);
+            res.status(500).json({ success: false, error: error.message });
+        }
+    });
+
+    app.get('/api/modules/status', async (req, res) => {
+        try {
+            const statuses = await query(
+                `SELECT module_name, is_paused, paused_at, paused_by, reason FROM module_control
+                 ORDER BY module_name ASC`
+            );
+            
+            res.json({ success: true, modules: statuses });
+        } catch (error) {
+            console.error('Module status error:', error);
+            res.status(500).json({ success: false, error: error.message });
+        }
+    });
+
+    // ============================================
+    // NEW: ERROR & ALERT ENDPOINTS
+    // ============================================
+    app.get('/api/errors', async (req, res) => {
+        try {
+            const minsSince = parseInt(req.query.mins || '60');
+            const cutoffTime = Date.now() - (minsSince * 60 * 1000);
+            
+            const errors = await query(
+                `SELECT module_name, error_type, error_message, severity, timestamp
+                 FROM error_log
+                 WHERE resolved = 0 AND timestamp > ?
+                 ORDER BY timestamp DESC
+                 LIMIT 20`,
+                [cutoffTime]
+            );
+            
+            res.json({ success: true, errors, count: errors.length });
+        } catch (error) {
+            console.error('Errors endpoint error:', error);
+            res.status(500).json({ success: false, error: error.message });
+        }
+    });
+
+    app.post('/api/errors/resolve', async (req, res) => {
+        try {
+            const { errorId } = req.body;
+            await run(
+                `UPDATE error_log SET resolved = 1 WHERE id = ?`,
+                [errorId]
+            );
+            
+            res.json({ success: true });
+        } catch (error) {
+            console.error('Error resolve error:', error);
+            res.status(500).json({ success: false, error: error.message });
+        }
+    });
+
+    // ============================================
+    // NEW: SOLVER METRICS ENDPOINT
+    // ============================================
+    app.get('/api/solver-metrics', async (req, res) => {
+        try {
+            const hoursBack = parseInt(req.query.hours || '24');
+            const cutoffTime = Date.now() - (hoursBack * 60 * 60 * 1000);
+            
+            const metrics = await query(
+                `SELECT 
+                    contract_type,
+                    COUNT(*) as total_attempts,
+                    SUM(success) as successful,
+                    ROUND(100.0 * SUM(success) / COUNT(*), 2) as success_rate,
+                    ROUND(AVG(execution_time_ms), 2) as avg_time_ms,
+                    SUM(reward_amount) as total_rewards,
+                    MAX(timestamp) as last_solved
+                 FROM solver_metrics
+                 WHERE timestamp > ?
+                 GROUP BY contract_type
+                 ORDER BY total_rewards DESC`,
+                [cutoffTime]
+            );
+            
+            res.json({ success: true, metrics, count: metrics.length });
+        } catch (error) {
+            console.error('Solver metrics error:', error);
+            res.status(500).json({ success: false, error: error.message });
+        }
+    });
+
+    app.post('/api/solver-metrics', async (req, res) => {
+        try {
+            const { contractType, solverName, success, executionTimeMs, rewardAmount } = req.body;
+            
+            await run(
+                `INSERT INTO solver_metrics (contract_type, solver_name, success, execution_time_ms, reward_amount, timestamp)
+                 VALUES (?, ?, ?, ?, ?, ?)`,
+                [contractType, solverName, success ? 1 : 0, executionTimeMs, rewardAmount, Date.now()]
+            );
+            
+            res.json({ success: true });
+        } catch (error) {
+            console.error('Add solver metric error:', error);
             res.status(500).json({ success: false, error: error.message });
         }
     });

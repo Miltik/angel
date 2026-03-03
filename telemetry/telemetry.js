@@ -13,6 +13,7 @@
  */
 
 import { TELEMETRY_PORT, HACKNET_TELEMETRY_PORT } from "/angel/ports.js";
+import { config as mainConfig } from "/angel/config.js";
 
 const STORAGE_KEYS = {
     CURRENT_RUN: 'angelTelemetryCurrentRun',
@@ -158,7 +159,8 @@ export async function main(ns) {
             }
 
             // Sync to backend (if enabled)
-            if (now - lastBackendSync >= (config.telemetryIntervalMs || 10000)) {
+            const backendIntervalMs = Number(mainConfig?.remoteBackend?.telemetryIntervalMs || config.telemetryIntervalMs || 10000);
+            if (now - lastBackendSync >= (Number.isFinite(backendIntervalMs) ? backendIntervalMs : 10000)) {
                 await syncToBackend(ns, config);
                 lastBackendSync = now;
             }
@@ -901,28 +903,16 @@ export function formatMoney(num) {
 
 async function syncToBackend(ns, telemetryConfig) {
     try {
-        // Load remote backend config from main config
-        let backendConfig = {};
-        try {
-            // Read config.js as text and extract backend settings
-            const configContent = ns.read('/angel/config.js');
-            
-            // Extract remoteBackend config using regex
-            const backendMatch = configContent.match(/remoteBackend:\s*{([^}]+{[^}]+}[^}]*)*[^}]*}/);
-            const enabledMatch = configContent.match(/enabled:\s*(true|false)/);
-            const urlMatch = configContent.match(/url:\s*"([^"]+)"/);
-            const intervalMatch = configContent.match(/telemetryIntervalMs:\s*(\d+)/);
-            
-            backendConfig.enabled = enabledMatch ? enabledMatch[1] === 'true' : false;
-            backendConfig.url = urlMatch ? urlMatch[1] : 'http://localhost:3000';
-            backendConfig.telemetryIntervalMs = intervalMatch ? parseInt(intervalMatch[1]) : 10000;
-            backendConfig.enableLogging = true;
-            
-            ns.print(`✅ Loaded backend config: enabled=${backendConfig.enabled}, url=${backendConfig.url}`);
-        } catch (e) {
-            ns.print(`❌ Config read failed: ${e.message}`);
-            return;
-        }
+        // Load remote backend config directly from imported main config
+        const remoteBackendConfig = mainConfig?.remoteBackend || {};
+        const backendConfig = {
+            enabled: Boolean(remoteBackendConfig.enabled),
+            url: String(remoteBackendConfig.url || 'http://localhost:3000'),
+            telemetryIntervalMs: Number(remoteBackendConfig.telemetryIntervalMs || 10000),
+            enableLogging: remoteBackendConfig.enableLogging !== false,
+        };
+
+        ns.print(`✅ Loaded backend config: enabled=${backendConfig.enabled}, url=${backendConfig.url}`);
 
         if (!backendConfig.enabled) {
             ns.print(`⚠️ Backend sync disabled in config`);

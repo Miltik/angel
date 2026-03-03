@@ -372,7 +372,7 @@ function captureModuleMetrics(ns, run) {
         loot: 'loot.js',
         sleeves: 'sleeves.js',
         xpFarm: 'xpFarm.js',
-        backdoorRunner: 'backdoorRunner.js',
+        backdoor: 'backdoor.js',
         uiLauncher: 'uiLauncher.js',
     };
     

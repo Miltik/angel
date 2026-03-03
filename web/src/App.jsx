@@ -532,7 +532,7 @@ function ModuleCard({ module, onToggle, formatCompactMoney, moduleDetailsMap }) 
         </div>
       )}
 
-      {hasData && moduleName === 'backdoorrunner' && (
+      {hasData && (moduleName === 'backdoor' || moduleName === 'backdoorrunner') && (
         <div className="line-text sub-text">
           <span className="spacing"></span>
           <span className="line-icon">🔓</span>

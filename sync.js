@@ -60,7 +60,6 @@ export async function main(ns) {
         "modules/loot.js",
         "modules/formulas.js",
         "modules/corporation.js",
-        "modules/backdoorRunner.js",
         
         // Workers
         "workers/hack.js",

@@ -160,8 +160,8 @@ async function maybeRunBackdoor(ns) {
     }
     backdoorState.lastCheckTime = now;
 
-    // Avoid duplicate launches while either launcher or runner is active
-    if (ns.isRunning(SCRIPTS.backdoor, "home") || ns.isRunning("/angel/modules/backdoorRunner.js", "home")) {
+    // Avoid duplicate launches while backdoor module is active
+    if (ns.isRunning(SCRIPTS.backdoor, "home")) {
         return;
     }
 
@@ -273,7 +273,6 @@ async function ensureModulesRunning(ns) {
         SCRIPTS.contracts,
         SCRIPTS.formulas,
         SCRIPTS.backdoor,
-        "/angel/modules/backdoorRunner.js",
     ];
 
     // Start non-hacking modules first to ensure they have RAM
@@ -637,7 +636,6 @@ export function stopAll(ns) {
         SCRIPTS.xpFarm,
         SCRIPTS.loot,
         SCRIPTS.backdoor,
-        "/angel/modules/backdoorRunner.js",
     ];
     
     for (const module of modules) {
@@ -843,7 +841,8 @@ function resolveModuleScript(moduleName) {
     const moduleScriptMap = {
         activities: SCRIPTS.activities,
         augments: SCRIPTS.augments,
-        backdoorrunner: '/angel/modules/backdoorRunner.js',
+        backdoor: SCRIPTS.backdoor,
+        backdoorrunner: SCRIPTS.backdoor,
         bladeburner: SCRIPTS.bladeburner,
         contracts: SCRIPTS.contracts,
         corporation: SCRIPTS.corporation,

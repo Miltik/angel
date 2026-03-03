@@ -339,11 +339,20 @@ async function handleStatusFullCommand(interaction) {
         const hackLevel = String(latestData?.hack_level ?? 'N/A');
         const xpRate = toNum(latestData?.xp_rate);
 
-        // NETWORK (from servers module or deprecated)
+        // NETWORK (support both current and legacy telemetry keys)
         const serversDetails = moduleMap['servers'] || {};
-        const rootedServers = toNum(serversDetails?.rooted, 0);
-        const backdooredServers = toNum(serversDetails?.backdoored, 0);
-        const purchasedServers = toNum(serversDetails?.purchased, 0);
+        const rootedServers = toNum(
+            serversDetails?.rooted ?? serversDetails?.rootedServers ?? serversDetails?.rootedCount,
+            0
+        );
+        const backdooredServers = toNum(
+            serversDetails?.backdoored ?? serversDetails?.backdooredServers ?? serversDetails?.backdoorCount,
+            0
+        );
+        const purchasedServers = toNum(
+            serversDetails?.purchased ?? serversDetails?.servers ?? serversDetails?.serverCount ?? serversDetails?.count,
+            0
+        );
 
         // RAM
         const memoryUsedGb = (toNum(latestData?.memory_used) / 1024).toFixed(1);
@@ -376,11 +385,15 @@ async function handleStatusFullCommand(interaction) {
         const stocksGain = toNum(stocksDetails?.totalProfits, 0);
         const stocksGainPct = stocksValue > 0 ? ((stocksGain / toNum(stocksValue.replace(/[^0-9]/g, ''), 1)) * 100).toFixed(1) : '0.0';
 
-        // HACKNET
+        // HACKNET (support both current and legacy telemetry keys)
         const hacknetDetails = moduleMap['hacknet'] || {};
-        const hacknetNodes = toNum(hacknetDetails?.nodeCount, 0);
-        const hacknetProduction = formatNum(toNum(hacknetDetails?.production, 0));
-        const hacknetTotal = formatNum(toNum(hacknetDetails?.total, 0));
+        const hacknetNodes = toNum(hacknetDetails?.nodeCount ?? hacknetDetails?.nodes, 0);
+        const hacknetProduction = formatNum(
+            toNum(hacknetDetails?.production ?? hacknetDetails?.moneyRate ?? hacknetDetails?.totalProduction, 0)
+        );
+        const hacknetTotal = formatNum(
+            toNum(hacknetDetails?.total ?? hacknetDetails?.totalInvestment ?? 0)
+        );
 
         // PROGRAMS
         const programsDetails = moduleMap['programs'] || {};

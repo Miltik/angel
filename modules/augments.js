@@ -716,9 +716,12 @@ function reportAugmentsTelemetry(ns) {
             phase: phase,
             currentMoney: currentMoney,
             targetAugName: targetAug?.name || "Unknown",
+            targetAugFaction: targetAug?.faction || "Unknown",
             targetAugCost: targetAugCost,
             moneyNeeded: Math.max(0, targetAugCost - currentMoney),
-            progressPercent: Math.min(100, (currentMoney / targetAugCost) * 100)
+            repNeeded: targetAug?.repShort || 0,
+            progressPercent: Math.min(100, (currentMoney / targetAugCost) * 100),
+            repPercent: targetAug?.repReq ? Math.min(100, (ns.singularity.getFactionRep(targetAug.faction) / targetAug.repReq) * 100) : 0
         };
         
         const metricsPayload = {

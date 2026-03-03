@@ -391,6 +391,7 @@ async function handleStatusFullCommand(interaction) {
         const augmentsDetails = moduleMap['augments'] || {};
         let timeToResetStr = 'N/A';
         let augmentTargetStr = 'N/A';
+        let augmentGapsStr = '';
         
         // augmentsDetails is the 'details' object, not wrapped
         const installed = toNum(augmentsDetails?.installed, 0);
@@ -399,10 +400,23 @@ async function handleStatusFullCommand(interaction) {
         
         if (resetData) {
             const targetAugName = resetData.targetAugName || 'Unknown';
+            const targetAugFaction = resetData.targetAugFaction || 'Unknown';
             const progressPct = Math.min(100, toNum(resetData.progressPercent, 0));
-            augmentTargetStr = `${targetAugName} [${progressBar(progressPct, 14)}] ${progressPct.toFixed(1)}%`;
-            
+            const repPercent = Math.min(100, toNum(resetData.repPercent, 0));
             const moneyNeeded = toNum(resetData.moneyNeeded, 0);
+            const repNeeded = toNum(resetData.repNeeded, 0);
+            
+            augmentTargetStr = `${targetAugName} (${targetAugFaction})`;
+            
+            // Show gaps if not ready
+            if (moneyNeeded > 0 || repNeeded > 0) {
+                const moneyGapStr = moneyNeeded > 0 ? `💰 ${formatNum(moneyNeeded)}` : '';
+                const repGapStr = repNeeded > 0 ? `⭐ ${(repNeeded / 1000).toFixed(0)}k rep` : '';
+                const gapItems = [moneyGapStr, repGapStr].filter(x => x);
+                augmentGapsStr = ` [${gapItems.join(' | ')}]`;
+            } else {
+                augmentGapsStr = ` [READY]`;
+            }
             
             if (queued > 0) {
                 // Augmentations are queued and ready to install
@@ -421,7 +435,7 @@ async function handleStatusFullCommand(interaction) {
             `ANGEL COMPREHENSIVE DASHBOARD`,
             `────────────────────────────────────────`,
             `PHASE: ${phaseLabel} ${phaseBar}`,
-            `AUGMENT TARGET: ${augmentTargetStr}`,
+            `AUGMENT TARGET: ${augmentTargetStr}${augmentGapsStr}`,
             `RAM: ${ramBar}`,
             `MONEY: $${formatNum(currentMoney)} | Rate: $${formatNum(moneyRate)}/s | Daily: $${formatNum(dailyMoney)}`,
             `XP: Level ${hackLevel} | Rate: ${formatNum(xpRate)}/s`,

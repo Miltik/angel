@@ -216,7 +216,8 @@ function selectSmartestTargetAug(ns, priorityList = []) {
     const player = ns.getPlayer();
     const currentMoney = ns.getServerMoneyAvailable("home");
     const owned = ns.singularity.getOwnedAugmentations(true);
-    const candidates = [];
+    const candidatesAll = [];
+    const candidatesPriority = [];
 
     // Gather ALL not-yet-owned augmentations
     for (const faction of player.factions) {
@@ -229,9 +230,6 @@ function selectSmartestTargetAug(ns, priorityList = []) {
             const repReq = ns.singularity.getAugmentationRepReq(aug);
             const price = ns.singularity.getAugmentationPrice(aug);
 
-            // Filter by priority if priority list provided
-            if (priorityList.length > 0 && !priorityList.includes(aug)) continue;
-
             // Calculate gaps (0 if already met, otherwise how much short)
             const moneyGap = Math.max(0, price - currentMoney);
             const repGap = Math.max(0, repReq - factionRep);
@@ -243,7 +241,7 @@ function selectSmartestTargetAug(ns, priorityList = []) {
             // Composite gap score: lower is better (closer to available)
             const gapScore = moneyGapScore + repGapScore;
 
-            candidates.push({
+            const augData = {
                 name: aug,
                 faction,
                 price,
@@ -251,13 +249,24 @@ function selectSmartestTargetAug(ns, priorityList = []) {
                 moneyShort: moneyGap,
                 repShort: repGap,
                 gapScore
-            });
+            };
+
+            // Add to both lists
+            candidatesAll.push(augData);
+            if (priorityList.length === 0 || priorityList.includes(aug)) {
+                candidatesPriority.push(augData);
+            }
         }
     }
 
+    // Try priority list first, fall back to all augmentations
+    const candidates = candidatesPriority.length > 0 ? candidatesPriority : candidatesAll;
     if (candidates.length === 0) return null;
 
     // Sort by gap score (ascending) and return the closest
+    candidates.sort((a, b) => a.gapScore - b.gapScore);
+    return candidates[0];
+}
     candidates.sort((a, b) => a.gapScore - b.gapScore);
     return candidates[0];
 }
@@ -282,7 +291,24 @@ async function augmentLoop(ns, ui) {
         
         // Get smart target for display
         const priorityList = config.augmentations.augmentPriority || [];
-        const smartTarget = selectSmartestTargetAug(ns, priorityList);
+        let smartTarget = null;
+        try {
+            smartTarget = selectSmartestTargetAug(ns, priorityList);
+        } catch (e) {
+            // If smart targeting fails, fall back to cheapest available
+            if (available.length > 0) {
+                const sorted = [...available].sort((a, b) => a.price - b.price);
+                const fallback = sorted[0];
+                smartTarget = {
+                    name: fallback.name,
+                    faction: fallback.faction,
+                    price: fallback.price,
+                    repReq: fallback.repReq,
+                    moneyShort: Math.max(0, fallback.price - money),
+                    repShort: 0
+                };
+            }
+        }
         
         lastState.loopCount++;
         
@@ -298,17 +324,24 @@ async function augmentLoop(ns, ui) {
             
             // Show smart target with gap analysis
             if (smartTarget) {
-                const moneyPercent = Math.min(100, (money / smartTarget.price) * 100);
-                const repPercent = Math.min(100, (ns.singularity.getFactionRep(smartTarget.faction) / smartTarget.repReq) * 100);
-                const moneyBar = `${'█'.repeat(Math.floor(moneyPercent / 10))}${'░'.repeat(10 - Math.floor(moneyPercent / 10))}`;
-                const repBar = `${'█'.repeat(Math.floor(repPercent / 10))}${'░'.repeat(10 - Math.floor(repPercent / 10))}`;
-                
-                const moneyShortLabel = smartTarget.moneyShort > 0 ? `(+${formatMoney(smartTarget.moneyShort)})` : "(ready)";
-                const repShortLabel = smartTarget.repShort > 0 ? `(+${(smartTarget.repShort / 1000).toFixed(0)}k rep)` : "(ready)";
-                
-                ui.log(`🎯 TARGET: ${smartTarget.name} (${smartTarget.faction})`, "info");
-                ui.log(`   💰 Money: [${moneyBar}] ${moneyPercent.toFixed(1)}% ${moneyShortLabel}`, "info");
-                ui.log(`   ⭐ Rep:   [${repBar}] ${repPercent.toFixed(1)}% ${repShortLabel}`, "info");
+                try {
+                    const moneyPercent = Math.min(100, (money / smartTarget.price) * 100);
+                    const factionRep = ns.singularity.getFactionRep(smartTarget.faction);
+                    const repPercent = Math.min(100, (factionRep / smartTarget.repReq) * 100);
+                    const moneyBar = `${'█'.repeat(Math.floor(moneyPercent / 10))}${'░'.repeat(10 - Math.floor(moneyPercent / 10))}`;
+                    const repBar = `${'█'.repeat(Math.floor(repPercent / 10))}${'░'.repeat(10 - Math.floor(repPercent / 10))}`;
+                    
+                    const moneyShort = Math.max(0, smartTarget.price - money);
+                    const repShort = Math.max(0, smartTarget.repReq - factionRep);
+                    const moneyShortLabel = moneyShort > 0 ? `(+${formatMoney(moneyShort)})` : "(ready)";
+                    const repShortLabel = repShort > 0 ? `(+${(repShort / 1000).toFixed(0)}k rep)` : "(ready)";
+                    
+                    ui.log(`🎯 TARGET: ${smartTarget.name} (${smartTarget.faction})`, "info");
+                    ui.log(`   💰 Money: [${moneyBar}] ${moneyPercent.toFixed(1)}% ${moneyShortLabel}`, "info");
+                    ui.log(`   ⭐ Rep:   [${repBar}] ${repPercent.toFixed(1)}% ${repShortLabel}`, "info");
+                } catch (e) {
+                    // Silently skip display if calculation fails
+                }
             }
         }
         

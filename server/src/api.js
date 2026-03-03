@@ -372,7 +372,7 @@ export function setupApiRoutes(app) {
             // All known modules in the system
             const KNOWN_MODULES = [
                 'activities', 'augments', 'backdoorRunner', 'bladeburner',
-                'contracts', 'corporation', 'crime', 'formulas', 'gang', 'hacking', 'hacknet',
+                'contracts', 'corporation', 'crime', 'factions', 'formulas', 'gang', 'hacking', 'hacknet',
                 'loot', 'programs', 'servers', 'sleeves', 'stocks',
                 'xpFarm', 'phase'
             ];

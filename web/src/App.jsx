@@ -85,6 +85,7 @@ function ModuleCard({ module, onToggle, formatCompactMoney, moduleDetailsMap }) 
   const isCrime = moduleName === 'crime'
   const isServers = moduleName === 'servers'
   const isActivities = moduleName === 'activities'
+  const isFactions = moduleName === 'factions'
   const isPhase = moduleName === 'phase'
   const isFormulas = moduleName === 'formulas'
   const incomeDisplayValue = isStocks ? incomePerSecond * 3600 : incomePerSecond
@@ -108,14 +109,15 @@ function ModuleCard({ module, onToggle, formatCompactMoney, moduleDetailsMap }) 
 
   const getCurrentUsage = () => {
     if (isHacking) return `${details.activeThreads ?? 0} threads`
-    if (isHacknet) return `${details.nodes ?? 0} nodes`
+    if (isHacknet) return `${details.nodeCount ?? details.nodes ?? 0} nodes`
     if (isGang) return `${details.members ?? 0} members`
     if (isStocks) return `${details.totalShares ?? 0} shares`
     if (isCorporation) return `${details.employees ?? 0} employees`
     if (isSleeves) return `${details.working ?? 0}/${details.sleeves ?? 0} working`
     if (isXpFarm) return `${details.threads ?? 0} threads`
-    if (isServers) return `${details.servers ?? 0} servers`
+    if (isServers) return `${details.purchased ?? details.servers ?? 0} servers`
     if (isActivities) return details.currentActivity || 'idle'
+    if (isFactions) return details.factionFocus ? `focus:${details.factionFocus}` : 'idle'
     if (isLoot) return `${details.loopsRun ?? 0} loops`
     if (isCrime) return details.mode ? `mode:${details.mode}` : 'idle'
     if (isPhase) return `Phase ${details.phase ?? 0} of 4`
@@ -207,7 +209,7 @@ function ModuleCard({ module, onToggle, formatCompactMoney, moduleDetailsMap }) 
           <span className="spacing"></span>
           <span className="line-icon">🖥️</span>
           <span className="metric-label">Nodes:</span>
-          <span className="metric-value">{details.nodes || 0}</span>
+          <span className="metric-value">{details.nodeCount ?? details.nodes ?? 0}</span>
           <span className="line-divider">|</span>
           <span className="line-icon">💾</span>
           <span className="metric-label">RAM:</span>
@@ -390,7 +392,15 @@ function ModuleCard({ module, onToggle, formatCompactMoney, moduleDetailsMap }) 
           <span className="spacing"></span>
           <span className="line-icon">🖥️</span>
           <span className="metric-label">Owned:</span>
-          <span className="metric-value">{details.servers || 0}</span>
+          <span className="metric-value">{details.purchased ?? details.servers ?? 0}</span>
+          <span className="line-divider">|</span>
+          <span className="line-icon">🌐</span>
+          <span className="metric-label">Rooted:</span>
+          <span className="metric-value">{details.rooted ?? 0}</span>
+          <span className="line-divider">|</span>
+          <span className="line-icon">🔓</span>
+          <span className="metric-label">Backdoor:</span>
+          <span className="metric-value">{details.backdoored ?? 0}</span>
           <span className="line-divider">|</span>
           <span className="line-icon">💾</span>
           <span className="metric-label">Total RAM:</span>
@@ -399,6 +409,24 @@ function ModuleCard({ module, onToggle, formatCompactMoney, moduleDetailsMap }) 
           <span className="line-icon">📊</span>
           <span className="metric-label">Max:</span>
           <span className="metric-value">{details.maxServers || 0}</span>
+        </div>
+      )}
+
+      {hasData && isFactions && (
+        <div className="line-text sub-text">
+          <span className="spacing"></span>
+          <span className="line-icon">🏛️</span>
+          <span className="metric-label">Focus:</span>
+          <span className="metric-value">{String(details.factionFocus || 'none').substring(0, 12)}</span>
+          <span className="line-divider">|</span>
+          <span className="metric-label">Target:</span>
+          <span className="metric-value">{String(details.targetAugName || 'none').substring(0, 16)}</span>
+          <span className="line-divider">|</span>
+          <span className="metric-label">Rep Need:</span>
+          <span className="metric-value">{Number(details.factionRepNeeded || 0).toLocaleString()}</span>
+          <span className="line-divider">|</span>
+          <span className="metric-label">Invites:</span>
+          <span className="metric-value">{Number(details.invites || 0)}</span>
         </div>
       )}
 

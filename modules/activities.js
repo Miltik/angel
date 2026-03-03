@@ -14,6 +14,13 @@
 import { config, PORTS } from "/angel/config.js";
 import { formatMoney } from "/angel/utils.js";
 import { createWindow } from "/angel/modules/uiManager.js";
+import {
+    syncFactionMembership,
+    getMissingCrimeFactions,
+    getAugmentRepGoal,
+    hasAnyViableFactionWork,
+    getFactionOpportunitySummary,
+} from "/angel/modules/factions.js";
 
 const PHASE_PORT = 7;
 const TELEMETRY_PORT = 20;
@@ -21,13 +28,6 @@ const ACTIVITY_OWNER = "activity";
 const ACTIVITY_LOCK_TTL = 180000;
 const CRIME_SCRIPT = "/angel/modules/crime.js";
 const DAEMON_LOCK_PORT = 15;
-const CRIME_FACTIONS = [
-    "Slum Snakes",
-    "Tetrads",
-    "Speakers for the Dead",
-    "The Syndicate",
-    "The Dark Army",
-];
 
 // State tracking
 let lastState = {
@@ -106,7 +106,7 @@ export async function main(ns) {
             }
 
             // Faction management: ALWAYS ACTIVE (all phases)
-            await manageFactions(ns, ui);
+            syncFactionMembership(ns, ui, lastState);
 
             // Activity work: ALL PHASES
             // Priority: Faction work for augments > training > company > crime
@@ -130,50 +130,6 @@ export async function main(ns) {
             ui.log(`❌ Loop error: ${e}`, "error");
             await ns.sleep(5000);
         }
-    }
-}
-
-/**
- * FACTION MANAGEMENT: Always active
- * Tracks faction rep, handles invitations, displays status
- */
-async function manageFactions(ns, ui) {
-    const player = ns.getPlayer();
-    const joinedFactions = new Set(player.factions || []);
-    const invitations = ns.singularity.checkFactionInvitations();
-
-    // Auto-join priority factions first
-    if (config.factions?.autoJoinFactions && invitations.length > 0) {
-        const priorityFactions = config.factions.priorityFactions || [];
-        for (const faction of invitations) {
-            if (priorityFactions.includes(faction) && !joinedFactions.has(faction)) {
-                const joined = ns.singularity.joinFaction(faction);
-                if (joined) {
-                    joinedFactions.add(faction);
-                    ui.log(`✅ Joined priority faction: ${faction}`, "success");
-                }
-            }
-        }
-    }
-
-    // Auto-join all remaining invitations (including backdoor-unlocked factions)
-    if (config.factions?.autoJoinFactions && invitations.length > 0) {
-        for (const faction of invitations) {
-            if (joinedFactions.has(faction)) continue;
-
-            const joined = ns.singularity.joinFaction(faction);
-            if (joined) {
-                joinedFactions.add(faction);
-                ui.log(`✅ Joined faction: ${faction}`, "success");
-            }
-        }
-    }
-
-    // Show pending invitations (only on change or periodically)
-    const inviteStr = invitations.join(",");
-    if (invitations.length > 0 && (inviteStr !== lastState.pendingInvites || lastState.loopCount % 24 === 0)) {
-        ui.log(`📬 Pending invitations: ${invitations.join(", ")}`, "warn");
-        lastState.pendingInvites = inviteStr;
     }
 }
 
@@ -336,106 +292,6 @@ function chooseActivity(ns, gamePhase) {
     
     // All stats trained, no faction work needed - crime for money
     return "crime";
-}
-
-function getMissingCrimeFactions(player) {
-    const joined = new Set(player.factions || []);
-    return CRIME_FACTIONS.filter(faction => !joined.has(faction));
-}
-
-function hasMetAugPrereqs(ns, augName, ownedSet) {
-    try {
-        const prereqs = ns.singularity.getAugmentationPrereq(augName) || [];
-        if (!Array.isArray(prereqs) || prereqs.length === 0) return true;
-        return prereqs.every(prereq => ownedSet.has(prereq));
-    } catch (e) {
-        return true;
-    }
-}
-
-function getAugmentRepGoal(ns) {
-    try {
-        const player = ns.getPlayer();
-        const currentMoney = ns.getServerMoneyAvailable("home");
-        const owned = ns.singularity.getOwnedAugmentations(true);
-        const ownedSet = new Set(owned);
-        const priorityList = config.augmentations?.augmentPriority || [];
-
-        const candidates = [];
-        for (const faction of player.factions || []) {
-            if (faction === "NiteSec") continue;
-
-            const factionRep = ns.singularity.getFactionRep(faction);
-            const augments = ns.singularity.getAugmentationsFromFaction(faction) || [];
-
-            for (const aug of augments) {
-                if (ownedSet.has(aug)) continue;
-                if (!hasMetAugPrereqs(ns, aug, ownedSet)) continue;
-
-                const repReq = ns.singularity.getAugmentationRepReq(aug);
-                const price = ns.singularity.getAugmentationPrice(aug);
-                const repShort = Math.max(0, repReq - factionRep);
-                const moneyShort = Math.max(0, price - currentMoney);
-
-                const moneyGapScore = moneyShort > 0 ? Math.log10(moneyShort + 1) : 0;
-                const repGapScore = repShort > 0 ? Math.log10(repShort + 1) : 0;
-                const gapScore = moneyGapScore + repGapScore;
-                const priorityBonus = priorityList.includes(aug) ? 0.15 : 0;
-                const effectiveScore = Math.max(0, gapScore - priorityBonus);
-
-                candidates.push({
-                    name: aug,
-                    faction,
-                    repReq,
-                    price,
-                    repShort,
-                    moneyShort,
-                    effectiveScore,
-                });
-            }
-        }
-
-        if (candidates.length === 0) return null;
-
-        candidates.sort((a, b) => {
-            if (a.effectiveScore !== b.effectiveScore) return a.effectiveScore - b.effectiveScore;
-
-            const aReady = a.moneyShort === 0 && a.repShort === 0;
-            const bReady = b.moneyShort === 0 && b.repShort === 0;
-            if (aReady !== bReady) return aReady ? -1 : 1;
-
-            if (a.price !== b.price) return a.price - b.price;
-            return a.name.localeCompare(b.name);
-        });
-
-        return candidates[0];
-    } catch (e) {
-        return null;
-    }
-}
-
-/**
- * Check if any faction has actual unowned augments to grind for
- */
-function hasAnyViableFactionWork(ns) {
-    const augGoal = getAugmentRepGoal(ns);
-    if (augGoal && augGoal.repShort > 0) {
-        return true;
-    }
-
-    const player = ns.getPlayer();
-
-    for (const faction of player.factions) {
-        if (faction === "NiteSec") {
-            continue;
-        }
-        const summary = getFactionOpportunitySummary(ns, faction);
-        if (summary.grindableCount > 0) {
-            return true;
-        }
-    }
-
-    return false;  // No faction has viable work
 }
 
 /**
@@ -769,34 +625,6 @@ function getRepNeeded(ns, faction) {
     }
 
     return maxRepNeeded;
-}
-
-function getFactionOpportunitySummary(ns, faction) {
-    const currentRep = ns.singularity.getFactionRep(faction);
-    const augments = ns.singularity.getAugmentationsFromFaction(faction);
-    const owned = new Set(ns.singularity.getOwnedAugmentations(true));
-
-    let grindableCount = 0;
-    let grindableValue = 0;
-    let maxRepNeeded = 0;
-
-    for (const aug of augments) {
-        if (owned.has(aug)) continue;
-
-        const repReq = ns.singularity.getAugmentationRepReq(aug);
-        const price = ns.singularity.getAugmentationPrice(aug);
-        const repNeeded = Math.max(0, repReq - currentRep);
-
-        if (repNeeded > 0) {
-            grindableCount++;
-            grindableValue += price;
-            if (repNeeded > maxRepNeeded) {
-                maxRepNeeded = repNeeded;
-            }
-        }
-    }
-
-    return { grindableCount, grindableValue, maxRepNeeded };
 }
 
 /**

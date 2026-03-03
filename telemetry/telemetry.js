@@ -361,6 +361,7 @@ function captureModuleMetrics(ns, run) {
         hacknet: 'hacknet.js',
         corporation: 'corporation.js',
         activities: 'activities.js',
+        factions: 'factions.js',
         crime: 'crime.js',
         augments: 'augments.js',
         programs: 'programs.js',

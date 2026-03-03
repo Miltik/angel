@@ -108,13 +108,14 @@ function reportTelemetry(ns) {
         // Calculate total investment (rough estimate based on config)
         const budgetInfo = getHacknetBudget(ns);
 
-        // Report to telemetry
+        // Report to telemetry - use field names expected by Discord
         const metricsPayload = {
-            moneyRate: Math.max(0, totalProduction),
-            nodes: nodeCount,
+            production: Math.max(0, totalProduction),
+            nodeCount: nodeCount,
             totalRam: totalRam,
             totalCores: totalCores,
             avgLevel: nodeCount > 0 ? (totalLevel / nodeCount).toFixed(1) : 0,
+            total: telemetryState.totalInvestment,
             totalInvestment: telemetryState.totalInvestment,
             upgradesCompleted: telemetryState.upgradesCompleted,
             budget: budgetInfo.budget,

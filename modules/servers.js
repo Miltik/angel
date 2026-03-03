@@ -429,8 +429,34 @@ function reportServersTelemetry(ns) {
         const now = Date.now();
         const stats = getServerStats(ns);
         
+        // Count rooted servers (have root access)
+        let rootedCount = 0;
+        let backdooredCount = 0;
+        const allServers = ns.scan('home');
+        const toVisit = [...allServers];
+        const visited = new Set(['home']);
+        
+        while (toVisit.length > 0) {
+            const current = toVisit.pop();
+            if (visited.has(current)) continue;
+            visited.add(current);
+            
+            const server = ns.getServer(current);
+            if (server.hasAdminRights) rootedCount++;
+            if (server.backdoorInstalled) backdooredCount++;
+            
+            const neighbors = ns.scan(current);
+            for (const neighbor of neighbors) {
+                if (!visited.has(neighbor)) {
+                    toVisit.push(neighbor);
+                }
+            }
+        }
+        
         const metricsPayload = {
-            servers: stats.count,
+            rooted: rootedCount,
+            backdoored: backdooredCount,
+            purchased: stats.count,
             totalRam: stats.totalRam,
             maxServers: stats.maxPossible
         };

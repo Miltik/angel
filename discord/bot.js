@@ -119,9 +119,14 @@ const commands = [
                 type: 3, // STRING
                 required: true,
                 choices: [
+                    { name: 'activities', value: 'activities' },
                     { name: 'hacking', value: 'hacking' },
                     { name: 'servers', value: 'servers' },
                     { name: 'augments', value: 'augments' },
+                    { name: 'factions', value: 'factions' },
+                    { name: 'crime', value: 'crime' },
+                    { name: 'phase', value: 'phase' },
+                    { name: 'programs', value: 'programs' },
                     { name: 'gang', value: 'gang' },
                     { name: 'stocks', value: 'stocks' },
                     { name: 'corporation', value: 'corporation' }
@@ -379,6 +384,12 @@ async function handleStatusFullCommand(interaction) {
         const currentCrime = crimeDetails?.currentCrime || 'none';
         const crimeChance = Math.min(100, Math.max(0, toNum(crimeDetails?.successChance, 0) * 100));
 
+        // FACTIONS intelligence module
+        const factionsDetails = moduleMap['factions'] || {};
+        const factionsFocus = factionsDetails?.factionFocus || 'none';
+        const factionsTarget = factionsDetails?.targetAugName || 'none';
+        const factionsRepNeed = toNum(factionsDetails?.factionRepNeeded, 0);
+
         // GANG
         const gangDetails = moduleMap['gang'] || {};
         const gangMembers = toNum(gangDetails?.members, 0);
@@ -472,6 +483,7 @@ async function handleStatusFullCommand(interaction) {
             `XP FARM: Threads ${xpFarmThreads} | Target ${xpFarmTarget}`,
             `ACTIVITY: Plan ${activityPlan} | Live ${activityLive} | Focus ${activityFactionFocus} | RepNeed ${formatNum(activityRepNeeded)} | Target ${activityTarget}`,
             `CRIME: Mode ${crimeMode} | Current ${currentCrime} | Success ${crimeChance.toFixed(0)}%`,
+            `FACTIONS: Focus ${factionsFocus} | Target ${factionsTarget} | RepNeed ${formatNum(factionsRepNeed)}`,
             `GANG: Members ${gangMembers} | Territory ${gangTerritory}% | Respect ${gangRespect} | Wanted ${gangWanted} | Income $${formatNum(gangMoneyRate)}/s`,
             `STOCKS: Holdings ${stocksHoldings} | Bought ${stocksBought} | Value $${stocksValue} | Gain ${stocksGainPct}%`,
             `HACKNET: ${hacknetNodes} nodes | Production $${hacknetProduction}/s | Total $${hacknetTotal}`,
@@ -754,7 +766,12 @@ async function handleRestartModuleCommand(interaction) {
         const module = interaction.options.getString('module');
 
         await axios.post(`${BACKEND_URL}/api/commands`, {
-            commandType: 'restart_module',
+            commandType: 'stopModule',
+            parameters: { module }
+        });
+
+        await axios.post(`${BACKEND_URL}/api/commands`, {
+            commandType: 'runModule',
             parameters: { module }
         });
 

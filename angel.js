@@ -312,6 +312,14 @@ async function ensureModulesRunning(ns) {
         coreReady = coreReady && startedPhase;
         await ns.sleep(1500);
     }
+
+    // Factions module (unlock + faction intelligence)
+    if (config.orchestrator.enableFactions) {
+        const started = await ensureModuleRunning(ns, SCRIPTS.factions, "Factions");
+        if (!started) blockedCoreModules.push("Factions");
+        coreReady = coreReady && started;
+        await ns.sleep(1500);
+    }
     
     // Activities module (coordinator: training, faction, company + mode signaling)
     if (config.orchestrator.enableActivities) {
@@ -616,6 +624,7 @@ export function stopAll(ns) {
         SCRIPTS.serverMgmt,
         SCRIPTS.augments,
         SCRIPTS.programs,
+        SCRIPTS.factions,
         SCRIPTS.activities,
         SCRIPTS.crime,
         SCRIPTS.hacknet,
@@ -657,6 +666,7 @@ export function getSystemHealth(ns) {
         { name: "Servers", script: SCRIPTS.serverMgmt, enabled: config.orchestrator.enableServerMgmt },
         { name: "Augments", script: SCRIPTS.augments, enabled: config.orchestrator.enableAugments },
         { name: "Programs", script: SCRIPTS.programs, enabled: config.orchestrator.enablePrograms },
+        { name: "Factions", script: SCRIPTS.factions, enabled: config.orchestrator.enableFactions },
         { name: "Activities", script: SCRIPTS.activities, enabled: config.orchestrator.enableActivities },
         { name: "Hacknet", script: SCRIPTS.hacknet, enabled: config.orchestrator.enableHacknet },
         { name: "Stocks", script: SCRIPTS.stocks, enabled: config.orchestrator.enableStocks },
@@ -837,6 +847,7 @@ function resolveModuleScript(moduleName) {
         bladeburner: SCRIPTS.bladeburner,
         contracts: SCRIPTS.contracts,
         corporation: SCRIPTS.corporation,
+        factions: SCRIPTS.factions,
         formulas: SCRIPTS.formulas,
         gang: SCRIPTS.gang,
         hacking: SCRIPTS.hacking,

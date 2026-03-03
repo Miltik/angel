@@ -892,6 +892,13 @@ function reportActivitiesTelemetry(ns) {
         const augGoal = getAugmentRepGoal(ns);
         const factionFocus = augGoal?.faction || "none";
         const factionRepNeeded = Math.floor(augGoal?.repShort || 0);
+        const daemon = getDaemonPrepStatusForReset(ns);
+        let daemonUnlockSignal = false;
+        try {
+            daemonUnlockSignal = ns.peek(DAEMON_LOCK_PORT) === "UNLOCK_DAEMON";
+        } catch (e) {
+            daemonUnlockSignal = false;
+        }
         
         const metricsPayload = {
             currentActivity: lastState.currentActivity || "idle",
@@ -905,6 +912,12 @@ function reportActivitiesTelemetry(ns) {
             factionRepNeeded,
             bestCrime: bestCrime?.crime || "Shoplift",
             bestCrimeChance: Number(bestCrime?.chance || 0),
+            daemonReady: Boolean(daemon?.ready),
+            daemonLocked: !daemonUnlockSignal,
+            daemonRequiredHack: Number(daemon?.requiredHack || 0),
+            daemonCurrentHack: Number(daemon?.hackLevel || 0),
+            daemonRooted: Boolean(daemon?.rooted),
+            daemonHasRedPill: Boolean(daemon?.hasRedPillInstalled || daemon?.hasRedPillQueued),
             minCombat,
             hacking: Number(player.skills.hacking || 0),
             combatGap,

@@ -819,7 +819,9 @@ function App() {
   const resetSinceMs = Number(status?.overview?.reset?.timeSinceResetMs || status?.current?.uptime || 0)
   const resetAugs = status?.overview?.reset?.installedAtReset
   const augmentsModule = modulesArray.find(m => String(m?.name || '').toLowerCase() === 'augments')
+  const activitiesModule = modulesArray.find(m => String(m?.name || '').toLowerCase() === 'activities')
   const augmentsDetails = augmentsModule?.details || {}
+  const activitiesSummary = activitiesModule?.details || {}
   const resetCountdown = augmentsDetails?.resetCountdown || {}
   const targetAugName = resetCountdown?.targetAugName || 'Unknown'
   const targetAugFaction = resetCountdown?.targetAugFaction || 'Unknown'
@@ -828,6 +830,10 @@ function App() {
   const displayCost = status?.overview?.reset?.lastResetTotalAugCost || liveTargetCost || 0
   const displayRep = status?.overview?.reset?.lastResetTotalAugRep || liveRepNeeded || 0
   const hasLiveTarget = Boolean(resetCountdown && Object.keys(resetCountdown).length > 0)
+  const daemonLocked = activitiesSummary?.daemonLocked !== false
+  const daemonReady = Boolean(activitiesSummary?.daemonReady)
+  const daemonLockEmoji = daemonLocked ? '🔒' : '🔓'
+  const daemonReadyEmoji = daemonReady ? '✅' : '⏳'
   const modulesForControls = [...modulesArray].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
 
   return (
@@ -938,6 +944,9 @@ function App() {
                       <span className="reset-separator">|</span>
                       <span className="reset-label">Rep:</span>
                       <span className="reset-run">{displayRep > 0 ? formatCompactMoney(displayRep) : (hasLiveTarget ? 'READY' : '?')}</span>
+                      <span className="reset-separator">|</span>
+                      <span className="reset-label">World Daemon:</span>
+                      <span className="reset-run">{daemonLockEmoji} {daemonReadyEmoji}</span>
                     </div>
                   </div>
                 </div>

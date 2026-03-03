@@ -204,6 +204,7 @@ async function updateDashboard(ns, ui) {
         
         // Game Phase
         displayPhaseStatus(ui, ns, player, currentPhase, phaseProgress, nextPhase);
+        displayWorldDaemonStatus(ui, ns);
         ui.log("", "info");
         
         // Money and XP Rates
@@ -1023,6 +1024,46 @@ function displayXPFarmStatus(ui, ns) {
     } catch (e) {
         ui.log(`⚡ XP FARM: ${mode}`, "info");
     }
+}
+
+function displayWorldDaemonStatus(ui, ns) {
+    const daemonHost = "w0r1d_d43m0n";
+    const lockPort = 15;
+
+    let requiredHack = 3000;
+    let currentHack = 0;
+    let rooted = false;
+    let hasRedPill = false;
+    let unlocked = false;
+
+    try {
+        requiredHack = Number(ns.getServerRequiredHackingLevel(daemonHost) || 3000);
+    } catch (e) {}
+
+    try {
+        currentHack = Number(ns.getPlayer()?.skills?.hacking || 0);
+    } catch (e) {}
+
+    try {
+        rooted = Boolean(ns.hasRootAccess(daemonHost));
+    } catch (e) {}
+
+    try {
+        const installed = ns.singularity.getOwnedAugmentations(false) || [];
+        const queued = ns.singularity.getOwnedAugmentations(true) || [];
+        hasRedPill = installed.includes("The Red Pill") || queued.includes("The Red Pill");
+    } catch (e) {}
+
+    try {
+        unlocked = ns.peek(lockPort) === "UNLOCK_DAEMON";
+    } catch (e) {
+        unlocked = false;
+    }
+
+    const ready = hasRedPill && rooted && currentHack >= requiredHack;
+    const lockEmoji = unlocked ? "🔓" : "🔒";
+    const readyEmoji = ready ? "✅" : "⏳";
+    ui.log(`🌐 WORLD DAEMON: ${lockEmoji} LOCKED | ${readyEmoji} READY`, "info");
 }
 
 function parseXPFarmMode(args) {

@@ -377,6 +377,10 @@ async function handleStatusFullCommand(interaction) {
         const activityFactionFocus = activitiesDetails?.factionFocus || 'none';
         const activityRepNeeded = toNum(activitiesDetails?.factionRepNeeded, 0);
         const activityTarget = activitiesDetails?.liveTarget || 'none';
+        const daemonLocked = activitiesDetails?.daemonLocked !== false;
+        const daemonReady = Boolean(activitiesDetails?.daemonReady);
+        const daemonLockEmoji = daemonLocked ? '🔒' : '🔓';
+        const daemonReadyEmoji = daemonReady ? '✅' : '⏳';
 
         // CRIME worker (coordinator-driven)
         const crimeDetails = moduleMap['crime'] || {};
@@ -476,6 +480,7 @@ async function handleStatusFullCommand(interaction) {
             `ANGEL COMPREHENSIVE DASHBOARD`,
             `────────────────────────────────────────`,
             `PHASE: ${phaseLabel} ${phaseBar}`,
+            `WORLD DAEMON: ${daemonLockEmoji} LOCKED | ${daemonReadyEmoji} READY`,
             `RAM: ${ramBar}`,
             `MONEY: $${formatNum(currentMoney)} | Rate: $${formatNum(moneyRate)}/s | Daily: $${formatNum(dailyMoney)}`,
             `XP: Level ${hackLevel} | Rate: ${formatNum(xpRate)}/s`,

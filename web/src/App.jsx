@@ -54,7 +54,7 @@ function StatusCard({ title, children, className = '' }) {
 }
 
 // Module card component
-function ModuleCard({ module, onToggle, formatCompactMoney }) {
+function ModuleCard({ module, onToggle, formatCompactMoney, moduleDetailsMap }) {
   const statusIcon = module.status === 'active' ? '🟢' 
     : module.status === 'running' ? '🟢'
     : module.status === 'idle' ? '🟡' 
@@ -89,6 +89,7 @@ function ModuleCard({ module, onToggle, formatCompactMoney }) {
   const incomeDisplayValue = isStocks ? incomePerSecond * 3600 : incomePerSecond
   const incomeDisplayUnit = isStocks ? '/h' : '/s'
   const details = module.details || {}
+  const activitiesDetails = moduleDetailsMap?.activities || {}
   const legacyActivityParts = String(details.currentActivity || '').split('-')
   const legacyActivityType = String(legacyActivityParts[0] || 'idle').toLowerCase()
   const legacyActivityTarget = legacyActivityParts.slice(1).join('-')
@@ -461,6 +462,28 @@ function ModuleCard({ module, onToggle, formatCompactMoney }) {
         </div>
       )}
 
+      {hasData && moduleName === 'augments' && (
+        <div className="line-text sub-text">
+          <span className="spacing"></span>
+          <span className="line-icon">🎯</span>
+          <span className="metric-label">Target:</span>
+          <span className="metric-value">{String(details?.resetCountdown?.targetAugName || 'Unknown').substring(0, 18)}</span>
+          <span className="line-divider">|</span>
+          <span className="metric-label">Faction:</span>
+          <span className="metric-value">{String(details?.resetCountdown?.targetAugFaction || 'Unknown').substring(0, 12)}</span>
+          <span className="line-divider">|</span>
+          <span className="metric-label">Need:</span>
+          <span className="metric-value">💰 {formatCompactMoney(Number(details?.resetCountdown?.moneyNeeded || 0))} | ⭐ {Number(details?.resetCountdown?.repNeeded || 0).toLocaleString()}</span>
+          <span className="line-divider">|</span>
+          <span className="metric-label">Sync:</span>
+          <span className="metric-value">
+            {String(activitiesDetails?.factionFocus || 'none').toLowerCase() === String(details?.resetCountdown?.targetAugFaction || '').toLowerCase()
+              ? '✅'
+              : `⚠ ${String(activitiesDetails?.factionFocus || 'none').substring(0, 10)}`}
+          </span>
+        </div>
+      )}
+
       {hasData && moduleName === 'backdoorrunner' && (
         <div className="line-text sub-text">
           <span className="spacing"></span>
@@ -726,6 +749,10 @@ function App() {
   }
 
   const modulesArray = Array.isArray(modules) ? modules : []
+  const moduleDetailsMap = modulesArray.reduce((acc, module) => {
+    acc[String(module?.name || '').toLowerCase()] = module?.details || {}
+    return acc
+  }, {})
   const totalIncomeRate = modulesArray.reduce((sum, module) => sum + Number(module?.income?.perSecond || 0), 0)
   const memoryUsed = Number(status?.current?.memory || 0)
   const memoryTotal = Number(status?.overview?.angelLite?.currentRam || 0)
@@ -927,7 +954,7 @@ function App() {
               </div>
               <div className="modules-scroll">
                 {modulesArray.map((module, idx) => (
-                  <ModuleCard key={idx} module={module} onToggle={handleModuleToggle} formatCompactMoney={formatCompactMoney} />
+                  <ModuleCard key={idx} module={module} onToggle={handleModuleToggle} formatCompactMoney={formatCompactMoney} moduleDetailsMap={moduleDetailsMap} />
                 ))}
               </div>
             </div>

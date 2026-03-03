@@ -422,6 +422,11 @@ function displayFactionStatus(ui, ns, player) {
                 .join(" | ");
             ui.log(`   🎯 Grind Priority: ${candidateLine}`, "info");
         }
+
+        const augGoal = getAugmentGoalSnapshot(ns);
+        if (augGoal) {
+            ui.log(`   🧬 Aug Goal: ${augGoal.name} @ ${augGoal.faction} | Rep ${formatMoney(augGoal.repShort)} | Money ${formatMoney(augGoal.moneyShort)}`, "info");
+        }
         
         if (invites.length > 0) {
             ui.log(`   📨 Pending Invitations: ${invites.join(", ")}`, "info");
@@ -479,6 +484,62 @@ function getFactionOpportunitySummaryDashboard(ns, faction) {
     }
 
     return { grindableCount, grindableValue, maxRepNeeded };
+}
+
+function hasMetAugPrereqsDashboard(ns, augName, ownedSet) {
+    try {
+        const prereqs = ns.singularity.getAugmentationPrereq(augName) || [];
+        if (!Array.isArray(prereqs) || prereqs.length === 0) return true;
+        return prereqs.every(prereq => ownedSet.has(prereq));
+    } catch (e) {
+        return true;
+    }
+}
+
+function getAugmentGoalSnapshot(ns) {
+    try {
+        const player = ns.getPlayer();
+        const currentMoney = Number(ns.getServerMoneyAvailable("home") || 0);
+        const owned = new Set(ns.singularity.getOwnedAugmentations(true));
+        const priorityList = config.augmentations?.augmentPriority || [];
+        const candidates = [];
+
+        for (const faction of player.factions || []) {
+            if (faction === "NiteSec") continue;
+
+            const factionRep = Number(ns.singularity.getFactionRep(faction) || 0);
+            const augments = ns.singularity.getAugmentationsFromFaction(faction) || [];
+
+            for (const aug of augments) {
+                if (owned.has(aug)) continue;
+                if (!hasMetAugPrereqsDashboard(ns, aug, owned)) continue;
+
+                const repReq = Number(ns.singularity.getAugmentationRepReq(aug) || 0);
+                const price = Number(ns.singularity.getAugmentationPrice(aug) || 0);
+                const repShort = Math.max(0, repReq - factionRep);
+                const moneyShort = Math.max(0, price - currentMoney);
+                const score = (moneyShort > 0 ? Math.log10(moneyShort + 1) : 0) + (repShort > 0 ? Math.log10(repShort + 1) : 0);
+                const effective = Math.max(0, score - (priorityList.includes(aug) ? 0.15 : 0));
+
+                candidates.push({ name: aug, faction, price, repReq, repShort, moneyShort, effective });
+            }
+        }
+
+        if (candidates.length === 0) return null;
+
+        candidates.sort((a, b) => {
+            if (a.effective !== b.effective) return a.effective - b.effective;
+            const aReady = a.repShort === 0 && a.moneyShort === 0;
+            const bReady = b.repShort === 0 && b.moneyShort === 0;
+            if (aReady !== bReady) return aReady ? -1 : 1;
+            if (a.price !== b.price) return a.price - b.price;
+            return a.name.localeCompare(b.name);
+        });
+
+        return candidates[0];
+    } catch (e) {
+        return null;
+    }
 }
 
 /**
@@ -1041,6 +1102,12 @@ function displayAugmentationStatus(ui, ns, player) {
     const status = queuedCount >= resetThreshold ? "🔴 READY FOR RESET" : "⏳ Building queue";
     
     ui.log(`🧬 AUGMENTS: Installed ${ownedCount} | ${queuedText} | ${status} (threshold: ${resetThreshold})`, "info");
+
+    const goal = getAugmentGoalSnapshot(ns);
+    if (goal) {
+        const readiness = goal.repShort <= 0 && goal.moneyShort <= 0 ? "READY" : "IN PROGRESS";
+        ui.log(`   🎯 Target: ${goal.name} (${goal.faction}) | Rep ${formatMoney(goal.repShort)} | Money ${formatMoney(goal.moneyShort)} | ${readiness}`, "info");
+    }
 
     const noQueueWarnMinutes = Number(config.augmentations?.noQueueWarnMinutes ?? 20);
     const noQueueCashThreshold = Number(config.augmentations?.noQueueWarnCash ?? 1000000000);

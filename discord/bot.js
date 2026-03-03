@@ -365,8 +365,13 @@ async function handleStatusFullCommand(interaction) {
         const xpFarmThreads = toNum(hackingDetails?.activeThreads, 0);
         const xpFarmTarget = hackingDetails?.currentTarget || 'n/a';
 
-        // ACTIVITY (not displayed in trimmed dashboard)
-        // const activitiesDetails = moduleMap['activities'] || {};
+        // ACTIVITIES (aligned with augment goals)
+        const activitiesDetails = moduleMap['activities'] || {};
+        const activityPlan = activitiesDetails?.plannedActivity || 'none';
+        const activityLive = activitiesDetails?.liveWorkType || 'idle';
+        const activityFactionFocus = activitiesDetails?.factionFocus || 'none';
+        const activityRepNeeded = toNum(activitiesDetails?.factionRepNeeded, 0);
+        const activityTarget = activitiesDetails?.liveTarget || 'none';
 
         // GANG
         const gangDetails = moduleMap['gang'] || {};
@@ -405,6 +410,7 @@ async function handleStatusFullCommand(interaction) {
         let timeToResetStr = 'N/A';
         let augmentTargetStr = 'N/A';
         let augmentGapsStr = '';
+        let augmentSyncStr = '';
         
         // augmentsDetails is the 'details' object, not wrapped
         const installed = toNum(augmentsDetails?.installed, 0);
@@ -420,6 +426,11 @@ async function handleStatusFullCommand(interaction) {
             const repNeeded = toNum(resetData.repNeeded, 0);
             
             augmentTargetStr = `${targetAugName} (${targetAugFaction})`;
+
+            if (activityFactionFocus && activityFactionFocus !== 'none') {
+                const synced = String(activityFactionFocus).toLowerCase() === String(targetAugFaction).toLowerCase();
+                augmentSyncStr = synced ? ' [SYNCED ✅]' : ` [FOCUS ${activityFactionFocus}]`;
+            }
             
             // Show gaps if not ready
             if (moneyNeeded > 0 || repNeeded > 0) {
@@ -453,11 +464,12 @@ async function handleStatusFullCommand(interaction) {
             `XP: Level ${hackLevel} | Rate: ${formatNum(xpRate)}/s`,
             `NETWORK: Rooted ${rootedServers} | Backdoored ${backdooredServers} | Purchased ${purchasedServers}`,
             `XP FARM: Threads ${xpFarmThreads} | Target ${xpFarmTarget}`,
+            `ACTIVITY: Plan ${activityPlan} | Live ${activityLive} | Focus ${activityFactionFocus} | RepNeed ${formatNum(activityRepNeeded)} | Target ${activityTarget}`,
             `GANG: Members ${gangMembers} | Territory ${gangTerritory}% | Respect ${gangRespect} | Wanted ${gangWanted} | Income $${formatNum(gangMoneyRate)}/s`,
             `STOCKS: Holdings ${stocksHoldings} | Bought ${stocksBought} | Value $${stocksValue} | Gain ${stocksGainPct}%`,
             `HACKNET: ${hacknetNodes} nodes | Production $${hacknetProduction}/s | Total $${hacknetTotal}`,
             `PROGRAMS: ${programsPurchased} purchased`,
-            `AUGMENT TARGET: ${augmentTargetStr}${augmentGapsStr}`,
+            `AUGMENT TARGET: ${augmentTargetStr}${augmentGapsStr}${augmentSyncStr}`,
             `TIME TO RESET: ${timeToResetStr}`,
         ];
 

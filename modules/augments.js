@@ -514,6 +514,12 @@ function reportAugmentsTelemetry(ns) {
         let ownedCount = 0;
         let installedCount = 0;
         let resetMetadata = null;
+        
+        // Get reset countdown data
+        const phase = readGamePhase(ns);
+        const strategy = getAugmentStrategy(phase);
+        const currentMoney = ns.getServerMoneyAvailable("home");
+        const targetAugCost = strategy.maxSpend;
 
         if (hasSingularityAccess(ns)) {
             const installedAugs = ns.singularity.getOwnedAugmentations(true);
@@ -547,12 +553,22 @@ function reportAugmentsTelemetry(ns) {
             lastState.lastInstalledCount = installedCount;
         }
         
+        // Reset countdown data (backend will calculate time using avgMoneyRate)
+        const resetCountdown = {
+            phase: phase,
+            currentMoney: currentMoney,
+            targetAugCost: targetAugCost,
+            moneyNeeded: Math.max(0, targetAugCost - currentMoney),
+            progressPercent: (currentMoney / targetAugCost) * 100
+        };
+        
         const metricsPayload = {
             installed: installedCount,
             queued: ownedCount - installedCount,
             available: lastState.availableCount,
             loopCount: lastState.loopCount,
-            ...(resetMetadata && { resetMetadata })
+            ...(resetMetadata && { resetMetadata }),
+            resetCountdown: resetCountdown
         };
         
         writeAugmentsMetrics(ns, metricsPayload);

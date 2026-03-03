@@ -379,16 +379,21 @@ async function handleStatusFullCommand(interaction) {
         const programsDetails = moduleMap['programs'] || {};
         const programsPurchased = toNum(programsDetails?.programsOwned, 0);
 
-        // TIME TO RESET (estimate based on avg income and augment total cost)
+        // TIME TO RESET (from augments module resetCountdown)
         const avgMoneyRate = toNum(statusPayload?.metrics?.avgMoneyRate, moneyRate);
         const augmentsDetails = moduleMap['augments'] || {};
         let timeToResetStr = 'N/A';
         
-        if (augmentsDetails?.resetMetadata?.totalAugmentsCost > 0 && avgMoneyRate > 0) {
-            const totalAugCost = toNum(augmentsDetails.resetMetadata.totalAugmentsCost, 0);
-            const moneyNeeded = Math.max(0, totalAugCost - currentMoney);
-            const timeToResetSec = moneyNeeded / avgMoneyRate;
-            timeToResetStr = timeToResetSec > 0 ? `~${formatUptime(timeToResetSec)}` : 'Ready!';
+        if (augmentsDetails?.resetCountdown) {
+            const resetData = augmentsDetails.resetCountdown;
+            const moneyNeeded = toNum(resetData.moneyNeeded, 0);
+            
+            if (moneyNeeded > 0 && avgMoneyRate > 0) {
+                const timeToResetSec = moneyNeeded / avgMoneyRate;
+                timeToResetStr = `~${formatUptime(timeToResetSec)}`;
+            } else if (moneyNeeded <= 0) {
+                timeToResetStr = 'Ready to Reset!';
+            }
         }
 
         const dashboardLines = [

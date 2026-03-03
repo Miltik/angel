@@ -515,11 +515,25 @@ function reportAugmentsTelemetry(ns) {
         let installedCount = 0;
         let resetMetadata = null;
         
-        // Get reset countdown data
+        // Get reset countdown data with specific target augmentation
         const phase = readGamePhase(ns);
         const strategy = getAugmentStrategy(phase);
         const currentMoney = ns.getServerMoneyAvailable("home");
-        const targetAugCost = strategy.maxSpend;
+        
+        // Find the next target augmentation to track
+        let targetAug = null;
+        let targetAugCost = strategy.maxSpend;
+        
+        if (hasSingularityAccess(ns)) {
+            const available = getAvailableAugmentsInline(ns);
+            const priority = getPriorityAugmentsInline(ns, available);
+            
+            // Select first available priority augmentation as target
+            if (priority.length > 0) {
+                targetAug = priority[0];
+                targetAugCost = targetAug.price;
+            }
+        }
 
         if (hasSingularityAccess(ns)) {
             const installedAugs = ns.singularity.getOwnedAugmentations(true);
@@ -553,13 +567,14 @@ function reportAugmentsTelemetry(ns) {
             lastState.lastInstalledCount = installedCount;
         }
         
-        // Reset countdown data (backend will calculate time using avgMoneyRate)
+        // Reset countdown data with specific augmentation target
         const resetCountdown = {
             phase: phase,
             currentMoney: currentMoney,
+            targetAugName: targetAug?.name || "Unknown",
             targetAugCost: targetAugCost,
             moneyNeeded: Math.max(0, targetAugCost - currentMoney),
-            progressPercent: (currentMoney / targetAugCost) * 100
+            progressPercent: Math.min(100, (currentMoney / targetAugCost) * 100)
         };
         
         const metricsPayload = {

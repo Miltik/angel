@@ -383,25 +383,30 @@ async function handleStatusFullCommand(interaction) {
         const avgMoneyRate = toNum(statusPayload?.metrics?.avgMoneyRate, moneyRate);
         const augmentsDetails = moduleMap['augments'] || {};
         let timeToResetStr = 'N/A';
+        let augmentTargetStr = 'N/A';
         
         // augmentsDetails is the 'details' object, not wrapped
         const installed = toNum(augmentsDetails?.installed, 0);
         const queued = toNum(augmentsDetails?.queued, 0);
         const resetData = augmentsDetails?.resetCountdown;
         
-        if (queued > 0) {
-            // Augmentations are queued and ready to install
-            timeToResetStr = `Ready! (${queued} queued)`;
-        } else if (resetData) {
-            // Calculate countdown to accumulate money for augmentations
+        if (resetData) {
+            const targetAugName = resetData.targetAugName || 'Unknown';
+            const progressPct = Math.min(100, toNum(resetData.progressPercent, 0));
+            augmentTargetStr = `${targetAugName} [${progressBar(progressPct, 14)}] ${progressPct.toFixed(1)}%`;
+            
             const moneyNeeded = toNum(resetData.moneyNeeded, 0);
             
-            if (moneyNeeded > 0 && avgMoneyRate > 0) {
+            if (queued > 0) {
+                // Augmentations are queued and ready to install
+                timeToResetStr = `Ready! (${queued} queued)`;
+            } else if (moneyNeeded > 0 && avgMoneyRate > 0) {
+                // Calculate countdown to accumulate money for target augmentation
                 const timeToResetSec = moneyNeeded / avgMoneyRate;
                 timeToResetStr = `~${formatUptime(timeToResetSec)}`;
-            } else if (moneyNeeded <= 0) {
+            } else if (moneyNeeded <= 0 && queued === 0) {
                 // Have money but no augmentations queued - waiting for faction rep
-                timeToResetStr = `Waiting for augs...`;
+                timeToResetStr = `Ready to buy!`;
             }
         }
 
@@ -409,6 +414,7 @@ async function handleStatusFullCommand(interaction) {
             `ANGEL COMPREHENSIVE DASHBOARD`,
             `────────────────────────────────────────`,
             `PHASE: ${phaseLabel} ${phaseBar}`,
+            `AUGMENT TARGET: ${augmentTargetStr}`,
             `RAM: ${ramBar}`,
             `MONEY: $${formatNum(currentMoney)} | Rate: $${formatNum(moneyRate)}/s | Daily: $${formatNum(dailyMoney)}`,
             `XP: Level ${hackLevel} | Rate: ${formatNum(xpRate)}/s`,

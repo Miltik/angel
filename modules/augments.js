@@ -219,7 +219,7 @@ function getPriorityAugmentsInline(ns, available) {
  * Intelligent target selection - picks augmentation closest to being available
  * Considers both money and reputation gaps, normalizes them, and picks the lowest total gap
  * @param {NS} ns
- * @param {Array} priorityList - Priority augmentations to consider (or empty to consider all)
+ * @param {Array} priorityList - Priority augmentations to bias toward (not hard-locked)
  * @returns {{name: string, faction: string, price: number, repReq: number, gapScore: number} | null}
  */
 function selectSmartestTargetAug(ns, priorityList = []) {
@@ -230,7 +230,6 @@ function selectSmartestTargetAug(ns, priorityList = []) {
     const owned = ns.singularity.getOwnedAugmentations(true);
     const ownedSet = new Set(owned);
     const candidatesAll = [];
-    const candidatesPriority = [];
 
     // Gather ALL not-yet-owned augmentations
     for (const faction of player.factions) {
@@ -254,6 +253,9 @@ function selectSmartestTargetAug(ns, priorityList = []) {
 
             // Composite gap score: lower is better (closer to available)
             const gapScore = moneyGapScore + repGapScore;
+            const isPriority = priorityList.includes(aug);
+            const priorityBonus = isPriority ? 0.15 : 0;
+            const effectiveScore = Math.max(0, gapScore - priorityBonus);
 
             const augData = {
                 name: aug,
@@ -262,24 +264,31 @@ function selectSmartestTargetAug(ns, priorityList = []) {
                 repReq,
                 moneyShort: moneyGap,
                 repShort: repGap,
-                gapScore
+                gapScore,
+                effectiveScore,
+                isPriority
             };
 
-            // Add to both lists
+            // Always consider all candidates; priority is a soft preference only
             candidatesAll.push(augData);
-            if (priorityList.length === 0 || priorityList.includes(aug)) {
-                candidatesPriority.push(augData);
-            }
         }
     }
 
-    // Try priority list first, fall back to all augmentations
-    const candidates = candidatesPriority.length > 0 ? candidatesPriority : candidatesAll;
-    if (candidates.length === 0) return null;
+    if (candidatesAll.length === 0) return null;
 
-    // Sort by gap score (ascending) and return the closest
-    candidates.sort((a, b) => a.gapScore - b.gapScore);
-    return candidates[0];
+    // Sort by effective score first, then prefer immediately purchasable, then cheaper
+    candidatesAll.sort((a, b) => {
+        if (a.effectiveScore !== b.effectiveScore) return a.effectiveScore - b.effectiveScore;
+
+        const aReady = a.moneyShort === 0 && a.repShort === 0;
+        const bReady = b.moneyShort === 0 && b.repShort === 0;
+        if (aReady !== bReady) return aReady ? -1 : 1;
+
+        if (a.price !== b.price) return a.price - b.price;
+        return a.name.localeCompare(b.name);
+    });
+
+    return candidatesAll[0];
 }
 
 /**

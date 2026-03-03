@@ -307,10 +307,10 @@ async function handleStatusFullCommand(interaction) {
         const overview = statusPayload.overview || {};
         const modules = Array.isArray(modulesResponse?.data?.modules) ? modulesResponse.data.modules : [];
 
-        // Extract data per module from modules array
+        // Create module map from modules array using 'name' and 'details'
         const moduleMap = {};
         modules.forEach(m => {
-            moduleMap[m.module_name] = { ...m, raw: parseRawData(m) };
+            moduleMap[m.name] = m.details || {};
         });
 
         // PHASE
@@ -319,11 +319,10 @@ async function handleStatusFullCommand(interaction) {
         const phaseLabel = ['Bootstrap', 'Early Scaling', 'Mid-Game', 'Gang', 'Late'][Math.max(0, Math.min(4, phase))] || 'Unknown';
         const phaseBar = `[${progressBar(phasePct, 16)}] ${phasePct.toFixed(1)}%`;
 
-        // Extract focus from augments or phase module
-        const augmentsRaw = moduleMap['augments']?.raw || {};
-        const phaseRaw = moduleMap['phase']?.raw || {};
-        const primaryActivity = phaseRaw?.primaryActivity || 'Unknown';
-        const secondaryActivities = phaseRaw?.secondaryActivities || [];
+        // Extract focus from phase module details
+        const phaseDetails = moduleMap['phase'] || {};
+        const primaryActivity = phaseDetails?.plannedActivity || 'Unknown';
+        const secondaryActivities = phaseDetails?.secondaryActivities || [];
         const secondary = Array.isArray(secondaryActivities) ? secondaryActivities.join(', ') : String(secondaryActivities);
 
         // MONEY
@@ -335,11 +334,11 @@ async function handleStatusFullCommand(interaction) {
         const hackLevel = String(latestData?.hack_level ?? 'N/A');
         const xpRate = toNum(latestData?.xp_rate);
 
-        // NETWORK (from hacking module)
-        const hackingRaw = moduleMap['hacking']?.raw || {};
-        const rootedServers = toNum(hackingRaw?.rootedServers, 0);
-        const backdooredServers = toNum(hackingRaw?.backdooredServers, 0);
-        const purchasedServers = toNum(hackingRaw?.purchasedServers, 0);
+        // NETWORK (from hacking module details)
+        const hackingDetails = moduleMap['hacking'] || {};
+        const rootedServers = toNum(hackingDetails?.rootedServers, 0);
+        const backdooredServers = toNum(hackingDetails?.backdooredServers, 0);
+        const purchasedServers = toNum(hackingDetails?.purchasedServers, 0);
 
         // RAM
         const memoryUsedGb = (toNum(latestData?.memory_used) / 1024).toFixed(1);
@@ -348,47 +347,48 @@ async function handleStatusFullCommand(interaction) {
         const ramBar = `${progressBar(ramPct, 14)} ${memoryUsedGb}GB`;
 
         // XP FARM
-        const xpFarmRaw = moduleMap['xpFarm']?.raw || {};
-        const xpFarmThreads = toNum(xpFarmRaw?.threads, 0);
-        const xpFarmTarget = xpFarmRaw?.target || 'n/a';
+        const xpFarmDetails = moduleMap['xpFarm'] || {};
+        const xpFarmThreads = toNum(xpFarmDetails?.threads, 0);
+        const xpFarmTarget = xpFarmDetails?.target || 'n/a';
 
         // ACTIVITY
-        const activitiesRaw = moduleMap['activities']?.raw || {};
-        const activityStatus = activitiesRaw?.currentActivity || 'Idle';
+        const activitiesDetails = moduleMap['activities'] || {};
+        const activityStatus = activitiesDetails?.liveWorkType || activitiesDetails?.currentActivity || 'Idle';
 
         // GANG
-        const gangRaw = moduleMap['gang']?.raw || {};
-        const gangName = gangRaw?.name || 'None';
-        const gangMembers = toNum(gangRaw?.members, 0);
-        const gangTerritory = ((toNum(gangRaw?.territory, 0) || 0) * 100).toFixed(1);
-        const gangRespect = formatNum(toNum(gangRaw?.respect, 0), 0);
-        const gangWanted = formatNum(toNum(gangRaw?.wantedLevel, 0), 2);
-        const gangMoneyRate = toNum(gangRaw?.moneyRate, 0);
+        const gangDetails = moduleMap['gang'] || {};
+        const gangName = gangDetails?.name || 'None';
+        const gangMembers = toNum(gangDetails?.members, 0);
+        const gangTerritory = ((toNum(gangDetails?.territory, 0) || 0) * 100).toFixed(1);
+        const gangRespect = formatNum(toNum(gangDetails?.respect, 0), 0);
+        const gangWanted = formatNum(toNum(gangDetails?.wantedLevel, 0), 2);
+        const gangMoneyRate = toNum(gangDetails?.moneyRate, 0);
 
         // STOCKS
-        const stocksRaw = moduleMap['stocks']?.raw || {};
-        const stocksHoldings = toNum(stocksRaw?.stocks, 0);
-        const stocksInvested = formatNum(toNum(stocksRaw?.invested, 0));
-        const stocksValue = formatNum(toNum(stocksRaw?.portfolioValue, 0));
-        const stocksGain = toNum(stocksRaw?.totalProfits, 0);
-        const stocksGainPct = stocksValue > 0 ? ((stocksGain / toNum(stocksRaw?.invested, 1)) * 100).toFixed(1) : '0';
+        const stocksDetails = moduleMap['stocks'] || {};
+        const stocksHoldings = toNum(stocksDetails?.stocks, 0);
+        const stocksInvested = formatNum(toNum(stocksDetails?.invested, 0));
+        const stocksValue = formatNum(toNum(stocksDetails?.portfolioValue, 0));
+        const stocksGain = toNum(stocksDetails?.totalProfits, 0);
+        const stocksGainPct = stocksInvested > 0 ? ((stocksGain / toNum(stocksDetails?.invested, 1)) * 100).toFixed(1) : '0';
 
         // HACKNET
-        const hacknetRaw = moduleMap['hacknet']?.raw || {};
-        const hacknetNodes = toNum(hacknetRaw?.nodeCount, 0);
-        const hacknetProduction = formatNum(toNum(hacknetRaw?.production, 0));
-        const hacknetTotal = formatNum(toNum(hacknetRaw?.total, 0));
+        const hacknetDetails = moduleMap['hacknet'] || {};
+        const hacknetNodes = toNum(hacknetDetails?.nodeCount, 0);
+        const hacknetProduction = formatNum(toNum(hacknetDetails?.production, 0));
+        const hacknetTotal = formatNum(toNum(hacknetDetails?.total, 0));
 
         // PROGRAMS
-        const programsRaw = moduleMap['programs']?.raw || {};
-        const programsPurchased = toNum(programsRaw?.purchased, 0);
+        const programsDetails = moduleMap['programs'] || {};
+        const programsPurchased = toNum(programsDetails?.purchased, 0);
 
         // TIME TO RESET (estimate based on avg income and augment total cost)
         const avgMoneyRate = toNum(statusPayload?.metrics?.avgMoneyRate, moneyRate);
+        const augmentsDetails = moduleMap['augments'] || {};
         let timeToResetStr = 'N/A';
         
-        if (augmentsRaw?.resetMetadata?.totalAugmentsCost > 0 && avgMoneyRate > 0) {
-            const totalAugCost = toNum(augmentsRaw.resetMetadata.totalAugmentsCost, 0);
+        if (augmentsDetails?.resetMetadata?.totalAugmentsCost > 0 && avgMoneyRate > 0) {
+            const totalAugCost = toNum(augmentsDetails.resetMetadata.totalAugmentsCost, 0);
             const moneyNeeded = Math.max(0, totalAugCost - currentMoney);
             const timeToResetSec = moneyNeeded / avgMoneyRate;
             timeToResetStr = timeToResetSec > 0 ? `~${formatUptime(timeToResetSec)}` : 'Ready!';

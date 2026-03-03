@@ -435,7 +435,6 @@ async function handleStatusFullCommand(interaction) {
             `ANGEL COMPREHENSIVE DASHBOARD`,
             `────────────────────────────────────────`,
             `PHASE: ${phaseLabel} ${phaseBar}`,
-            `AUGMENT TARGET: ${augmentTargetStr}${augmentGapsStr}`,
             `RAM: ${ramBar}`,
             `MONEY: $${formatNum(currentMoney)} | Rate: $${formatNum(moneyRate)}/s | Daily: $${formatNum(dailyMoney)}`,
             `XP: Level ${hackLevel} | Rate: ${formatNum(xpRate)}/s`,
@@ -445,6 +444,7 @@ async function handleStatusFullCommand(interaction) {
             `STOCKS: Holdings ${stocksHoldings} | Bought ${stocksBought} | Value $${stocksValue} | Gain ${stocksGainPct}%`,
             `HACKNET: ${hacknetNodes} nodes | Production $${hacknetProduction}/s | Total $${hacknetTotal}`,
             `PROGRAMS: ${programsPurchased} purchased`,
+            `AUGMENT TARGET: ${augmentTargetStr}${augmentGapsStr}`,
             `TIME TO RESET: ${timeToResetStr}`,
         ];
 

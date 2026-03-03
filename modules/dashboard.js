@@ -1342,9 +1342,11 @@ async function runCoordinatorFromDashboard(ns, ui) {
     ns.clearPort(PHASE_PORT);
     ns.writePort(PHASE_PORT, coordinatorState.currentPhase);
 
-    const activity = calculateDesiredActivityForPort(ns, coordinatorState.currentPhase);
-    ns.clearPort(PORTS.ACTIVITY_MODE);
-    ns.writePort(PORTS.ACTIVITY_MODE, activity);
+    if (config.dashboard?.controlActivityMode === true) {
+        const activity = calculateDesiredActivityForPort(ns, coordinatorState.currentPhase);
+        ns.clearPort(PORTS.ACTIVITY_MODE);
+        ns.writePort(PORTS.ACTIVITY_MODE, activity);
+    }
 
     if (config.augmentations?.installOnThreshold && hasSingularityAccessForReset(ns) && !coordinatorState.resetPending) {
         const now = Date.now();

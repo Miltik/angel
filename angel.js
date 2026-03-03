@@ -313,10 +313,18 @@ async function ensureModulesRunning(ns) {
         await ns.sleep(1500);
     }
     
-    // Activities module (unified: crime, training, faction, company)
+    // Activities module (coordinator: training, faction, company + mode signaling)
     if (config.orchestrator.enableActivities) {
         const started = await ensureModuleRunning(ns, SCRIPTS.activities, "Activities");
         if (!started) blockedCoreModules.push("Activities");
+        coreReady = coreReady && started;
+        await ns.sleep(1500);
+    }
+
+    // Crime module (dedicated worker, driven by activity mode)
+    if (config.orchestrator.enableCrime) {
+        const started = await ensureModuleRunning(ns, SCRIPTS.crime, "Crime");
+        if (!started) blockedCoreModules.push("Crime");
         coreReady = coreReady && started;
         await ns.sleep(1500);
     }
@@ -609,6 +617,7 @@ export function stopAll(ns) {
         SCRIPTS.augments,
         SCRIPTS.programs,
         SCRIPTS.activities,
+        SCRIPTS.crime,
         SCRIPTS.hacknet,
         SCRIPTS.stocks,
         SCRIPTS.gang,
@@ -659,6 +668,7 @@ export function getSystemHealth(ns) {
         { name: "XP Farm", script: SCRIPTS.xpFarm, enabled: config.orchestrator.enableXPFarm },
         { name: "Loot", script: SCRIPTS.loot, enabled: config.orchestrator.enableLoot },
         { name: "Backdoor", script: SCRIPTS.backdoor, enabled: config.orchestrator.enableBackdoorAuto },
+        { name: "Crime", script: SCRIPTS.crime, enabled: config.orchestrator.enableCrime },
     ];
     
     const health = {

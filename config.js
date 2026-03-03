@@ -144,7 +144,8 @@ export const config = {
         enableAugments: true,
         enablePrograms: true,
         enablePhase: true,         // Phase tracker (single source of truth)
-        enableActivities: true,    // Handles crime, training, faction, company (all phases)
+        enableActivities: true,    // Player-work coordinator (training/faction/company + mode signaling)
+        enableCrime: true,         // Dedicated crime worker (executes when coordinator requests crime mode)
         enableSleeves: true,
         enableStocks: true,
         enableGang: true,
@@ -568,6 +569,7 @@ export const SCRIPTS = {
     programs: "/angel/modules/programs.js",
     phase: "/angel/modules/phase.js",
     activities: "/angel/modules/activities.js",
+    crime: "/angel/modules/crime.js",
     sleeves: "/angel/modules/sleeves.js",
     stocks: "/angel/modules/stocks.js",
     gang: "/angel/modules/gang.js",

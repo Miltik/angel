@@ -1,11 +1,12 @@
 /**
  * ANGEL Activities Module
- * Unified activity automation: crime, training, faction, company work
- * + Faction reputation management and augment tracking
+ * Player-work coordinator: training, faction, company orchestration
+ * + Faction reputation management and augment-goal alignment
+ * + Signals desired activity mode for dedicated workers (crime module)
  * 
  * Phase-aware dual-mode operation:
- * - P0-2: Active activity selection (crime/training/faction/company)
- * - P3+: Filler crime when lock is free (statpadding between other activities)
+ * - P0-2: Active activity selection (training/faction/company/crime fallback)
+ * - P3+: Filler crime fallback when no higher-priority work is needed
  * - Always: Faction tracking and auto-join
  * 
  * @param {NS} ns
@@ -18,6 +19,7 @@ const PHASE_PORT = 7;
 const TELEMETRY_PORT = 20;
 const ACTIVITY_OWNER = "activity";
 const ACTIVITY_LOCK_TTL = 180000;
+const CRIME_SCRIPT = "/angel/modules/crime.js";
 const CRIME_FACTIONS = [
     "Slum Snakes",
     "Tetrads",
@@ -182,8 +184,10 @@ async function processActivity(ns, gamePhase, ui) {
         // Preempt lower-priority work when faction rep is available/needed
         if (shouldForceFaction && isLowerPriorityWork) {
             ns.singularity.stopAction();
+            setActivityMode(ns, "faction");
             ui.log(`🔁 Switching from ${currentWork.type} to faction rep grind`, "info");
         } else {
+            setActivityMode(ns, desiredModeFromWork(currentWork));
             if (currentWork.type === "CRIME") {
                 const bestCrime = getBestCrime(ns);
                 const currentCrime = String(currentWork.crimeType || "");
@@ -236,6 +240,7 @@ async function processActivity(ns, gamePhase, ui) {
     const activity = chooseActivity(ns, gamePhase);
 
     if (activity === "none") {
+        setActivityMode(ns, "none");
         return;
     }
 
@@ -245,6 +250,8 @@ async function processActivity(ns, gamePhase, ui) {
     }
 
     try {
+        setActivityMode(ns, activity);
+
         // Only log when activity changes
         if (activity !== lastState.plannedActivity || lastState.loopCount - lastState.lastActivityChange > 12) {
             const activityEmoji = {
@@ -449,6 +456,18 @@ function hasAnyViableFactionWork(ns) {
  * Commit a crime and wait for completion
  */
 async function doCrime(ns, ui) {
+    setActivityMode(ns, "crime");
+
+    // Preferred path: dedicated crime worker handles execution
+    if (ns.isRunning(CRIME_SCRIPT, "home")) {
+        if (lastState.loopCount % 24 === 0) {
+            ui.log(`🔪 Delegated to crime worker`, "info");
+        }
+        await ns.sleep(5000);
+        return;
+    }
+
+    // Fallback path: local crime execution if worker is unavailable
     const crime = selectCrime(ns);
     if (!crime) {
         if (lastState.loopCount % 24 === 0) {
@@ -860,6 +879,24 @@ function claimLock(ns, owner, ttlMs) {
         return true;
     }
     return false;
+}
+
+function setActivityMode(ns, activity) {
+    try {
+        ns.clearPort(PORTS.ACTIVITY_MODE);
+        ns.writePort(PORTS.ACTIVITY_MODE, String(activity || "none").toLowerCase());
+    } catch (e) {
+        // Ignore mode signaling failures
+    }
+}
+
+function desiredModeFromWork(work) {
+    const type = String(work?.type || "").toUpperCase();
+    if (type === "CRIME") return "crime";
+    if (type === "FACTION") return "faction";
+    if (type === "COMPANY") return "company";
+    if (type === "UNIVERSITY" || type === "GYM" || type === "CLASS") return "training";
+    return "none";
 }
 
 function reportActivitiesTelemetry(ns) {

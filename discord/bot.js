@@ -373,6 +373,12 @@ async function handleStatusFullCommand(interaction) {
         const activityRepNeeded = toNum(activitiesDetails?.factionRepNeeded, 0);
         const activityTarget = activitiesDetails?.liveTarget || 'none';
 
+        // CRIME worker (coordinator-driven)
+        const crimeDetails = moduleMap['crime'] || {};
+        const crimeMode = crimeDetails?.mode || 'none';
+        const currentCrime = crimeDetails?.currentCrime || 'none';
+        const crimeChance = Math.min(100, Math.max(0, toNum(crimeDetails?.successChance, 0) * 100));
+
         // GANG
         const gangDetails = moduleMap['gang'] || {};
         const gangMembers = toNum(gangDetails?.members, 0);
@@ -465,6 +471,7 @@ async function handleStatusFullCommand(interaction) {
             `NETWORK: Rooted ${rootedServers} | Backdoored ${backdooredServers} | Purchased ${purchasedServers}`,
             `XP FARM: Threads ${xpFarmThreads} | Target ${xpFarmTarget}`,
             `ACTIVITY: Plan ${activityPlan} | Live ${activityLive} | Focus ${activityFactionFocus} | RepNeed ${formatNum(activityRepNeeded)} | Target ${activityTarget}`,
+            `CRIME: Mode ${crimeMode} | Current ${currentCrime} | Success ${crimeChance.toFixed(0)}%`,
             `GANG: Members ${gangMembers} | Territory ${gangTerritory}% | Respect ${gangRespect} | Wanted ${gangWanted} | Income $${formatNum(gangMoneyRate)}/s`,
             `STOCKS: Holdings ${stocksHoldings} | Bought ${stocksBought} | Value $${stocksValue} | Gain ${stocksGainPct}%`,
             `HACKNET: ${hacknetNodes} nodes | Production $${hacknetProduction}/s | Total $${hacknetTotal}`,

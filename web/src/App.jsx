@@ -82,6 +82,7 @@ function ModuleCard({ module, onToggle, formatCompactMoney, moduleDetailsMap }) 
   const isSleeves = moduleName === 'sleeves'
   const isXpFarm = moduleName === 'xpfarm'
   const isLoot = moduleName === 'loot'
+  const isCrime = moduleName === 'crime'
   const isServers = moduleName === 'servers'
   const isActivities = moduleName === 'activities'
   const isPhase = moduleName === 'phase'
@@ -116,6 +117,7 @@ function ModuleCard({ module, onToggle, formatCompactMoney, moduleDetailsMap }) 
     if (isServers) return `${details.servers ?? 0} servers`
     if (isActivities) return details.currentActivity || 'idle'
     if (isLoot) return `${details.loopsRun ?? 0} loops`
+    if (isCrime) return details.mode ? `mode:${details.mode}` : 'idle'
     if (isPhase) return `Phase ${details.phase ?? 0} of 4`
     if (isFormulas) return details.farmingActive ? 'Farming active' : 'Waiting for Formulas.exe'
     return module.status || 'offline'
@@ -362,6 +364,24 @@ function ModuleCard({ module, onToggle, formatCompactMoney, moduleDetailsMap }) 
           <span className="line-icon">🔄</span>
           <span className="metric-label">Loops:</span>
           <span className="metric-value">{details.loopsRun || 0}</span>
+        </div>
+      )}
+
+      {hasData && isCrime && (
+        <div className="line-text sub-text">
+          <span className="spacing"></span>
+          <span className="line-icon">🔪</span>
+          <span className="metric-label">Mode:</span>
+          <span className="metric-value">{String(details.mode || 'none')}</span>
+          <span className="line-divider">|</span>
+          <span className="metric-label">Crime:</span>
+          <span className="metric-value">{String(details.currentCrime || 'none').substring(0, 14)}</span>
+          <span className="line-divider">|</span>
+          <span className="metric-label">Chance:</span>
+          <span className="metric-value">{`${((Number(details.successChance || 0)) * 100).toFixed(0)}%`}</span>
+          <span className="line-divider">|</span>
+          <span className="metric-label">Duration:</span>
+          <span className="metric-value">{`${Math.round((Number(details.durationMs || 0)) / 1000)}s`}</span>
         </div>
       )}
 

@@ -140,6 +140,9 @@ async function solveAllContracts(ns, ui) {
                     case "Total Ways to Sum":
                         solution = solveTotalWaysToSum(contractData);
                         break;
+                    case "Total Ways to Sum II":
+                        solution = solveTotalWaysSumTwo(contractData);
+                        break;
                     case "Spiralize Matrix":
                         solution = solveSpiralizeMatrix(contractData);
                         break;
@@ -878,6 +881,21 @@ function solveVigenereCipher([text, key]) {
         }
     }
     return result;
+}
+
+function solveTotalWaysSumTwo([n, s]) {
+    // Total Ways to Sum II: find ways to sum a number using coins from array s
+    const target = n;
+    const coins = Array.isArray(s) ? s : [s];
+    const dp = new Array(target + 1).fill(0);
+    dp[0] = 1;
+    
+    for (const coin of coins) {
+        for (let i = coin; i <= target; i++) {
+            dp[i] += dp[i - coin];
+        }
+    }
+    return dp[target];
 }
 
 function getAllServers(ns, server = "home", visited = new Set()) {

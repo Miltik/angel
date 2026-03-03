@@ -495,7 +495,7 @@ export const config = {
         includeHome: false,
         maxFilesPerLoop: 250,
         archivePrefix: "/angel/loot/",
-        extensions: [".lit", ".msg", ".txt", ".cct"],
+        extensions: [".lit", ".msg", ".txt"],
     },
 
     // Backdoor automation settings

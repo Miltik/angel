@@ -8,7 +8,7 @@
  * @param {NS} ns
  */
 import { config } from "/angel/config.js";
-import { formatMoney } from "/angel/utils.js";
+import { formatMoney, isScriptDeathError } from "/angel/utils.js";
 import { createWindow } from "/angel/modules/uiManager.js";
 
 const PHASE_PORT = 7;
@@ -61,11 +61,6 @@ export async function main(ns) {
             await ns.sleep(5000);
         }
     }
-}
-
-function isScriptDeathError(error) {
-    const message = String(error || "");
-    return message.includes("ScriptDeath") || message.includes("NS instance has already been killed");
 }
 
 /**

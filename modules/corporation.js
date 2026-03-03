@@ -1,5 +1,7 @@
 import { config } from "/angel/config.js";
 import { createWindow } from "/angel/modules/uiManager.js";
+import { formatMoney, isScriptDeathError } from "/angel/utils.js";
+import { formatMoney, isScriptDeathError } from "/angel/utils.js";
 
 const CITIES = ["Aevum", "Chongqing", "Sector-12", "New Tokyo", "Ishima", "Volhaven"];
 const TELEMETRY_PORT = 20;
@@ -114,11 +116,6 @@ export async function main(ns) {
         ns.print(`Stack: ${error.stack || 'no stack available'}`);
         throw error;
     }
-}
-
-function isScriptDeathError(error) {
-    const message = String(error || "");
-    return message.includes("ScriptDeath") || message.includes("NS instance has already been killed");
 }
 
 function getSettings() {

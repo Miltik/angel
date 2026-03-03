@@ -1,4 +1,5 @@
 import { createWindow } from "/angel/modules/uiManager.js";
+import { formatMoney, isScriptDeathError } from "/angel/utils.js";
 
 const TELEMETRY_PORT = 20;
 
@@ -197,11 +198,6 @@ async function phaseBuyPrograms(ns, ui) {
         ui.log(`Phase error: ${e}`, "error");
         return false;
     }
-}
-
-function isScriptDeathError(error) {
-    const message = String(error || "");
-    return message.includes("ScriptDeath") || message.includes("NS instance has already been killed");
 }
 
 function hasTor(ns) {

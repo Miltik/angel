@@ -1,5 +1,6 @@
 import { createWindow } from "/angel/modules/uiManager.js";
 import { config } from "/angel/config.js";
+import { isScriptDeathError } from "/angel/utils.js";
 
 const LOOT_VERSION = "2026-03-01-r4";
 const TELEMETRY_PORT = 20;
@@ -210,9 +211,6 @@ function getAllServers(ns) {
     return [...visited];
 }
 
-function isScriptDeathError(message) {
-    return message.includes("ScriptDeath") || message.includes("NS instance has already been killed");
-}
 function reportLootTelemetry(ns, stateData) {
     try {
         const now = Date.now();

@@ -334,11 +334,11 @@ async function handleStatusFullCommand(interaction) {
         const hackLevel = String(latestData?.hack_level ?? 'N/A');
         const xpRate = toNum(latestData?.xp_rate);
 
-        // NETWORK (from hacking module details)
-        const hackingDetails = moduleMap['hacking'] || {};
-        const rootedServers = toNum(hackingDetails?.rootedServers, 0);
-        const backdooredServers = toNum(hackingDetails?.backdooredServers, 0);
-        const purchasedServers = toNum(hackingDetails?.purchasedServers, 0);
+        // NETWORK (from servers module or deprecated)
+        const serversDetails = moduleMap['servers'] || {};
+        const rootedServers = toNum(serversDetails?.rooted, 0);
+        const backdooredServers = toNum(serversDetails?.backdoored, 0);
+        const purchasedServers = toNum(serversDetails?.purchased, 0);
 
         // RAM
         const memoryUsedGb = (toNum(latestData?.memory_used) / 1024).toFixed(1);
@@ -346,10 +346,10 @@ async function handleStatusFullCommand(interaction) {
         const ramPct = toNum(overview?.angelLite?.percent, 0);
         const ramBar = `${progressBar(ramPct, 14)} ${memoryUsedGb}GB`;
 
-        // XP FARM
-        const xpFarmDetails = moduleMap['xpFarm'] || {};
-        const xpFarmThreads = toNum(xpFarmDetails?.threads, 0);
-        const xpFarmTarget = xpFarmDetails?.target || 'n/a';
+        // XP FARM (get threads and target from hacking module, not xpFarm)
+        const hackingDetails = moduleMap['hacking'] || {};
+        const xpFarmThreads = toNum(hackingDetails?.activeThreads, 0);
+        const xpFarmTarget = hackingDetails?.currentTarget || 'n/a';
 
         // ACTIVITY
         const activitiesDetails = moduleMap['activities'] || {};
@@ -361,16 +361,17 @@ async function handleStatusFullCommand(interaction) {
         const gangMembers = toNum(gangDetails?.members, 0);
         const gangTerritory = ((toNum(gangDetails?.territory, 0) || 0) * 100).toFixed(1);
         const gangRespect = formatNum(toNum(gangDetails?.respect, 0), 0);
-        const gangWanted = formatNum(toNum(gangDetails?.wantedLevel, 0), 2);
+        const gangWanted = formatNum(toNum(gangDetails?.wantedPenalty, 0), 2);
         const gangMoneyRate = toNum(gangDetails?.moneyRate, 0);
 
         // STOCKS
         const stocksDetails = moduleMap['stocks'] || {};
         const stocksHoldings = toNum(stocksDetails?.stocks, 0);
-        const stocksInvested = formatNum(toNum(stocksDetails?.invested, 0));
+        const stocksBought = toNum(stocksDetails?.bought, 0);
+        const stocksSold = toNum(stocksDetails?.sold, 0);
         const stocksValue = formatNum(toNum(stocksDetails?.portfolioValue, 0));
         const stocksGain = toNum(stocksDetails?.totalProfits, 0);
-        const stocksGainPct = stocksInvested > 0 ? ((stocksGain / toNum(stocksDetails?.invested, 1)) * 100).toFixed(1) : '0';
+        const stocksGainPct = stocksValue > 0 ? ((stocksGain / toNum(stocksValue.replace(/[^0-9]/g, ''), 1)) * 100).toFixed(1) : '0.0';
 
         // HACKNET
         const hacknetDetails = moduleMap['hacknet'] || {};
@@ -380,7 +381,7 @@ async function handleStatusFullCommand(interaction) {
 
         // PROGRAMS
         const programsDetails = moduleMap['programs'] || {};
-        const programsPurchased = toNum(programsDetails?.purchased, 0);
+        const programsPurchased = toNum(programsDetails?.programsOwned, 0);
 
         // TIME TO RESET (estimate based on avg income and augment total cost)
         const avgMoneyRate = toNum(statusPayload?.metrics?.avgMoneyRate, moneyRate);
@@ -412,7 +413,7 @@ async function handleStatusFullCommand(interaction) {
             `GANG: ${gangName} | Members ${gangMembers} | Territory ${gangTerritory}% | Respect ${gangRespect}`,
             `        Wanted ${gangWanted} | Income $${formatNum(gangMoneyRate)}/s`,
             ``,
-            `STOCKS: Holdings ${stocksHoldings} | Invested $${stocksInvested} | Value $${stocksValue} | Gain ${stocksGainPct}%`,
+            `STOCKS: Holdings ${stocksHoldings} | Bought ${stocksBought} | Value $${stocksValue} | Gain ${stocksGainPct}%`,
             `HACKNET: ${hacknetNodes} nodes | Production $${hacknetProduction}/s | Total $${hacknetTotal}`,
             `PROGRAMS: ${programsPurchased} purchased`,
             ``,

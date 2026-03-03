@@ -27,6 +27,19 @@ const client = new Client({
     ]
 });
 
+// ============================================
+// ANGEL COLOR SCHEME
+// ============================================
+const ANGEL_COLORS = {
+    primary: 0x00efff,    // Cyan (#0ef)
+    secondary: 0x00ffff,  // Light Cyan (#0ff)
+    accent: 0x99ff00,     // Lime/Yellow-Green (#9f0)
+    success: 0x00ff00,    // Green (#0f0)
+    warning: 0xffaa00,    // Orange (#fa0)
+    danger: 0xff0000,     // Red (#f00)
+    info: 0x00aaff        // Blue (#0af)
+};
+
 // Utility function to format large numbers
 const formatNum = (num, decimals = 2) => {
     if (num >= 1e9) return (num / 1e9).toFixed(decimals) + 'B';
@@ -250,7 +263,7 @@ async function handleStatusCommand(interaction) {
         ].join('\n');
 
         const embed = new EmbedBuilder()
-            .setColor(0x00ff00)
+            .setColor(ANGEL_COLORS.primary)
             .setTitle('📊 ANGEL Status Snapshot')
             .setDescription(`\`\`\`\n${compact}\n\`\`\``)
             .setTimestamp(new Date(normalized.lastUpdate))
@@ -498,7 +511,7 @@ async function handleStatusFullCommand(interaction) {
         ];
 
         const embed = new EmbedBuilder()
-            .setColor(0x4da3ff)
+            .setColor(ANGEL_COLORS.primary)
             .setTitle('🧾 ANGEL Status (Full Dashboard)')
             .setDescription(`\`\`\`\n${dashboardLines.join('\n')}\n\`\`\``)
             .setFooter({ text: `Last update: ${new Date(normalized.lastUpdate).toLocaleString()}` })
@@ -519,7 +532,7 @@ async function handleModulesCommand(interaction) {
         const { modules } = response.data;
 
         const embed = new EmbedBuilder()
-            .setColor(0x0099ff)
+            .setColor(ANGEL_COLORS.info)
             .setTitle('📦 Module Status Overview')
             .setTimestamp();
 
@@ -548,7 +561,7 @@ async function handleIncomeCommand(interaction) {
         const latestData = normalized.latestData;
 
         const embed = new EmbedBuilder()
-            .setColor(0x00dd00)
+            .setColor(ANGEL_COLORS.accent)
             .setTitle('💰 Income Breakdown')
             .setTimestamp()
             .addFields(
@@ -589,7 +602,7 @@ async function handleReportCommand(interaction) {
         const { stats } = response.data;
 
         const embed = new EmbedBuilder()
-            .setColor(0x9933ff)
+            .setColor(ANGEL_COLORS.secondary)
             .setTitle('📈 Complete Telemetry Report')
             .setTimestamp()
             .addFields(
@@ -644,7 +657,7 @@ async function handlePerformanceCommand(interaction) {
         const xpPerMemory = (latestData?.xp_rate || 0) / Math.max(latestData?.memory_used || 1, 1);
 
         const embed = new EmbedBuilder()
-            .setColor(0xff9900)
+            .setColor(ANGEL_COLORS.warning)
             .setTitle('⚡ Performance Metrics')
             .setTimestamp()
             .addFields(
@@ -790,7 +803,7 @@ async function handleHelpCommand(interaction) {
     await interaction.deferReply();
 
     const helpEmbed = new EmbedBuilder()
-        .setColor(0x3498db)
+        .setColor(ANGEL_COLORS.primary)
         .setTitle('❓ ANGEL Discord Bot - Complete Help')
         .setDescription('Comprehensive control portal for Angel automation system')
         .addFields(
@@ -828,7 +841,7 @@ async function handleUptimeCommand(interaction) {
         const { latestData } = response.data;
 
         const embed = new EmbedBuilder()
-            .setColor(0x1abc9c)
+            .setColor(ANGEL_COLORS.info)
             .setTitle('⏱️ Session Uptime & History')
             .setTimestamp()
             .addFields(
@@ -866,7 +879,7 @@ async function handleTargetsCommand(interaction) {
         }
 
         const embed = new EmbedBuilder()
-            .setColor(0xf39c12)
+            .setColor(ANGEL_COLORS.warning)
             .setTitle('🎯 Hacking Targets & Strategy')
             .setTimestamp()
             .addFields(
@@ -909,7 +922,7 @@ async function handleDaemonUnlockCommand(interaction) {
         });
 
         const embed = new EmbedBuilder()
-            .setColor(0x27ae60)
+            .setColor(ANGEL_COLORS.success)
             .setTitle('🔓 Daemon Advancement Unlocked')
             .setDescription('✅ Manual unlock signal sent! Daemon progression will begin when ready.')
             .addFields(
@@ -930,7 +943,7 @@ async function handleDaemonUnlockCommand(interaction) {
     } catch (error) {
         console.error('Daemon unlock error:', error.message);
         const embed = new EmbedBuilder()
-            .setColor(0xe74c3c)
+            .setColor(ANGEL_COLORS.danger)
             .setTitle('❌ Daemon Unlock Failed')
             .setDescription(error.response?.data?.message || 'Failed to send unlock signal')
             .setTimestamp();

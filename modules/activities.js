@@ -20,6 +20,7 @@ const TELEMETRY_PORT = 20;
 const ACTIVITY_OWNER = "activity";
 const ACTIVITY_LOCK_TTL = 180000;
 const CRIME_SCRIPT = "/angel/modules/crime.js";
+const DAEMON_LOCK_PORT = 15;
 const CRIME_FACTIONS = [
     "Slum Snakes",
     "Tetrads",
@@ -47,6 +48,14 @@ let lastState = {
 // Telemetry tracking
 const telemetryState = {
     lastReportTime: 0
+};
+
+const resetState = {
+    lastQueuedCount: 0,
+    lastQueuedCost: 0,
+    lastProgressTs: 0,
+    lastReasonLogTs: 0,
+    pending: false,
 };
 
 /**
@@ -103,6 +112,9 @@ export async function main(ns) {
             // Activity work: ALL PHASES
             // Priority: Faction work for augments > training > company > crime
             await processActivity(ns, gamePhase, ui);
+
+            // Reset orchestration belongs to coordinator (not dashboard)
+            await maybeTriggerCoordinatorReset(ns, ui, gamePhase);
 
             // Report telemetry every 5 seconds
             const timeSinceLastReport = Date.now() - telemetryState.lastReportTime;
@@ -897,6 +909,181 @@ function desiredModeFromWork(work) {
     if (type === "COMPANY") return "company";
     if (type === "UNIVERSITY" || type === "GYM" || type === "CLASS") return "training";
     return "none";
+}
+
+function updateResetProgressState(queuedCount, queuedCost, now) {
+    if (resetState.lastProgressTs === 0) {
+        resetState.lastProgressTs = now;
+    }
+
+    const countImproved = queuedCount > resetState.lastQueuedCount;
+    const costImproved = queuedCost > resetState.lastQueuedCost * 1.02;
+    if (countImproved || costImproved) {
+        resetState.lastProgressTs = now;
+    }
+
+    resetState.lastQueuedCount = queuedCount;
+    resetState.lastQueuedCost = queuedCost;
+}
+
+function getQueuedAugmentsForReset(ns) {
+    const owned = ns.singularity.getOwnedAugmentations(true);
+    const installed = ns.singularity.getOwnedAugmentations(false);
+    return owned.filter((aug) => !installed.includes(aug));
+}
+
+function getQueuedCostForReset(ns, queued) {
+    let total = 0;
+    for (const aug of queued) {
+        total += Number(ns.singularity.getAugmentationPrice(aug) || 0);
+    }
+    return total;
+}
+
+function getDaemonPrepStatusForReset(ns) {
+    try {
+        const player = ns.getPlayer();
+        const hackLevel = Number(player?.skills?.hacking || 0);
+        const daemonHost = "w0r1d_d43m0n";
+        const requiredHack = Number(ns.getServerRequiredHackingLevel(daemonHost) || 3000);
+        const rooted = ns.hasRootAccess(daemonHost);
+
+        const owned = ns.singularity.getOwnedAugmentations(true);
+        const installed = ns.singularity.getOwnedAugmentations(false);
+        const hasRedPillQueued = owned.includes("The Red Pill") && !installed.includes("The Red Pill");
+        const hasRedPillInstalled = installed.includes("The Red Pill");
+
+        return {
+            hackLevel,
+            requiredHack,
+            rooted,
+            hasRedPillQueued,
+            hasRedPillInstalled,
+            ready: hasRedPillInstalled && rooted && hackLevel >= requiredHack,
+        };
+    } catch (e) {
+        return {
+            hackLevel: 0,
+            requiredHack: 3000,
+            rooted: false,
+            hasRedPillQueued: false,
+            hasRedPillInstalled: false,
+            ready: false,
+        };
+    }
+}
+
+function shouldTriggerAdaptiveReset(ns, phase, queuedCount, queuedCost, now) {
+    const augCfg = config.augmentations || {};
+    const normalizedPhase = Math.max(0, Math.min(4, Number(phase || 0)));
+    const phaseKey = `phase${normalizedPhase}`;
+    const phaseTargets = augCfg.resetPhaseTargets?.[phaseKey] || {};
+
+    const minQueuedAugs = phaseTargets.minQueuedAugs ?? augCfg.minQueuedAugs ?? 7;
+    const minQueuedCost = phaseTargets.minQueuedCost ?? augCfg.minQueuedCost ?? 0;
+    const minQueuedFloor = phaseTargets.minQueuedFloor ?? augCfg.resetMinQueuedAugsFloor ?? Math.min(minQueuedAugs, 5);
+    const highValueCost = phaseTargets.highValueCost ?? augCfg.resetHighValueCost ?? (minQueuedCost * 3);
+    const minRunMinutes = phaseTargets.minRunMinutes ?? augCfg.resetMinRunMinutes ?? 20;
+    const stallMinutes = phaseTargets.stallMinutes ?? augCfg.resetStallMinutes ?? 8;
+    const requireStall = augCfg.resetRequireStall !== false;
+    const daemonPolicy = augCfg.daemonResetPolicy || {};
+
+    const daemon = getDaemonPrepStatusForReset(ns);
+    if (daemon.hasRedPillQueued && daemonPolicy.resetImmediatelyOnQueuedRedPill !== false) {
+        return { shouldReset: true, reason: "The Red Pill is queued; resetting immediately for daemon progression" };
+    }
+
+    if (daemonPolicy.preventResetWhenDaemonReady !== false && daemon.ready) {
+        return { shouldReset: false, reason: "daemon-ready state reached; holding reset to finish run" };
+    }
+
+    const meetsBaseThreshold = queuedCount >= minQueuedAugs || queuedCost >= minQueuedCost;
+    if (!meetsBaseThreshold) {
+        return { shouldReset: false, reason: `base threshold not met (${queuedCount}/${minQueuedAugs} augs)` };
+    }
+
+    if (queuedCount < minQueuedFloor && queuedCost < highValueCost) {
+        return { shouldReset: false, reason: `queued augs below floor (${queuedCount}/${minQueuedFloor})` };
+    }
+
+    const resetInfo = ns.getResetInfo();
+    const runDurationMs = Math.max(0, now - Number(resetInfo?.lastAugReset || now));
+    const minRunMs = Math.max(0, minRunMinutes) * 60 * 1000;
+    if (runDurationMs < minRunMs && queuedCost < highValueCost) {
+        const minsLeft = Math.ceil((minRunMs - runDurationMs) / 60000);
+        return { shouldReset: false, reason: `run too fresh (${minsLeft}m until minimum runtime)` };
+    }
+
+    if (requireStall && queuedCost < highValueCost) {
+        const stallMs = Math.max(0, stallMinutes) * 60 * 1000;
+        const stalledFor = now - resetState.lastProgressTs;
+        if (stalledFor < stallMs) {
+            const minsLeft = Math.ceil((stallMs - stalledFor) / 60000);
+            return { shouldReset: false, reason: `queue still improving (${minsLeft}m until stall window)` };
+        }
+    }
+
+    if (queuedCost >= highValueCost) {
+        return { shouldReset: true, reason: `high-value queue reached (${formatMoney(queuedCost)})` };
+    }
+
+    return { shouldReset: true, reason: `threshold met after runtime/stall checks (${queuedCount} augs)` };
+}
+
+async function triggerCoordinatorReset(ns, ui, queuedCount, queuedCost) {
+    const countdown = config.augmentations?.resetCountdownSec ?? 10;
+    const restartScript = config.augmentations?.resetScript || "/angel/angel-lite.js";
+    ui.log(`🔄 RESET TRIGGER: ${queuedCount} augs queued (cost: ${formatMoney(queuedCost)})`, "warn");
+    ui.log(`🚫 DAEMON ADVANCEMENT PROTECTION: Awaiting manual unlock...`, "warn");
+
+    while (true) {
+        try {
+            const portData = ns.peek(DAEMON_LOCK_PORT);
+            if (portData === "UNLOCK_DAEMON") {
+                ns.readPort(DAEMON_LOCK_PORT);
+                ui.log(`✅ DAEMON UNLOCK SIGNAL RECEIVED - Proceeding`, "success");
+                break;
+            }
+        } catch (e) {
+            // keep waiting
+        }
+
+        await ns.sleep(30000);
+    }
+
+    for (let i = countdown; i > 0; i--) {
+        ui.log(`Resetting in ${i}s...`, "warn");
+        await ns.sleep(1000);
+    }
+
+    ns.singularity.installAugmentations(restartScript);
+}
+
+async function maybeTriggerCoordinatorReset(ns, ui, phase) {
+    if (!hasSingularityAccess(ns)) return;
+    if (config.augmentations?.installOnThreshold === false) return;
+    if (resetState.pending) return;
+
+    const now = Date.now();
+    const queued = getQueuedAugmentsForReset(ns);
+    const queuedCost = getQueuedCostForReset(ns, queued);
+    updateResetProgressState(queued.length, queuedCost, now);
+
+    const decision = shouldTriggerAdaptiveReset(ns, phase, queued.length, queuedCost, now);
+    if (!decision.shouldReset) {
+        if (decision.reason && now - resetState.lastReasonLogTs > 60000) {
+            ui.log(`🧠 RESET GATE: Waiting - ${decision.reason}`, "info");
+            resetState.lastReasonLogTs = now;
+        }
+        return;
+    }
+
+    resetState.pending = true;
+    try {
+        await triggerCoordinatorReset(ns, ui, queued.length, queuedCost);
+    } finally {
+        resetState.pending = false;
+    }
 }
 
 function reportActivitiesTelemetry(ns) {

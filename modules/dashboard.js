@@ -176,8 +176,6 @@ export async function main(ns) {
  * Update and display dashboard metrics
  */
 async function updateDashboard(ns, ui) {
-    await runCoordinatorFromDashboard(ns, ui);
-
     // Initialize reset tracking
     initializeResetTracking(ns);
 
@@ -196,7 +194,11 @@ async function updateDashboard(ns, ui) {
     lastXp = hackingXp;
     
     // Get current phase and progress
-    const currentPhase = coordinatorState.currentPhase;
+    const phasePortData = ns.peek(PHASE_PORT);
+    const currentPhase = phasePortData === "NULL PORT DATA"
+        ? coordinatorState.currentPhase
+        : (parseInt(phasePortData) || coordinatorState.currentPhase || 0);
+    coordinatorState.currentPhase = currentPhase;
     const phaseProgress = getPhaseProgress(ns, currentPhase);
     const nextPhase = currentPhase < 4 ? currentPhase + 1 : 4;
     

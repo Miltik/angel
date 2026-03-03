@@ -35,10 +35,6 @@ export async function main(ns) {
         "utils.js",
         "scanner.js",
         "start.js",
-        "bootstrap.js",
-        
-        // Quick start (in-game reference - markdown files stay on GitHub)
-        "WELCOME.txt",
         
         // Modules
         "modules/uiManager.js",

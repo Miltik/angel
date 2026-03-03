@@ -35,47 +35,7 @@ Quick reference checklist for:
 
 ---
 
-### 3. **docs/TESTING_GUIDE.md** (Full Reference)
-Same as TESTING_GUIDE.md above, but in docs folder for easy reference.
-
----
-
-## 🤖 Automated Testing Scripts
-
-### Windows Users
-
-```bash
-# Run automated tests
-test-all.bat
-```
-
-**What it tests:**
-- Backend connectivity
-- All 6 API endpoints
-- Telemetry ingestion
-- Command queue
-- Dashboard connectivity
-- Database existence
-
-**Runtime:** ~2 minutes
-
----
-
-### Mac/Linux Users
-
-```bash
-# Make script executable
-chmod +x test-all.sh
-
-# Run automated tests
-./test-all.sh
-```
-
-Same tests as Windows version.
-
----
-
-## 🗂️ Complete Testing Workflow
+## 🧪 Complete Testing Workflow
 
 ### Phase 1: Setup & Quick Validation (15 min)
 
@@ -103,11 +63,9 @@ npm run dev
 # ➜ Local: http://localhost:5173/
 ```
 
-```bash
-# Terminal 3: Run automated tests
-./test-all.sh  # Mac/Linux
-test-all.bat   # Windows
-```
+---
+
+**Next:** Use TESTING_CHECKLIST.md for manual validation.
 
 **Expected Result:**
 ```
@@ -456,12 +414,6 @@ Congratulations! Your ANGEL Remote Ecosystem is ready:
 |----------|----------|---------|
 | TESTING_GUIDE.md | Repo root | Complete testing methodology |
 | TESTING_CHECKLIST.md | Repo root | Quick reference checklist |
-| docs/TESTING_GUIDE.md | /docs | Full reference copy |
-| test-all.sh | Repo root | Automated tests (Mac/Linux) |
-| test-all.bat | Repo root | Automated tests (Windows) |
-| DEPLOYMENT_GUIDE.md | /docs | Installation instructions |
-| LOCAL_SETUP.md | /docs | Setup procedures |
-| API_REFERENCE.md | /docs | Endpoint documentation |
 
 ---
 

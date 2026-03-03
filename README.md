@@ -74,9 +74,8 @@ A comprehensive automation orchestrator for Bitburner that manages hacking opera
 ├── config.js                   # Configuration (edit this!)
 ├── start.js                    # Launcher script
 ├── utils.js                    # Shared utilities
-├── scanner .js                  # Network scanning
+├── scanner.js                  # Network scanning
 ├── sync.js                     # GitHub download script
-├── bootstrap.js                # Quick deploy helper
 │
 ├── modules/                    # 21 automation modules
 │   ├── hacking.js              # Core hacking operations
@@ -213,8 +212,7 @@ See [ANGEL_LITE_README.md](ANGEL_LITE_README.md) for details.
 
 ### Getting Started
 - **[GETTING_STARTED.md](GETTING_STARTED.md)** - Complete setup guide (start here!)
-- [bootstrap.js](bootstrap.js) - Helper script (inline docs)
-- [sync.js](sync.js) - Sync configuration (inline docs)
+- [sync.js](sync.js) - GitHub sync configuration (inline docs)
 
 ### Features
 - **[ANGEL_LITE_README.md](ANGEL_LITE_README.md)** - Bootstrap system

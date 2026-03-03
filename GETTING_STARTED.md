@@ -51,43 +51,7 @@ Complete setup guide for deploying Angel to Bitburner.
 
 ---
 
-### Method 2: Bootstrap Script (Easiest Updates)
-
-**Best for:** Frequent updates, multiple game restarts
-
-1. **Follow steps 1-3 from Method 1** (setup GitHub)
-
-2. **Edit bootstrap.js** - Update line with your sync.js URL:
-   ```javascript
-   const SYNC_SCRIPT_URL = "https://raw.githubusercontent.com/YourUsername/angel/main/sync.js";
-   ```
-
-3. **In Bitburner**, copy only bootstrap.js to home:
-   ```bash
-   # Copy bootstrap.js content from your repository
-   # Paste into Bitburner editor, save as bootstrap.js
-   ```
-
-4. **Run bootstrap** (downloads sync.js):
-   ```bash
-   run bootstrap.js
-   ```
-
-5. **Run sync** (downloads everything else):
-   ```bash
-   run /angel/sync.js
-   ```
-
-6. **Start Angel**:
-   ```bash
-   run /angel/start.js
-   ```
-
-**Future updates:** Just run `run bootstrap.js` then `run /angel/sync.js`
-
----
-
-### Method 3: Manual Copy
+### Method 2: Manual Copy
 
 **Best for:** Offline use, no GitHub account
 
@@ -393,7 +357,6 @@ tail /angel/angel.js           # Logs
 
 ```bash
 sync.js         # GitHub config (lines 17-19)
-bootstrap.js    # Sync URL (line ~12)
 config.js       # Angel behavior (everything)
 ```
 

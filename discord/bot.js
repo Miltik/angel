@@ -35,6 +35,20 @@ const formatNum = (num, decimals = 2) => {
     return num.toFixed(decimals);
 };
 
+const normalizeStatusPayload = (payload = {}) => {
+    const latestData = payload.latestData || {};
+    const metrics = payload.metrics || {};
+    const legacyStats = payload.stats || {};
+
+    return {
+        latestData,
+        totalSamples: Number(metrics.totalSamples ?? legacyStats.total_samples ?? 0),
+        avgMoneyRate: Number(metrics.avgMoneyRate ?? legacyStats.avg_money_rate ?? 0),
+        activeModules: Number(legacyStats.unique_modules ?? 0),
+        lastUpdate: Number(payload.lastUpdate || 0) || Date.now(),
+    };
+};
+
 // Slash commands - comprehensive monitoring & control
 const commands = [
     // === MONITORING ===
@@ -181,12 +195,14 @@ async function handleStatusCommand(interaction) {
 
     try {
         const response = await axios.get(`${BACKEND_URL}/api/status`);
-        const { lastUpdate, latestData, stats } = response.data;
+        const normalized = normalizeStatusPayload(response.data);
+        const latestData = normalized.latestData;
+        const activeModules = normalized.activeModules || (Array.isArray(response.data?.modules) ? response.data.modules.length : 0);
 
         const embed = new EmbedBuilder()
             .setColor(0x00ff00)
             .setTitle('📊 ANGEL Real-Time Status')
-            .setTimestamp(new Date(lastUpdate))
+            .setTimestamp(new Date(normalized.lastUpdate))
             .addFields(
                 {
                     name: '💰 Money Rate',
@@ -200,7 +216,7 @@ async function handleStatusCommand(interaction) {
                 },
                 {
                     name: '🔴 Hack Level',
-                    value: latestData?.hack_level || 'N/A',
+                    value: String(latestData?.hack_level ?? 'N/A'),
                     inline: true
                 },
                 {
@@ -220,12 +236,12 @@ async function handleStatusCommand(interaction) {
                 },
                 {
                     name: '📊 Total Samples',
-                    value: stats?.total_samples ? stats.total_samples.toString() : '0',
+                    value: String(normalized.totalSamples),
                     inline: true
                 },
                 {
                     name: '📦 Active Modules',
-                    value: stats?.unique_modules ? stats.unique_modules.toString() : '0',
+                    value: String(activeModules),
                     inline: true
                 }
             );
@@ -270,7 +286,8 @@ async function handleIncomeCommand(interaction) {
 
     try {
         const response = await axios.get(`${BACKEND_URL}/api/status`);
-        const { latestData, stats } = response.data;
+        const normalized = normalizeStatusPayload(response.data);
+        const latestData = normalized.latestData;
 
         const embed = new EmbedBuilder()
             .setColor(0x00dd00)
@@ -284,7 +301,7 @@ async function handleIncomeCommand(interaction) {
                 },
                 {
                     name: '📊 Average Money Rate',
-                    value: `$${formatNum(stats?.avg_money_rate || 0)}/s`,
+                    value: `$${formatNum(normalized.avgMoneyRate || 0)}/s`,
                     inline: true
                 },
                 {

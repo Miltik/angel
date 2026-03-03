@@ -143,6 +143,16 @@ function hasSingularityAccess(ns) {
     }
 }
 
+function hasMetPrerequisites(ns, augName, ownedAugSet) {
+    try {
+        const prereqs = ns.singularity.getAugmentationPrereq(augName) || [];
+        if (!Array.isArray(prereqs) || prereqs.length === 0) return true;
+        return prereqs.every(prereq => ownedAugSet.has(prereq));
+    } catch (e) {
+        return true;
+    }
+}
+
 /**
  * Get available augmentations from joined factions
  * Filters by reputation requirement
@@ -155,6 +165,7 @@ function getAvailableAugmentsInline(ns) {
     const player = ns.getPlayer();
     const owned = ns.singularity.getOwnedAugmentations(true);
     const available = [];
+    const ownedSet = new Set(owned);
     
     for (const faction of player.factions) {
         const augments = ns.singularity.getAugmentationsFromFaction(faction);
@@ -162,6 +173,7 @@ function getAvailableAugmentsInline(ns) {
         
         for (const aug of augments) {
             if (owned.includes(aug)) continue;
+            if (!hasMetPrerequisites(ns, aug, ownedSet)) continue;
             
             const repReq = ns.singularity.getAugmentationRepReq(aug);
             const price = ns.singularity.getAugmentationPrice(aug);
@@ -216,6 +228,7 @@ function selectSmartestTargetAug(ns, priorityList = []) {
     const player = ns.getPlayer();
     const currentMoney = ns.getServerMoneyAvailable("home");
     const owned = ns.singularity.getOwnedAugmentations(true);
+    const ownedSet = new Set(owned);
     const candidatesAll = [];
     const candidatesPriority = [];
 
@@ -226,6 +239,7 @@ function selectSmartestTargetAug(ns, priorityList = []) {
 
         for (const aug of augments) {
             if (owned.includes(aug)) continue;
+            if (!hasMetPrerequisites(ns, aug, ownedSet)) continue;
 
             const repReq = ns.singularity.getAugmentationRepReq(aug);
             const price = ns.singularity.getAugmentationPrice(aug);

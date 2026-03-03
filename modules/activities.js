@@ -350,10 +350,86 @@ function getMissingCrimeFactions(player) {
     return CRIME_FACTIONS.filter(faction => !joined.has(faction));
 }
 
+function hasMetAugPrereqs(ns, augName, ownedSet) {
+    try {
+        const prereqs = ns.singularity.getAugmentationPrereq(augName) || [];
+        if (!Array.isArray(prereqs) || prereqs.length === 0) return true;
+        return prereqs.every(prereq => ownedSet.has(prereq));
+    } catch (e) {
+        return true;
+    }
+}
+
+function getAugmentRepGoal(ns) {
+    try {
+        const player = ns.getPlayer();
+        const currentMoney = ns.getServerMoneyAvailable("home");
+        const owned = ns.singularity.getOwnedAugmentations(true);
+        const ownedSet = new Set(owned);
+        const priorityList = config.augmentations?.augmentPriority || [];
+
+        const candidates = [];
+        for (const faction of player.factions || []) {
+            if (faction === "NiteSec") continue;
+
+            const factionRep = ns.singularity.getFactionRep(faction);
+            const augments = ns.singularity.getAugmentationsFromFaction(faction) || [];
+
+            for (const aug of augments) {
+                if (ownedSet.has(aug)) continue;
+                if (!hasMetAugPrereqs(ns, aug, ownedSet)) continue;
+
+                const repReq = ns.singularity.getAugmentationRepReq(aug);
+                const price = ns.singularity.getAugmentationPrice(aug);
+                const repShort = Math.max(0, repReq - factionRep);
+                const moneyShort = Math.max(0, price - currentMoney);
+
+                const moneyGapScore = moneyShort > 0 ? Math.log10(moneyShort + 1) : 0;
+                const repGapScore = repShort > 0 ? Math.log10(repShort + 1) : 0;
+                const gapScore = moneyGapScore + repGapScore;
+                const priorityBonus = priorityList.includes(aug) ? 0.15 : 0;
+                const effectiveScore = Math.max(0, gapScore - priorityBonus);
+
+                candidates.push({
+                    name: aug,
+                    faction,
+                    repReq,
+                    price,
+                    repShort,
+                    moneyShort,
+                    effectiveScore,
+                });
+            }
+        }
+
+        if (candidates.length === 0) return null;
+
+        candidates.sort((a, b) => {
+            if (a.effectiveScore !== b.effectiveScore) return a.effectiveScore - b.effectiveScore;
+
+            const aReady = a.moneyShort === 0 && a.repShort === 0;
+            const bReady = b.moneyShort === 0 && b.repShort === 0;
+            if (aReady !== bReady) return aReady ? -1 : 1;
+
+            if (a.price !== b.price) return a.price - b.price;
+            return a.name.localeCompare(b.name);
+        });
+
+        return candidates[0];
+    } catch (e) {
+        return null;
+    }
+}
+
 /**
  * Check if any faction has actual unowned augments to grind for
  */
 function hasAnyViableFactionWork(ns) {
+    const augGoal = getAugmentRepGoal(ns);
+    if (augGoal && augGoal.repShort > 0) {
+        return true;
+    }
+
     const player = ns.getPlayer();
 
     for (const faction of player.factions) {
@@ -462,6 +538,44 @@ async function doTraining(ns, ui) {
  */
 async function doFactionWork(ns, ui) {
     const player = ns.getPlayer();
+    const augGoal = getAugmentRepGoal(ns);
+
+    if (augGoal && augGoal.repShort > 0 && (player.factions || []).includes(augGoal.faction)) {
+        const currentWork = ns.singularity.getCurrentWork();
+        if (currentWork && currentWork.type === "FACTION" && currentWork.factionName === augGoal.faction) {
+            await ns.sleep(180000);
+            return;
+        }
+
+        const configuredWorkType = config.factions?.workType || "Hacking Contracts";
+        const workTypes = [configuredWorkType, "Hacking Contracts", "Field Work", "Security Work"];
+        let started = false;
+        let selectedWorkType = configuredWorkType;
+
+        for (const workType of [...new Set(workTypes)]) {
+            try {
+                if (ns.singularity.workForFaction(augGoal.faction, workType, config.factions?.focus || false)) {
+                    started = true;
+                    selectedWorkType = workType;
+                    break;
+                }
+            } catch (e) {
+                // Try next work type
+            }
+        }
+
+        if (started) {
+            const factionKey = `${augGoal.faction}-${selectedWorkType}`;
+            if (factionKey !== lastState.lastFaction || lastState.loopCount - lastState.lastActivityChange > 12) {
+                ui.log(`🎯 Aug goal faction: ${augGoal.faction} (${selectedWorkType}) | Target: ${augGoal.name} | Rep needed: ${Math.floor(augGoal.repShort)}`, "info");
+                lastState.lastFaction = factionKey;
+                lastState.lastActivityChange = lastState.loopCount;
+            }
+
+            await ns.sleep(180000);
+            return;
+        }
+    }
 
     // Filter to factions with actual rep-needed augment opportunities (excluding NiteSec)
     const factions = player.factions.filter(f => {
@@ -783,23 +897,9 @@ function reportActivitiesTelemetry(ns) {
             );
         }
 
-        const factionCandidates = (player.factions || []).filter(f => f !== "NiteSec");
-        let factionFocus = "none";
-        let factionRepNeeded = 0;
-        let bestFactionScore = -1;
-        for (const faction of factionCandidates) {
-            const summary = getFactionOpportunitySummary(ns, faction);
-            if (summary.grindableCount <= 0) continue;
-
-            const score = (summary.grindableCount * 1_000_000_000) + Number(summary.grindableValue || 0);
-            const isBetter = score > bestFactionScore;
-
-            if (isBetter) {
-                bestFactionScore = score;
-                factionFocus = faction;
-                factionRepNeeded = Math.floor(summary.maxRepNeeded || 0);
-            }
-        }
+        const augGoal = getAugmentRepGoal(ns);
+        const factionFocus = augGoal?.faction || "none";
+        const factionRepNeeded = Math.floor(augGoal?.repShort || 0);
         
         const metricsPayload = {
             currentActivity: lastState.currentActivity || "idle",

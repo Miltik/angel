@@ -280,6 +280,10 @@ async function augmentLoop(ns, ui) {
         const queuedCount = ownedCount - installedCount;
         const queueBoostTarget = config.augmentations.aggressiveQueueTarget ?? 3;
         
+        // Get smart target for display
+        const priorityList = config.augmentations.augmentPriority || [];
+        const smartTarget = selectSmartestTargetAug(ns, priorityList);
+        
         lastState.loopCount++;
         
         // Log status only on changes or every 5 loops (5 minutes)
@@ -291,6 +295,21 @@ async function augmentLoop(ns, ui) {
             ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
             ui.log(`🧬 Phase ${phase} | 💰 ${formatMoney(money)} | 📋 Strategy: ${strategy.strategy}`, "info");
             ui.log(`📦 Available: ${available.length} | 🎯 Queued: ${queuedCount}`, "info");
+            
+            // Show smart target with gap analysis
+            if (smartTarget) {
+                const moneyPercent = Math.min(100, (money / smartTarget.price) * 100);
+                const repPercent = Math.min(100, (ns.singularity.getFactionRep(smartTarget.faction) / smartTarget.repReq) * 100);
+                const moneyBar = `${'█'.repeat(Math.floor(moneyPercent / 10))}${'░'.repeat(10 - Math.floor(moneyPercent / 10))}`;
+                const repBar = `${'█'.repeat(Math.floor(repPercent / 10))}${'░'.repeat(10 - Math.floor(repPercent / 10))}`;
+                
+                const moneyShortLabel = smartTarget.moneyShort > 0 ? `(+${formatMoney(smartTarget.moneyShort)})` : "(ready)";
+                const repShortLabel = smartTarget.repShort > 0 ? `(+${(smartTarget.repShort / 1000).toFixed(0)}k rep)` : "(ready)";
+                
+                ui.log(`🎯 TARGET: ${smartTarget.name} (${smartTarget.faction})`, "info");
+                ui.log(`   💰 Money: [${moneyBar}] ${moneyPercent.toFixed(1)}% ${moneyShortLabel}`, "info");
+                ui.log(`   ⭐ Rep:   [${repBar}] ${repPercent.toFixed(1)}% ${repShortLabel}`, "info");
+            }
         }
         
         lastState.phase = phase;
@@ -361,7 +380,8 @@ async function buyAllAvailable(ns, available, initialMoney, ui) {
     // If only Neuroflux Governor available, raise threshold for buying
     const nfgOnly = augsToBuy.length === 0 && available.length > 0;
     if (nfgOnly) {
-        ui.log(`⚠️  Only Neuroflux Governor available - raising NFG threshold to 15 queued`, "warn");
+        ui.log(`🔒 NEUROFLUX GUARD: No other augments available`, "warn");
+        ui.log(`⚠️  Will only buy NFG if queue reaches 15 (acts as filler when all else bought)`, "warn");
     }
     
     for (const aug of augsToBuy) {
@@ -451,12 +471,14 @@ async function buyQueueBoostAugments(ns, available, initialMoney, strategy, ui) 
     
     // If only NFG available, show warning message at higher threshold
     if (nfgOnly) {
-        const queuedCount = ns.singularity.getOwnedAugmentations(true).length - ns.singularity.getOwnedAugmentations(false).length;
+        const installedCount = ns.singularity.getOwnedAugmentations(true).length;
+        const queuedCount = ns.singularity.getOwnedAugmentations(false).length - installedCount;
         if (queuedCount < 15) {
-            ui.log(`⚠️  Only NFG available - waiting for queue to reach 15 augs (currently ${queuedCount})`, "warn");
+            const needed = 15 - queuedCount;
+            ui.log(`🔒 NEUROFLUX GUARD: Holding NFG purchases - need ${needed} more augs queued (${queuedCount}/15)`, "info");
             return 0; // Don't buy NFG until threshold is reached
         } else {
-            ui.log(`💡 NFG threshold reached (15) - will now purchase Neuroflux Governors`, "info");
+            ui.log(`✅ NFG THRESHOLD REACHED: Unlocking Neuroflux Governor purchases (${queuedCount} queued)`, "success");
         }
     }
     

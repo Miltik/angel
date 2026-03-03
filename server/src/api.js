@@ -165,17 +165,18 @@ export function setupApiRoutes(app) {
 
             // OPTIMIZED Query 2: Get module-specific latest data (phase, augments, activities)
             const latestByModule = await query(
-                `SELECT module_name, raw_data FROM telemetry_samples
+                `SELECT module_name, raw_data, timestamp FROM telemetry_samples
                  WHERE module_name IN ('phase', 'augments', 'activities')
-                 AND timestamp = (
-                    SELECT MAX(timestamp) FROM telemetry_samples ts2
-                    WHERE ts2.module_name = telemetry_samples.module_name
-                 )`
+                 ORDER BY timestamp DESC
+                 LIMIT 300`
             );
 
             // Parse single requests into a lookup map
             const moduleDataMap = {};
             latestByModule.forEach(row => {
+                if (moduleDataMap[row.module_name]) {
+                    return;
+                }
                 try {
                     moduleDataMap[row.module_name] = row.raw_data ? JSON.parse(row.raw_data) : {};
                 } catch (e) {
@@ -234,6 +235,13 @@ export function setupApiRoutes(app) {
             const runStartFromRunId = Number(latest?.run_id);
             const metaRun = latestRaw?.__telemetry?.runMeta || latestRaw?.runMeta || {};
             const runStartedAt = Number(metaRun.startedAt || runStartFromRunId || 0) || null;
+            const timeSinceLastResetMs = runStartedAt ? Math.max(0, Date.now() - runStartedAt) : null;
+            const lastResetHackLevel = Number.isFinite(Number(metaRun.lastResetHackLevel))
+                ? Number(metaRun.lastResetHackLevel)
+                : null;
+            const lastResetMoney = Number.isFinite(Number(metaRun.lastResetMoney))
+                ? Number(metaRun.lastResetMoney)
+                : null;
             memoryTotal = Number(latestRaw?.__telemetry?.memoryTotal || 0);
             const startedWithInstalledAugs = Number.isFinite(Number(metaRun.startedWithInstalledAugs))
                 ? Number(metaRun.startedWithInstalledAugs)
@@ -258,6 +266,11 @@ export function setupApiRoutes(app) {
             const avgXpRate = recentSamples.length > 0
                 ? recentSamples.reduce((sum, s) => sum + (s.xp_rate || 0), 0) / recentSamples.length
                 : 0;
+
+            const moduleSummary = Object.entries(moduleStats)
+                .map(([moduleName, stats]) => ({ moduleName, ...stats }))
+                .sort((a, b) => b.sample_count - a.sample_count)
+                .slice(0, 10);
 
             res.json({
                 status: 'ok',
@@ -313,13 +326,13 @@ export function setupApiRoutes(app) {
                 },
                 
                 // Module breakdown
-                modules: moduleStats.slice(0, 10),
+                modules: moduleSummary,
                 
                 // Raw data
                 latestData: latest,
                 recentSamples: recentSamples.slice(0, 5),
                 
-                pendingCommands: pendingCommands[0]?.count || 0,
+                pendingCommands: Number(pendingCount?.count || 0),
             });
         } catch (error) {
             console.error('Status GET error:', error);
@@ -335,7 +348,6 @@ export function setupApiRoutes(app) {
             const tenMinutesAgo = Date.now() - (10 * 60 * 1000);
             const oneHourAgo = Date.now() - (60 * 60 * 1000);
             const INCOME_MODULES = ['hacking', 'hacknet', 'gang', 'stocks', 'corporation'];
-            const incomeModulePlaceholders = INCOME_MODULES.map(() => '?').join(', ');
 
             // All known modules in the system
             const KNOWN_MODULES = [
@@ -345,8 +357,8 @@ export function setupApiRoutes(app) {
                 'xpFarm', 'phase'
             ];
 
-            // Get latest sample per module
-            const moduleStats = await query(`
+            // Pull bounded recent rows and derive latest per module in JS for speed/reliability
+            const recentModuleRows = await query(`
                 SELECT 
                     module_name,
                     timestamp,
@@ -363,15 +375,17 @@ export function setupApiRoutes(app) {
                 FROM telemetry_samples
                 WHERE module_name != 'SYSTEM'
                 AND timestamp > ?
-                AND (module_name, timestamp) IN (
-                    SELECT module_name, MAX(timestamp) 
-                    FROM telemetry_samples 
-                    WHERE module_name != 'SYSTEM'
-                    AND timestamp > ?
-                    GROUP BY module_name
-                )
-                ORDER BY money_rate DESC
-            `, [tenMinutesAgo, tenMinutesAgo]);
+                ORDER BY timestamp DESC
+                LIMIT 5000
+            `, [tenMinutesAgo]);
+
+            const moduleStatsMap = new Map();
+            recentModuleRows.forEach((row) => {
+                if (!moduleStatsMap.has(row.module_name)) {
+                    moduleStatsMap.set(row.module_name, row);
+                }
+            });
+            const moduleStats = Array.from(moduleStatsMap.values());
 
             // Get aggregate stats per module (last hour)
             const aggregates = await query(`
@@ -391,115 +405,6 @@ export function setupApiRoutes(app) {
                 ORDER BY total_executions DESC
             `, [oneHourAgo]);
 
-            const richDetailRows = await query(`
-                SELECT module_name, raw_data, timestamp
-                FROM telemetry_samples
-                WHERE module_name = 'corporation'
-                AND (
-                    json_extract(raw_data, '$.funds') IS NOT NULL
-                    OR json_extract(raw_data, '$.revenue') IS NOT NULL
-                    OR json_extract(raw_data, '$.employees') IS NOT NULL
-                    OR json_extract(raw_data, '$.divisions') IS NOT NULL
-                )
-                ORDER BY timestamp DESC
-            `);
-
-            const richDetailsMap = new Map();
-            richDetailRows.forEach(row => {
-                if (!richDetailsMap.has(row.module_name)) {
-                    try {
-                        richDetailsMap.set(row.module_name, JSON.parse(row.raw_data || '{}'));
-                    } catch {
-                        richDetailsMap.set(row.module_name, {});
-                    }
-                }
-            });
-
-            // Estimate income metrics per module across current session (since last DB reset)
-            // Session total is integrated from effective per-second rates over time.
-            // For variable income modules (stocks, corp), use 5-sample average instead of latest to smooth volatility
-            const incomeMetrics = await query(`
-                WITH samples AS (
-                    SELECT
-                        module_name,
-                        timestamp,
-                        COALESCE(
-                            CAST(json_extract(raw_data, '$.moneyRate') AS REAL),
-                            CAST(json_extract(raw_data, '$.metrics.moneyRate') AS REAL),
-                            CAST(json_extract(raw_data, '$.metrics.profit') AS REAL),
-                            CASE
-                                WHEN json_extract(raw_data, '$.revenue') IS NOT NULL OR json_extract(raw_data, '$.expenses') IS NOT NULL
-                                    THEN CAST(json_extract(raw_data, '$.revenue') AS REAL) - CAST(json_extract(raw_data, '$.expenses') AS REAL)
-                            END,
-                            CASE
-                                WHEN json_extract(raw_data, '$.metrics.revenue') IS NOT NULL OR json_extract(raw_data, '$.metrics.expenses') IS NOT NULL
-                                    THEN CAST(json_extract(raw_data, '$.metrics.revenue') AS REAL) - CAST(json_extract(raw_data, '$.metrics.expenses') AS REAL)
-                            END,
-                            money_rate,
-                            CAST(json_extract(raw_data, '$.profit') AS REAL),
-                            0
-                        ) AS base_rate,
-                        COALESCE(
-                            CAST(json_extract(raw_data, '$.totalProfits') AS REAL),
-                            CAST(json_extract(raw_data, '$.metrics.totalProfits') AS REAL)
-                        ) AS total_profits,
-                        LAG(timestamp) OVER (PARTITION BY module_name ORDER BY timestamp) AS prev_ts,
-                        LAG(COALESCE(
-                            CAST(json_extract(raw_data, '$.totalProfits') AS REAL),
-                            CAST(json_extract(raw_data, '$.metrics.totalProfits') AS REAL)
-                        )) OVER (PARTITION BY module_name ORDER BY timestamp) AS prev_total_profits,
-                        ROW_NUMBER() OVER (PARTITION BY module_name ORDER BY timestamp DESC) AS recency_rank
-                    FROM telemetry_samples
-                    WHERE module_name IN (${incomeModulePlaceholders})
-                ),
-                rates AS (
-                    SELECT
-                        module_name,
-                        timestamp,
-                        CASE
-                            WHEN prev_ts IS NULL OR timestamp <= prev_ts THEN 0
-                            WHEN base_rate > 0 THEN MAX(0, base_rate)
-                            WHEN total_profits IS NOT NULL AND prev_total_profits IS NOT NULL
-                                THEN MAX(0, (total_profits - prev_total_profits) / ((timestamp - prev_ts) / 1000.0))
-                            ELSE MAX(0, base_rate)
-                        END AS effective_rate,
-                        CASE
-                            WHEN prev_ts IS NULL OR timestamp <= prev_ts THEN 0
-                            ELSE (timestamp - prev_ts) / 1000.0
-                        END AS dt,
-                        recency_rank
-                    FROM samples
-                ),
-                session_totals AS (
-                    SELECT
-                        module_name,
-                        SUM(effective_rate * dt) AS session_total
-                    FROM rates
-                    GROUP BY module_name
-                ),
-                smoothed_rates AS (
-                    SELECT 
-                        module_name,
-                        AVG(effective_rate) AS avg_rate
-                    FROM rates
-                    WHERE recency_rank <= 5
-                    GROUP BY module_name
-                )
-                SELECT
-                    st.module_name,
-                    COALESCE(st.session_total, 0) AS session_total,
-                    COALESCE(sr.avg_rate, 0) AS current_rate
-                FROM session_totals st
-                LEFT JOIN smoothed_rates sr ON sr.module_name = st.module_name
-            `, INCOME_MODULES);
-
-            const incomeMap = new Map(
-                incomeMetrics.map(row => [row.module_name, {
-                    perSecond: Number(row.current_rate) || 0,
-                    sessionTotal: Number(row.session_total) || 0
-                }])
-            );
-
             // Create a map of module data
             const dataMap = {};
             
@@ -511,21 +416,6 @@ export function setupApiRoutes(app) {
                     details = mod.raw_data ? JSON.parse(mod.raw_data) : {};
                 } catch {
                     details = {};
-                }
-
-                if (mod.module_name === 'corporation') {
-                    const hasCorpDetails = details && (
-                        details.funds !== undefined ||
-                        details.revenue !== undefined ||
-                        details.employees !== undefined ||
-                        details.divisions !== undefined
-                    );
-                    if (!hasCorpDetails && richDetailsMap.has('corporation')) {
-                        details = {
-                            ...richDetailsMap.get('corporation'),
-                            ...details,
-                        };
-                    }
                 }
 
                 if (mod.module_name === 'phase') {
@@ -566,9 +456,11 @@ export function setupApiRoutes(app) {
                 // Module is considered "active" if status is running or idle
                 const isActive = moduleStatus === 'running' || moduleStatus === 'idle';
 
-                const income = incomeMap.get(mod.module_name) || { perSecond: 0, sessionTotal: 0 };
                 const isIncomeModule = INCOME_MODULES.includes(mod.module_name);
-                const displayMoneyRate = isIncomeModule ? income.perSecond : 0;
+                const displayMoneyRate = isIncomeModule ? Number(mod.money_rate || 0) : 0;
+                const estimatedSessionTotal = isIncomeModule
+                    ? Number((agg.avg_money_rate || 0) * 3600)
+                    : 0;
                 
                 dataMap[mod.module_name] = {
                     name: mod.module_name,
@@ -598,7 +490,7 @@ export function setupApiRoutes(app) {
                     income: {
                         show: isIncomeModule,
                         perSecond: displayMoneyRate,
-                        sessionTotal: isIncomeModule ? income.sessionTotal : 0,
+                        sessionTotal: estimatedSessionTotal,
                     },
                     lastUpdate: mod.timestamp
                 };

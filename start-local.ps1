@@ -35,9 +35,9 @@ function Stop-ProcessByPort {
 
     if ($connections) {
         Write-Host "Freeing port $Port ($Label)..." -ForegroundColor Yellow
-        foreach ($pid in $connections) {
+        foreach ($processId in $connections) {
             try {
-                Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
+                Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
             } catch {
                 # Ignore failures for already-exited processes
             }

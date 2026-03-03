@@ -651,16 +651,12 @@ function App() {
       if (showLoading) {
         setLoading(true)
       }
-      console.log('Fetching data from backend...')
       const [statusRes, modulesRes] = await Promise.all([
         axios.get(`${BACKEND_URL}/api/status`),
         axios.get(`${BACKEND_URL}/api/modules`)
       ])
-      console.log('Status:', statusRes.data)
-      console.log('Modules:', modulesRes.data)
       
       const modulesData = Array.isArray(modulesRes.data?.modules) ? modulesRes.data.modules : []
-      console.log('Setting modules:', modulesData)
       
       setStatus(statusRes.data || {})
       setModules(modulesData)

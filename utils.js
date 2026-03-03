@@ -224,3 +224,13 @@ export function getBestTarget(ns, servers) {
 export function getScan(ns, server) {
     return ns.scan(server);
 }
+
+/**
+ * Check if error is a script death (helps distinguish between expected exits and real errors)
+ * @param {string|Error} error - Error message or object
+ * @returns {boolean}
+ */
+export function isScriptDeathError(error) {
+    const message = String(error?.message || error || "");
+    return message.includes("ScriptDeath") || message.includes("NS instance has already been killed");
+}

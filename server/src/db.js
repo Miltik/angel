@@ -88,6 +88,36 @@ function createTables() {
     `);
 
     console.log('✓ Database tables created');
+
+    // Create indexes for better query performance
+    db.run(`CREATE INDEX IF NOT EXISTS idx_telemetry_timestamp ON telemetry_samples(timestamp);`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_telemetry_module ON telemetry_samples(module_name);`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_telemetry_run ON telemetry_samples(run_id);`);
+    db.run(`CREATE INDEX IF NOT EXISTS idx_commands_status ON commands(status);`);
+    
+    console.log('✓ Database indexes created');
+    
+    // Set up retention policy cleanup (run on startup)
+    applyRetentionPolicy();
+}
+
+/**
+ * Remove old telemetry data to prevent database bloat
+ * Keeps last 7 days of samples
+ */
+function applyRetentionPolicy() {
+    const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+    db.run(
+        `DELETE FROM telemetry_samples WHERE timestamp < ?;`,
+        [sevenDaysAgo],
+        function(err) {
+            if (err) {
+                console.warn('Retention policy cleanup failed:', err);
+            } else if (this.changes > 0) {
+                console.log(`✓ Retention policy cleaned up ${this.changes} old telemetry records`);
+            }
+        }
+    );
 }
 
 export function getDatabase() {
@@ -133,4 +163,12 @@ export function closeDatabase() {
             resolve();
         }
     });
+}
+
+/**
+ * Run cleanup tasks (retention policy, index maintenance)
+ * Call this periodically (e.g., daily) to maintain database health
+ */
+export function runMaintenanceTasks() {
+    applyRetentionPolicy();
 }

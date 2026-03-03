@@ -267,9 +267,6 @@ function selectSmartestTargetAug(ns, priorityList = []) {
     candidates.sort((a, b) => a.gapScore - b.gapScore);
     return candidates[0];
 }
-    candidates.sort((a, b) => a.gapScore - b.gapScore);
-    return candidates[0];
-}
 
 /**
  * Main augmentation loop - phase-aware cascading

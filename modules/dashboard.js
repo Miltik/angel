@@ -575,8 +575,8 @@ function displayHacknetStatus(ui, ns) {
         
         for (let i = 0; i < numNodes; i++) {
             const node = ns.hacknet.getNodeStats(i);
-            totalProduction += node.production;
-            totalValue += node.totalProduction;
+            totalProduction += Number(node?.production || 0);
+            totalValue += Number(node?.totalProduction || 0);
         }
         
         const productionPerSec = totalProduction;
@@ -911,6 +911,7 @@ function formatIncomeSourceLabel(sourceKey) {
  */
 function displayHackingStatus(ui, player, ns) {
     const serverCount = countRootedServers(ns);
+    const backdooredServers = countBackdooredServers(ns);
     const purchasedServers = countPurchasedServers(ns);
     const totalRam = calculateTotalRam(ns);
     const usedRam = calculateUsedRam(ns);
@@ -919,7 +920,7 @@ function displayHackingStatus(ui, player, ns) {
                    "▯".repeat(20 - Math.floor((usedRam / totalRam) * 20));
     
     ui.log(`⚔️  HACKING: ${player.skills.hacking.toString().padStart(4)} (${(player.skills.hacking / 1000).toFixed(1)}k/1k)`, "info");
-    ui.log(`🖥️  NETWORK: ${serverCount} rooted | ${purchasedServers} purchased`, "info");
+    ui.log(`🖥️  NETWORK: ${serverCount} rooted | ${backdooredServers} backdoored | ${purchasedServers} purchased`, "info");
     ui.log(`💾 RAM: ${ramBar} ${(usedRam / 1024).toFixed(1)}TB / ${(totalRam / 1024).toFixed(1)}TB`, "info");
 }
 
@@ -1152,6 +1153,27 @@ function countRootedServers(ns) {
         const all = scanAll(ns);
         if (!all || !Array.isArray(all)) return 0;
         return all.filter(s => ns.hasRootAccess(s)).length;
+    } catch (e) {
+        return 0;
+    }
+}
+
+/**
+ * Count backdoored servers
+ */
+function countBackdooredServers(ns) {
+    try {
+        const all = scanAll(ns);
+        if (!all || !Array.isArray(all)) return 0;
+        let count = 0;
+        for (const server of all) {
+            try {
+                if (ns.getServer(server).backdoorInstalled) count++;
+            } catch (e) {
+                // Ignore inaccessible/invalid server reads
+            }
+        }
+        return count;
     } catch (e) {
         return 0;
     }

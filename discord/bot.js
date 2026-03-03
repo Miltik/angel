@@ -129,6 +129,10 @@ const commands = [
             }
         ]
     },
+    {
+        name: 'angel-daemon-unlock',
+        description: '🔓 Manually unlock daemon advancement (progression will begin if ready)'
+    },
     
     // === INFORMATION ===
     {
@@ -193,6 +197,9 @@ client.on('interactionCreate', async (interaction) => {
                 break;
             case 'angel-restart-module':
                 await handleRestartModuleCommand(interaction);
+                break;
+            case 'angel-daemon-unlock':
+                await handleDaemonUnlockCommand(interaction);
                 break;
             case 'angel-help':
                 await handleHelpCommand(interaction);
@@ -731,7 +738,7 @@ async function handleHelpCommand(interaction) {
             },
             {
                 name: '⚡ Control Commands',
-                value: '`/angel-pause` - Pause execution\n`/angel-resume` - Resume execution\n`/angel-restart-module` - Restart specific module',
+                value: '`/angel-pause` - Pause execution\n`/angel-resume` - Resume execution\n`/angel-restart-module` - Restart specific module\n`/angel-daemon-unlock` - Unlock daemon progression (manual approval)',
                 inline: false
             },
             {
@@ -821,6 +828,46 @@ async function handleTargetsCommand(interaction) {
     } catch (error) {
         console.error('Targets error:', error.message);
         await interaction.editReply('❌ Failed to fetch target data');
+    }
+}
+
+async function handleDaemonUnlockCommand(interaction) {
+    await interaction.deferReply();
+
+    try {
+        // Send unlock signal to port 15
+        const response = await axios.post(`${BACKEND_URL}/api/daemon-unlock`, {
+            timestamp: Date.now()
+        });
+
+        const embed = new EmbedBuilder()
+            .setColor(0x27ae60)
+            .setTitle('🔓 Daemon Advancement Unlocked')
+            .setDescription('✅ Manual unlock signal sent! Daemon progression will begin when ready.')
+            .addFields(
+                {
+                    name: 'Status',
+                    value: 'Waiting for augmentation threshold...',
+                    inline: false
+                },
+                {
+                    name: 'Next Step',
+                    value: 'System will advance to next daemon node once conditions are met',
+                    inline: false
+                }
+            )
+            .setTimestamp();
+
+        await interaction.editReply({ embeds: [embed] });
+    } catch (error) {
+        console.error('Daemon unlock error:', error.message);
+        const embed = new EmbedBuilder()
+            .setColor(0xe74c3c)
+            .setTitle('❌ Daemon Unlock Failed')
+            .setDescription(error.response?.data?.message || 'Failed to send unlock signal')
+            .setTimestamp();
+
+        await interaction.editReply({ embeds: [embed] });
     }
 }
 

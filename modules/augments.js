@@ -4,6 +4,7 @@ import { createWindow } from "/angel/modules/uiManager.js";
 
 const PHASE_PORT = 7;
 const TELEMETRY_PORT = 20;
+const DAEMON_LOCK_PORT = 15; // Port to communicate daemon advancement lock
 
 // State tracking
 let lastState = {
@@ -27,6 +28,7 @@ export async function main(ns) {
     const ui = createWindow("augments", "🧬 Augmentations", 700, 500, ns);
     ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
     ui.log("🧬 Augmentation automation initialized", "success");
+    ui.log("🚫 DAEMON PROTECTION: Manual advancement only", "warn");
     ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
     
     // Check if we have SF4 (Singularity access)
@@ -38,6 +40,7 @@ export async function main(ns) {
     }
     
     ui.log("✅ Singularity access confirmed", "success");
+    ui.log("💡 NFG guard rails: Only buy if no other augs available (threshold: 15 queued)", "info");
     
     while (true) {
         try {
@@ -284,6 +287,7 @@ async function augmentLoop(ns, ui) {
 
 /**
  * Buy all available augmentations
+ * Guard rails: Skip Neuroflux Governor unless no other augs available
  * @param {NS} ns
  * @param {Array} available
  * @param {number} initialMoney
@@ -293,7 +297,17 @@ async function buyAllAvailable(ns, available, initialMoney, ui) {
     let money = initialMoney;
     let purchased = 0;
     
-    for (const aug of available) {
+    // Filter out Neuroflux Governor unless it's the only aug available
+    const nonNFG = available.filter(aug => aug.name !== "Neuroflux Governor");
+    const augsToBuy = nonNFG.length > 0 ? nonNFG : available;
+    
+    // If only Neuroflux Governor available, raise threshold for buying
+    const nfgOnly = augsToBuy.length === 0 && available.length > 0;
+    if (nfgOnly) {
+        ui.log(`⚠️  Only Neuroflux Governor available - raising NFG threshold to 15 queued`, "warn");
+    }
+    
+    for (const aug of augsToBuy) {
         if (money >= aug.price) {
             const success = ns.singularity.purchaseAugmentation(aug.faction, aug.name);
             if (success) {
@@ -309,9 +323,9 @@ async function buyAllAvailable(ns, available, initialMoney, ui) {
         ui.log(`🎉 Batch purchased ${purchased} augmentations`, "success");
     } else if (lastState.loopCount - lastState.lastPurchaseLoop > 5) {
         // No purchases in last 5 minutes, show next target
-        const affordable = available.filter(a => money >= a.price);
-        if (affordable.length === 0 && available.length > 0) {
-            const nextAug = available[0];
+        const affordable = augsToBuy.filter(a => money >= a.price);
+        if (affordable.length === 0 && augsToBuy.length > 0) {
+            const nextAug = augsToBuy[0];
             const needed = nextAug.price - money;
             ui.log(`🎯 Next: ${nextAug.name} - Need ${formatMoney(needed)} more`, "info");
         }
@@ -333,7 +347,11 @@ async function buyPriorityAugments(ns, priority, initialMoney, strategy, ui) {
     const spendBudget = Math.max(0, Math.min(strategy.maxSpend, initialMoney - reserveMoney));
     let spent = 0;
     
-    for (const aug of priority) {
+    // Filter out NFG unless no other augs available
+    const nonNFG = priority.filter(aug => aug.name !== "Neuroflux Governor");
+    const priorityToBuy = nonNFG.length > 0 ? nonNFG : priority;
+    
+    for (const aug of priorityToBuy) {
         if (money >= aug.price && spent + aug.price <= spendBudget) {
             const success = ns.singularity.purchaseAugmentation(aug.faction, aug.name);
             if (success) {
@@ -370,7 +388,23 @@ async function buyQueueBoostAugments(ns, available, initialMoney, strategy, ui) 
     const spendBudget = Math.max(0, Math.min(maxBoostSpend, initialMoney - reserveMoney));
     let spent = 0;
 
-    const candidates = [...available].sort((a, b) => a.price - b.price);
+    // Filter out NFG unless no other augs available
+    const nonNFG = available.filter(aug => aug.name !== "Neuroflux Governor");
+    const nfgOnly = nonNFG.length === 0 && available.length > 0;
+    
+    // If only NFG available, show warning message at higher threshold
+    if (nfgOnly) {
+        const queuedCount = ns.singularity.getOwnedAugmentations(true).length - ns.singularity.getOwnedAugmentations(false).length;
+        if (queuedCount < 15) {
+            ui.log(`⚠️  Only NFG available - waiting for queue to reach 15 augs (currently ${queuedCount})`, "warn");
+            return 0; // Don't buy NFG until threshold is reached
+        } else {
+            ui.log(`💡 NFG threshold reached (15) - will now purchase Neuroflux Governors`, "info");
+        }
+    }
+    
+    const candidates = (nonNFG.length > 0 ? nonNFG : available).sort((a, b) => a.price - b.price);
+    
     for (const aug of candidates) {
         if (money >= aug.price && spent + aug.price <= spendBudget) {
             const success = ns.singularity.purchaseAugmentation(aug.faction, aug.name);

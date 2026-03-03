@@ -6,6 +6,9 @@
 import { query, queryOne, run } from './db.js';
 import { broadcastTelemetry } from './websocket.js';
 
+// Track daemon unlock status for in-game port communication
+let daemonUnlockSignal = null;
+
 export function setupApiRoutes(app) {
     // ============================================
     // TELEMETRY ENDPOINT - Game sends data here
@@ -820,6 +823,45 @@ export function setupApiRoutes(app) {
             });
         } catch (error) {
             console.error('Stats GET error:', error);
+            res.status(500).json({ success: false, error: error.message });
+        }
+    });
+
+    // ============================================
+    // DAEMON ADVANCEMENT CONTROL
+    // ============================================
+    app.post('/api/daemon-unlock', (req, res) => {
+        try {
+            daemonUnlockSignal = Date.now();
+            console.log('🔓 Daemon unlock signal received from Discord');
+            res.json({
+                success: true,
+                message: 'Daemon advancement unlocked',
+                timestamp: daemonUnlockSignal
+            });
+        } catch (error) {
+            console.error('Daemon unlock error:', error);
+            res.status(500).json({ success: false, error: error.message });
+        }
+    });
+
+    app.get('/api/daemon-unlock-status', (req, res) => {
+        try {
+            const hasUnlock = daemonUnlockSignal !== null;
+            const response = {
+                success: true,
+                unlocked: hasUnlock,
+                signal: daemonUnlockSignal
+            };
+            
+            if (hasUnlock) {
+                // Clear the signal after retrieval
+                daemonUnlockSignal = null;
+            }
+            
+            res.json(response);
+        } catch (error) {
+            console.error('Daemon unlock status error:', error);
             res.status(500).json({ success: false, error: error.message });
         }
     });

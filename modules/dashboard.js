@@ -1466,6 +1466,40 @@ async function triggerAugResetFromDashboard(ns, ui, queuedCount, queuedCost) {
     const restartScript = config.augmentations?.resetScript || "/angel/angel-lite.js";
     ui.log(`🔄 RESET TRIGGER: ${queuedCount} augs queued (cost: ${formatMoney(queuedCost)})`, "warn");
 
+    // HARD STOP: Check for manual daemon advancement unlock via API
+    const DAEMON_LOCK_PORT = 15;
+    ui.log(`🚫 DAEMON ADVANCEMENT PROTECTION: Awaiting manual unlock...`, "error");
+    ui.log(`💡 Use Discord: /angel-daemon-unlock to grant permission`, "info");
+    
+    while (true) {
+        try {
+            // Check port 15 first (if set by external source)
+            const portData = ns.readPort(DAEMON_LOCK_PORT);
+            if (portData === "UNLOCK_DAEMON") {
+                ui.log(`✅ DAEMON UNLOCK SIGNAL RECEIVED (Port) - Proceeding with progression`, "success");
+                ns.clearPort(DAEMON_LOCK_PORT);
+                break;
+            }
+        } catch (e) {
+            // Port is empty, that's fine - check API instead
+        }
+        
+        try {
+            // Also check API endpoint for unlock signal
+            const response = await ns.wget('/api/daemon-unlock-status', { hostname: 'angel-api' });
+            const data = JSON.parse(response);
+            if (data.unlocked) {
+                ui.log(`✅ DAEMON UNLOCK SIGNAL RECEIVED (API) - Proceeding with progression`, "success");
+                break;
+            }
+        } catch (e) {
+            // API not available, that's ok
+        }
+        
+        // Wait 30 seconds before checking again, to avoid spam
+        await ns.sleep(30000);
+    }
+
     for (let i = countdown; i > 0; i--) {
         ui.log(`Resetting in ${i}s...`, "warn");
         await ns.sleep(1000);

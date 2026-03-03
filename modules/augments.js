@@ -4,6 +4,7 @@ import { createWindow } from "/angel/modules/uiManager.js";
 
 const PHASE_PORT = 7;
 const TELEMETRY_PORT = 20;
+const DAEMON_LOCK_PORT = 15;
 
 // State tracking
 let lastState = {
@@ -666,8 +667,18 @@ export function installAugmentations(ns) {
     if (!hasSingularityAccess(ns)) return;
     
     if (shouldInstallAugments(ns)) {
-        const queued = ns.singularity.getOwnedAugmentations(false).length - 
-                      ns.singularity.getOwnedAugmentations(true).length;
+        let unlocked = false;
+        try {
+            unlocked = ns.peek(DAEMON_LOCK_PORT) === "UNLOCK_DAEMON";
+        } catch (e) {
+            unlocked = false;
+        }
+
+        if (!unlocked) {
+            return;
+        }
+
+        ns.readPort(DAEMON_LOCK_PORT);
 
         // Always restart with angel-lite.js for seamless post-reset continuity
         // Angel-lite will auto-transition to full Angel if RAM >= 64GB

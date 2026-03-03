@@ -28,6 +28,8 @@ let startupState = {
     lastModuleIssueLog: {},
 };
 
+const DAEMON_LOCK_PORT = 15;
+
 export async function main(ns) {
     ns.disableLog("ALL");
     ns.clearLog();
@@ -719,6 +721,7 @@ async function checkBackendCommands(ns) {
         lastCommandCheck = now;
 
         const backendUrl = backendConfig.url || 'http://localhost:3000';
+        await syncDaemonUnlockSignal(ns, backendUrl);
         const response = await fetch(`${backendUrl}/api/commands`);
         
         if (!response.ok) return;
@@ -731,6 +734,26 @@ async function checkBackendCommands(ns) {
         }
     } catch (error) {
         // Silently fail - don't disrupt orchestration
+    }
+}
+
+async function syncDaemonUnlockSignal(ns, backendUrl) {
+    try {
+        const response = await fetch(`${backendUrl}/api/daemon-unlock-status`);
+        if (!response.ok) return;
+
+        const data = await response.json();
+        if (data?.success !== true || data?.unlocked !== true) return;
+
+        try {
+            ns.clearPort(DAEMON_LOCK_PORT);
+            ns.writePort(DAEMON_LOCK_PORT, 'UNLOCK_DAEMON');
+            log(ns, '🔓 Daemon manual unlock signal synchronized to lock port', 'INFO');
+        } catch (portError) {
+            log(ns, `Failed to write daemon unlock signal: ${portError}`, 'WARN');
+        }
+    } catch (error) {
+        // Silently fail - command polling must continue
     }
 }
 

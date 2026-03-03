@@ -204,6 +204,65 @@ function getPriorityAugmentsInline(ns, available) {
 }
 
 /**
+ * Intelligent target selection - picks augmentation closest to being available
+ * Considers both money and reputation gaps, normalizes them, and picks the lowest total gap
+ * @param {NS} ns
+ * @param {Array} priorityList - Priority augmentations to consider (or empty to consider all)
+ * @returns {{name: string, faction: string, price: number, repReq: number, gapScore: number} | null}
+ */
+function selectSmartestTargetAug(ns, priorityList = []) {
+    if (!hasSingularityAccess(ns)) return null;
+    
+    const player = ns.getPlayer();
+    const currentMoney = ns.getServerMoneyAvailable("home");
+    const owned = ns.singularity.getOwnedAugmentations(true);
+    const candidates = [];
+
+    // Gather ALL not-yet-owned augmentations
+    for (const faction of player.factions) {
+        const augments = ns.singularity.getAugmentationsFromFaction(faction);
+        const factionRep = ns.singularity.getFactionRep(faction);
+
+        for (const aug of augments) {
+            if (owned.includes(aug)) continue;
+
+            const repReq = ns.singularity.getAugmentationRepReq(aug);
+            const price = ns.singularity.getAugmentationPrice(aug);
+
+            // Filter by priority if priority list provided
+            if (priorityList.length > 0 && !priorityList.includes(aug)) continue;
+
+            // Calculate gaps (0 if already met, otherwise how much short)
+            const moneyGap = Math.max(0, price - currentMoney);
+            const repGap = Math.max(0, repReq - factionRep);
+
+            // Normalize gaps using a logarithmic scale to balance money/rep importance
+            const moneyGapScore = moneyGap > 0 ? Math.log10(moneyGap + 1) : 0;
+            const repGapScore = repGap > 0 ? Math.log10(repGap + 1) : 0;
+
+            // Composite gap score: lower is better (closer to available)
+            const gapScore = moneyGapScore + repGapScore;
+
+            candidates.push({
+                name: aug,
+                faction,
+                price,
+                repReq,
+                moneyShort: moneyGap,
+                repShort: repGap,
+                gapScore
+            });
+        }
+    }
+
+    if (candidates.length === 0) return null;
+
+    // Sort by gap score (ascending) and return the closest
+    candidates.sort((a, b) => a.gapScore - b.gapScore);
+    return candidates[0];
+}
+
+/**
  * Main augmentation loop - phase-aware cascading
  * @param {NS} ns
  * @param {object} ui - UI window API
@@ -552,17 +611,18 @@ function reportAugmentsTelemetry(ns) {
         const strategy = getAugmentStrategy(phase);
         const currentMoney = ns.getServerMoneyAvailable("home");
         
-        // Find the next target augmentation to track
+        // Find the next target augmentation to track - use smart targeting
         let targetAug = null;
         let targetAugCost = strategy.maxSpend;
         
         if (hasSingularityAccess(ns)) {
-            const available = getAvailableAugmentsInline(ns);
-            const priority = getPriorityAugmentsInline(ns, available);
+            // Get priority list from config
+            const priorityList = config.augmentations.augmentPriority || [];
             
-            // Select first available priority augmentation as target
-            if (priority.length > 0) {
-                targetAug = priority[0];
+            // Use smart targeting: picks aug closest to being available (lowest gap)
+            const smartTarget = selectSmartestTargetAug(ns, priorityList);
+            if (smartTarget) {
+                targetAug = smartTarget;
                 targetAugCost = targetAug.price;
             }
         }

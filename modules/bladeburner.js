@@ -9,6 +9,14 @@ import { createWindow } from "/angel/modules/uiManager.js";
 import { log } from "/angel/utils.js";
 
 const PHASE_PORT = 7;
+const TELEMETRY_PORT = 20;
+
+// Telemetry tracking
+let telemetryState = {
+    lastReportTime: 0,
+    operationsCompleted: 0,
+    contractsCompleted: 0
+};
 
 /**
  * Read current game phase from orchestrator
@@ -61,8 +69,12 @@ export async function main(ns) {
 
     ui.log("✅ Bladeburner active - starting operations", "success");
 
+    // Initialize telemetry
+    telemetryState.lastReportTime = Date.now();
+
     while (true) {
         try {
+            const loopStartTime = Date.now();
             const gamePhase = readGamePhase(ns);
             if (gamePhase < 4 || !hasMinimumCombatStats(ns)) {
                 ui.log("⏸️ Readiness gate not met (phase/combat) - pausing operations", "warn");
@@ -82,6 +94,12 @@ export async function main(ns) {
             const staminaRatio = stats[0] / stats[1];
             if (staminaRatio < 0.5) {
                 ui.log(`⚔️  Stamina low (${(staminaRatio * 100).toFixed(0)}%) - resting`, "info");
+            }
+            
+            // Report telemetry every 5 seconds
+            const timeSinceLastReport = Date.now() - telemetryState.lastReportTime;
+            if (timeSinceLastReport >= 5000) {
+                reportBladeburnerTelemetry(ns);
             }
 
             await ns.sleep(config.bladeburner.loopDelay || 30000);
@@ -160,4 +178,39 @@ function chooseAction(ns) {
         name: "Training",
         chance: 1.0
     };
+}
+function reportBladeburnerTelemetry(ns) {
+    try {
+        const now = Date.now();
+        const stamina = ns.bladeburner.getStamina();
+        const rank = ns.bladeburner.getRank();
+        const stats = ns.bladeburner.getStats();
+        
+        const metricsPayload = {
+            stamina: stamina[0],
+            maxStamina: stamina[1],
+            rank: rank,
+            city: ns.bladeburner.getCity(),
+            damage: stats.damage || 0,
+            kills: stats.kills || 0
+        };
+        
+        writeBladeburnerMetrics(ns, metricsPayload);
+        telemetryState.lastReportTime = now;
+    } catch (e) {
+        ns.print(`❌ Bladeburner telemetry error: ${e}`);
+    }
+}
+
+function writeBladeburnerMetrics(ns, metricsPayload) {
+    try {
+        const payload = JSON.stringify({
+            module: 'bladeburner',
+            timestamp: Date.now(),
+            metrics: metricsPayload,
+        });
+        ns.tryWritePort(TELEMETRY_PORT, payload);
+    } catch (e) {
+        ns.print(`❌ Failed to write bladeburner metrics: ${e}`);
+    }
 }

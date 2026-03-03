@@ -2,11 +2,17 @@ import { createWindow } from "/angel/modules/uiManager.js";
 import { config } from "/angel/config.js";
 
 const LOOT_VERSION = "2026-03-01-r4";
+const TELEMETRY_PORT = 20;
 
 const state = {
     loopCount: 0,
     totalFilesArchived: 0,
     lastSummary: "",
+};
+
+// Telemetry tracking
+const telemetryState = {
+    lastReportTime: 0
 };
 
 /** @param {NS} ns */
@@ -21,10 +27,20 @@ export async function main(ns) {
 
     const intervalMs = Number(config.loot?.loopDelayMs ?? 60000);
 
+    // Initialize telemetry
+    telemetryState.lastReportTime = Date.now();
+
     while (true) {
         try {
+            const loopStartTime = Date.now();
             state.loopCount++;
             await collectLoot(ns, ui);
+            
+            // Report telemetry every 5 seconds
+            const timeSinceLastReport = Date.now() - telemetryState.lastReportTime;
+            if (timeSinceLastReport >= 5000) {
+                reportLootTelemetry(ns, state);
+            }
         } catch (e) {
             const message = String(e?.message || e);
             if (isScriptDeathError(message)) return;
@@ -196,4 +212,32 @@ function getAllServers(ns) {
 
 function isScriptDeathError(message) {
     return message.includes("ScriptDeath") || message.includes("NS instance has already been killed");
+}
+function reportLootTelemetry(ns, stateData) {
+    try {
+        const now = Date.now();
+        
+        const metricsPayload = {
+            filesArchived: stateData.totalFilesArchived,
+            loopsRun: stateData.loopCount
+        };
+        
+        writeLootMetrics(ns, metricsPayload);
+        telemetryState.lastReportTime = now;
+    } catch (e) {
+        ns.print(`❌ Loot telemetry error: ${e}`);
+    }
+}
+
+function writeLootMetrics(ns, metricsPayload) {
+    try {
+        const payload = JSON.stringify({
+            module: 'loot',
+            timestamp: Date.now(),
+            metrics: metricsPayload,
+        });
+        ns.tryWritePort(TELEMETRY_PORT, payload);
+    } catch (e) {
+        ns.print(`❌ Failed to write loot metrics: ${e}`);
+    }
 }

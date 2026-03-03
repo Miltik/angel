@@ -14,6 +14,10 @@ echo.
 REM Get script directory
 set SCRIPT_DIR=%~dp0
 
+echo Killing any existing Node.js instances...
+taskkill /F /IM node.exe /T >nul 2>&1
+timeout /t 2 /nobreak
+
 echo Starting Backend Server...
 start "ANGEL Backend" cmd /k "cd /d "%SCRIPT_DIR%server" && npm start"
 timeout /t 3 /nobreak

@@ -2,6 +2,7 @@ import { config } from "/angel/config.js";
 import { createWindow } from "/angel/modules/uiManager.js";
 
 const CITIES = ["Aevum", "Chongqing", "Sector-12", "New Tokyo", "Ishima", "Volhaven"];
+const TELEMETRY_PORT = 20;
 const RESEARCH_QUEUE = [
     "Market Research", "Data Hubs",
     "Smart Factories", "Smart Storage", "Wilson Analytics", "Overclock",
@@ -21,17 +22,23 @@ const state = {
     expansionMilestoneLogged: false,
 };
 
+// Telemetry tracking
+const telemetryState = {
+    lastReportTime: 0
+};
+
 /** @param {NS} ns */
 export async function main(ns) {
-    ns.disableLog("ALL");
+    try {
+        ns.disableLog("ALL");
 
-    const ui = createWindow("corporation", "🏢 Corporation", 800, 450, ns);
-    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
-    ui.log("🏢 Corporation automation (premium edition)", "success");
-    ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
+        const ui = createWindow("corporation", "🏢 Corporation", 800, 450, ns);
+        ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
+        ui.log("🏢 Corporation automation (premium edition)", "success");
+        ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
 
-    const settings = getSettings();
-    let apiCheckAttempts = 0;
+        const settings = getSettings();
+        let apiCheckAttempts = 0;
 
     // Log startup settings once
     ui.log(`Settings:`, "info");
@@ -39,8 +46,12 @@ export async function main(ns) {
     ui.log(`  Multi-city: ${settings.expandToAllCities ? "enabled" : "disabled (focus single city first)"}`, "info");
     ui.log(`  Products: ${settings.enableProducts ? "enabled" : "disabled"} | Budget/cycle: 30%`, "info");
 
+    // Initialize telemetry
+    telemetryState.lastReportTime = Date.now();
+
     while (true) {
         try {
+            const loopStartTime = Date.now();
             if (!hasCorporationApi(ns)) {
                 if (!state.warnedNoApi) {
                     apiCheckAttempts++;
@@ -50,6 +61,10 @@ export async function main(ns) {
                         ui.log("Retrying in 10s intervals...", "info");
                     }
                     state.warnedNoApi = true;
+                }
+                const timeSinceLastReport = Date.now() - telemetryState.lastReportTime;
+                if (timeSinceLastReport >= 5000) {
+                    reportCorporationTelemetry(ns);
                 }
                 await ns.sleep(settings.loopDelayMs);
                 continue;
@@ -63,6 +78,10 @@ export async function main(ns) {
 
             const corpReady = ensureCorporationExists(ns, settings, ui);
             if (!corpReady) {
+                const timeSinceLastReport = Date.now() - telemetryState.lastReportTime;
+                if (timeSinceLastReport >= 5000) {
+                    reportCorporationTelemetry(ns);
+                }
                 await ns.sleep(settings.loopDelayMs);
                 continue;
             }
@@ -73,6 +92,13 @@ export async function main(ns) {
             }
 
             runCycle(ns, settings, ui);
+            
+            // Report telemetry every 5 seconds
+            const timeSinceLastReport = Date.now() - telemetryState.lastReportTime;
+            if (timeSinceLastReport >= 5000) {
+                reportCorporationTelemetry(ns);
+            }
+            
             renderUI(ns, ui, settings);
         } catch (error) {
             if (isScriptDeathError(error)) {
@@ -82,6 +108,11 @@ export async function main(ns) {
         }
 
         await ns.sleep(settings.loopDelayMs);
+    }
+    } catch (error) {
+        ns.print(`❌ FATAL: Corporation module crashed: ${error}`);
+        ns.print(`Stack: ${error.stack || 'no stack available'}`);
+        throw error;
     }
 }
 
@@ -1211,4 +1242,141 @@ function getDivisionEmployeeCount(ns, division) {
         total += safeNumber(() => corpCall(ns, "getOffice", division.name, city).numEmployees, 0);
     }
     return total;
+}
+function reportCorporationTelemetry(ns) {
+    try {
+        const now = Date.now();
+        const apiAvailable = hasCorporationApi(ns);
+        if (!apiAvailable) {
+            writeCorporationMetrics(ns, {
+                moneyRate: 0,
+                funds: 0,
+                revenue: 0,
+                expenses: 0,
+                profit: 0,
+                divisions: 0,
+                employees: 0,
+                products: 0,
+                public: false,
+                apiAvailable: false,
+                hasCorporation: false
+            });
+            telemetryState.lastReportTime = now;
+            return;
+        }
+
+        const hasCorporation = safeBool(() => corpCall(ns, "hasCorporation"), false);
+        if (!hasCorporation) {
+            writeCorporationMetrics(ns, {
+                moneyRate: 0,
+                funds: 0,
+                revenue: 0,
+                expenses: 0,
+                profit: 0,
+                divisions: 0,
+                employees: 0,
+                products: 0,
+                public: false,
+                apiAvailable: true,
+                hasCorporation: false
+            });
+            telemetryState.lastReportTime = now;
+            return;
+        }
+
+        const corp = safeValue(() => corpCall(ns, "getCorporation"), null);
+        if (!corp) {
+            writeCorporationMetrics(ns, {
+                moneyRate: 0,
+                funds: 0,
+                revenue: 0,
+                expenses: 0,
+                profit: 0,
+                divisions: 0,
+                employees: 0,
+                products: 0,
+                public: false,
+                apiAvailable: true,
+                hasCorporation: true
+            });
+            telemetryState.lastReportTime = now;
+            return;
+        }
+
+        const divisionEntries = Array.isArray(corp?.divisions) ? corp.divisions : [];
+        let totalEmployees = 0;
+        let totalProducts = 0;
+        let divisionMetrics = [];
+
+        for (const entry of divisionEntries) {
+            const divName = typeof entry === "string" ? entry : String(entry?.name || "");
+            if (!divName) continue;
+
+            const divData = safeValue(() => corpCall(ns, "getDivision", divName), null);
+            if (!divData) continue;
+
+            let divEmployees = 0;
+            const cities = Array.isArray(divData.cities) ? divData.cities : [];
+            for (const city of cities) {
+                const office = safeValue(() => corpCall(ns, "getOffice", divName, city), null);
+                if (office) {
+                    divEmployees += Number(office.numEmployees || 0);
+                }
+            }
+
+            const productCount = divData.makesProducts && Array.isArray(divData.products)
+                ? divData.products.length
+                : 0;
+
+            totalProducts += productCount;
+            totalEmployees += divEmployees;
+            divisionMetrics.push({
+                name: divName,
+                revenue: Number(divData.revenue || 0),
+                employees: divEmployees,
+                cities: cities.length,
+                products: productCount
+            });
+        }
+
+        const revenue = Number(corp.revenue || 0);
+        const expenses = Number(corp.expenses || 0);
+
+        const metricsPayload = {
+            moneyRate: revenue - expenses,
+            funds: Number(corp.funds || 0),
+            revenue,
+            expenses,
+            profit: revenue - expenses,
+            divisions: divisionEntries.length,
+            employees: totalEmployees,
+            products: totalProducts,
+            public: Boolean(corp.public || false),
+            apiAvailable: true,
+            hasCorporation: true,
+            topDivisions: divisionMetrics
+                .sort((a, b) => Number(b.revenue || 0) - Number(a.revenue || 0))
+                .slice(0, 3)
+        };
+
+        writeCorporationMetrics(ns, metricsPayload);
+        telemetryState.lastReportTime = now;
+    } catch (e) {
+        ns.print(`❌ Corporation telemetry error: ${e}`);
+    }
+}
+
+function writeCorporationMetrics(ns, metricsPayload) {
+    try {
+        const payload = JSON.stringify({
+            module: 'corporation',
+            timestamp: Date.now(),
+            metrics: metricsPayload,
+        });
+        ns.writePort(TELEMETRY_PORT, payload);
+
+        telemetryState.lastReportTime = Date.now();
+    } catch (e) {
+        ns.print(`❌ Failed to write corporation metrics: ${e}`);
+    }
 }

@@ -1,0 +1,24 @@
+{
+  "scriptsFolder": "..",
+  "port": 12525,
+  "allowedFiletypes": [
+    ".js",
+    ".ns",
+    ".txt"
+  ],
+  "exclude": [
+    "angel/.git",
+    "angel/node_modules",
+    "angel/server",
+    "angel/web",
+    "angel/discord",
+    "angel/archive",
+    "angel/.vscode",
+    "angel/package.json",
+    "angel/package-lock.json"
+  ],
+  "pushAllOnConnection": false,
+  "allowDeletingFiles": false,
+  "quiet": false,
+  "dry": false
+}

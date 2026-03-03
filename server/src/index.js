@@ -7,6 +7,7 @@ import express from 'express';
 import cors from 'cors';
 import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
+import http from 'http';
 import dotenv from 'dotenv';
 import { initializeDatabase, closeDatabase } from './db.js';
 import { setupApiRoutes } from './api.js';
@@ -20,6 +21,26 @@ const HOST = process.env.HOST || 'localhost';
 const app = express();
 const server = createServer(app);
 const wss = new WebSocketServer({ server });
+
+function checkExistingServer() {
+    return new Promise((resolve) => {
+        const req = http.get({
+            hostname: HOST,
+            port: Number(PORT),
+            path: '/health',
+            timeout: 1500,
+        }, (res) => {
+            res.resume();
+            resolve(res.statusCode === 200);
+        });
+
+        req.on('error', () => resolve(false));
+        req.on('timeout', () => {
+            req.destroy();
+            resolve(false);
+        });
+    });
+}
 
 // Middleware
 app.use(express.json());
@@ -36,6 +57,23 @@ app.get('/health', (req, res) => {
 // Initialize and start
 async function start() {
     try {
+        server.on('error', async (error) => {
+            if (error?.code === 'EADDRINUSE') {
+                const healthy = await checkExistingServer();
+                if (healthy) {
+                    console.log(`⚠️ Backend already running on http://${HOST}:${PORT} (reusing existing process)`);
+                    process.exit(0);
+                    return;
+                }
+                console.error(`❌ Port ${PORT} is in use by another process.`);
+                process.exit(1);
+                return;
+            }
+
+            console.error('Server error:', error);
+            process.exit(1);
+        });
+
         // Initialize database
         await initializeDatabase();
         

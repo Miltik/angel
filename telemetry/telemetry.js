@@ -184,20 +184,10 @@ function refreshModuleMetrics(ns) {
     const run = loadCurrentRun();
     if (!run) return;
 
-    const beforeCount = Object.keys(run.modules || {}).length;
     captureModuleMetrics(ns, run);
-    const afterCount = Object.keys(run.modules || {}).length;
     
     run.lastUpdate = Date.now();
     saveCurrentRun(run);
-    
-    // Diagnostic: log module metric ingestion
-    if (Math.random() < 0.05) { // Log 5% of refreshes
-        const hackingMod = run.modules['hacking'];
-        if (hackingMod && hackingMod.currentTarget) {
-            ns.print(`📥 Ingested: hacking -> ${hackingMod.currentTarget} @ ${hackingMod.targetMoneyPercent || 0}% money`);
-        }
-    }
 }
 
 // ============================================
@@ -364,6 +354,7 @@ function captureModuleMetrics(ns, run) {
     
     // Map known modules to script names
     const KNOWN_MODULES = {
+        phase: 'phase.js',
         hacking: 'hacking.js',
         gang: 'gang.js',
         stocks: 'stocks.js',
@@ -377,10 +368,8 @@ function captureModuleMetrics(ns, run) {
         contracts: 'contracts.js',
         formulas: 'formulas.js',
         loot: 'loot.js',
-        networkMap: 'networkMap.js',
         sleeves: 'sleeves.js',
         xpFarm: 'xpFarm.js',
-        backdoor: 'backdoor.js',
         backdoorRunner: 'backdoorRunner.js',
         uiLauncher: 'uiLauncher.js',
     };
@@ -403,6 +392,85 @@ function captureModuleMetrics(ns, run) {
         // Update status
         run.modules[moduleName].active = isRunning;
         run.modules[moduleName].lastStatusUpdate = Date.now();
+
+        // Corporation fallback: sample directly if module payload is missing
+        if (moduleName === 'corporation' && !reportedMetrics[moduleName]) {
+            try {
+                const corpApi = ns.corporation;
+                if (corpApi && typeof corpApi.hasCorporation === 'function' && corpApi.hasCorporation()) {
+                    const corp = corpApi.getCorporation();
+                    const divisionEntries = Array.isArray(corp?.divisions) ? corp.divisions : [];
+                    let totalEmployees = 0;
+                    let totalProducts = 0;
+
+                    for (const entry of divisionEntries) {
+                        const divisionName = typeof entry === 'string' ? entry : String(entry?.name || '');
+                        if (!divisionName) continue;
+                        const division = corpApi.getDivision(divisionName);
+                        const cities = Array.isArray(division?.cities) ? division.cities : [];
+                        for (const city of cities) {
+                            const office = corpApi.getOffice(divisionName, city);
+                            totalEmployees += Number(office?.numEmployees || 0);
+                        }
+                        if (division?.makesProducts && Array.isArray(division.products)) {
+                            totalProducts += division.products.length;
+                        }
+                    }
+
+                    const revenue = Number(corp?.revenue || 0);
+                    const expenses = Number(corp?.expenses || 0);
+
+                    reportedMetrics[moduleName] = {
+                        moneyRate: revenue - expenses,
+                        funds: Number(corp?.funds || 0),
+                        revenue,
+                        expenses,
+                        profit: revenue - expenses,
+                        divisions: divisionEntries.length,
+                        employees: totalEmployees,
+                        products: totalProducts,
+                        public: Boolean(corp?.public || false),
+                        hasCorporation: true,
+                        apiAvailable: true
+                    };
+                } else {
+                    reportedMetrics[moduleName] = {
+                        moneyRate: 0,
+                        funds: 0,
+                        revenue: 0,
+                        expenses: 0,
+                        profit: 0,
+                        divisions: 0,
+                        employees: 0,
+                        products: 0,
+                        public: false,
+                        hasCorporation: false,
+                        apiAvailable: true
+                    };
+                }
+            } catch {
+                reportedMetrics[moduleName] = {
+                    moneyRate: 0,
+                    funds: 0,
+                    revenue: 0,
+                    expenses: 0,
+                    profit: 0,
+                    divisions: 0,
+                    employees: 0,
+                    products: 0,
+                    public: false,
+                    hasCorporation: false,
+                    apiAvailable: false
+                };
+            }
+        }
+
+        if (moduleName === 'activities') {
+            const enriched = buildActivitiesTelemetrySnapshot(ns, reportedMetrics[moduleName] || {});
+            if (enriched) {
+                reportedMetrics[moduleName] = enriched;
+            }
+        }
         
         // Merge reported metrics if available
         if (reportedMetrics[moduleName]) {
@@ -413,6 +481,119 @@ function captureModuleMetrics(ns, run) {
             };
         }
     }
+}
+
+function buildActivitiesTelemetrySnapshot(ns, existingMetrics = {}) {
+    try {
+        const metrics = { ...(existingMetrics || {}) };
+        const player = ns.getPlayer();
+        const currentWork = ns.singularity?.getCurrentWork?.() || null;
+
+        const currentActivity = String(metrics.currentActivity || 'idle');
+        const activityParts = currentActivity.split('-');
+        const legacyType = String(activityParts[0] || 'idle').toLowerCase();
+        const legacyTarget = activityParts.slice(1).join('-');
+
+        const liveWorkType = currentWork
+            ? String(currentWork.type || 'working').toLowerCase()
+            : (legacyType || 'idle');
+
+        const liveTarget = currentWork
+            ? String(
+                currentWork.crimeType ||
+                currentWork.factionName ||
+                currentWork.companyName ||
+                currentWork.classType ||
+                currentWork.location ||
+                'active'
+            )
+            : (legacyTarget || 'none');
+
+        const planningMap = {
+            crime: 'crime',
+            faction: 'faction',
+            company: 'company',
+            university: 'training',
+            gym: 'training',
+            class: 'training',
+            training: 'training',
+        };
+
+        const plannedActivity = String(
+            metrics.plannedActivity ||
+            planningMap[liveWorkType] ||
+            planningMap[legacyType] ||
+            'none'
+        );
+
+        const targetStats = { strength: 60, defense: 60, dexterity: 60, agility: 60 };
+        const targetHacking = 75;
+        const minCombat = Math.min(player.skills.strength, player.skills.defense, player.skills.dexterity, player.skills.agility);
+        const combatGap = Math.max(
+            0,
+            targetStats.strength - player.skills.strength,
+            targetStats.defense - player.skills.defense,
+            targetStats.dexterity - player.skills.dexterity,
+            targetStats.agility - player.skills.agility
+        );
+        const hackingGap = Math.max(0, targetHacking - player.skills.hacking);
+
+        const crime = getBestCrimeSnapshot(ns);
+        const factionFocus = metrics.factionFocus || (liveWorkType === 'faction' ? liveTarget : 'none');
+
+        return {
+            ...metrics,
+            currentActivity,
+            plannedActivity,
+            phase: Number(metrics.phase ?? 0),
+            liveWorkType,
+            liveTarget,
+            factionFocus,
+            factionRepNeeded: Number(metrics.factionRepNeeded || 0),
+            bestCrime: String(metrics.bestCrime || crime.crime || 'Shoplift'),
+            bestCrimeChance: Number(metrics.bestCrimeChance || crime.chance || 0),
+            minCombat,
+            hacking: Number(player.skills.hacking || 0),
+            combatGap,
+            hackingGap,
+            stats: Number(metrics.stats || minCombat),
+        };
+    } catch {
+        return existingMetrics;
+    }
+}
+
+function getBestCrimeSnapshot(ns) {
+    const crimes = [
+        'Shoplift',
+        'Rob Store',
+        'Mug someone',
+        'Larceny',
+        'Deal Drugs',
+        'Bond Forgery',
+        'Traffick illegal Arms',
+        'Homicide',
+        'Grand Theft Auto',
+        'Kidnap',
+        'Assassination',
+        'Heist',
+    ];
+
+    let best = null;
+    for (const crime of crimes) {
+        try {
+            const stats = ns.singularity.getCrimeStats(crime);
+            const chance = ns.singularity.getCrimeChance(crime);
+            const score = (stats.money * chance) / Math.max(1, stats.time);
+            if (!best || score > best.score) {
+                best = { crime, chance, score };
+            }
+        } catch {
+            // ignore unavailable labels
+        }
+    }
+
+    return best || { crime: 'Shoplift', chance: 0, score: 0 };
 }
 
 function aggregateMetrics(ns) {
@@ -790,6 +971,8 @@ async function syncToBackend(ns, telemetryConfig) {
             ? ((totalModuleExecutions - totalModuleFailures) / totalModuleExecutions * 100)
             : 0;
         
+        const resetInfo = ns.getResetInfo?.() || {};
+
         const payload = {
             runId: run.startTime,
             timestamp: Date.now(),
@@ -828,6 +1011,11 @@ async function syncToBackend(ns, telemetryConfig) {
             workers: {
                 estimated: activeWorkers || moduleCount,
             },
+            runMeta: {
+                startedAt: Number(run.startTime) || Date.now(),
+                startedWithInstalledAugs: Number(run.startState?.installedAugs ?? 0),
+                lastAugReset: Number(resetInfo?.lastAugReset || run.startTime || Date.now()),
+            },
         };
 
         // Send to backend
@@ -860,13 +1048,22 @@ function drainTelemetryPort(ns, portNumber, reportedMetrics) {
     while (ns.peek(portNumber) !== 'NULL PORT DATA') {
         try {
             const portData = ns.readPort(portNumber);
-            const data = JSON.parse(portData);
-            if (data && data.module && data.metrics) {
-                reportedMetrics[data.module] = data.metrics;
+            let data;
+            try {
+                data = JSON.parse(portData);
+            } catch (parseError) {
+                ns.print(`⚠️ Port ${portNumber} JSON parse error: ${String(parseError).slice(0, 80)}`);
+                continue;
+            }
+
+            const moduleName = data?.module || data?.moduleName;
+            const metrics = data?.metrics && typeof data.metrics === 'object'
+                ? data.metrics
+                : (data && typeof data === 'object' ? data : null);
+
+            if (moduleName && metrics) {
+                reportedMetrics[moduleName] = metrics;
                 reads++;
-                if (data.module === 'hacknet') {
-                    ns.print(`📥 Read port ${portNumber}: hacknet with ${data.metrics.nodes || 0} nodes, ${data.metrics.upgradesCompleted || 0} upgrades`);
-                }
             }
         } catch (e) {
             ns.print(`❌ Port ${portNumber} read error: ${e}`);

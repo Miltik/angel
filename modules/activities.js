@@ -15,6 +15,7 @@ import { formatMoney } from "/angel/utils.js";
 import { createWindow } from "/angel/modules/uiManager.js";
 
 const PHASE_PORT = 7;
+const TELEMETRY_PORT = 20;
 const ACTIVITY_OWNER = "activity";
 const ACTIVITY_LOCK_TTL = 180000;
 const CRIME_FACTIONS = [
@@ -41,26 +42,18 @@ let lastState = {
     lastCompany: null
 };
 
+// Telemetry tracking
+const telemetryState = {
+    lastReportTime: 0
+};
+
 /**
- * Read current game phase from player progress (aligned with config thresholds)
+ * Read current game phase from PHASE_PORT (broadcasted by phase module)
  */
 function readGamePhase(ns) {
-    const player = ns.getPlayer();
-    const money = ns.getServerMoneyAvailable("home") + player.money;
-    const hack = player.skills.hacking;
-    const minCombat = Math.min(player.skills.strength, player.skills.defense, player.skills.dexterity, player.skills.agility);
-    const thresholds = config.gamePhases?.thresholds || {};
-
-    const p01 = thresholds.phase0to1 || { hackLevel: 75, money: 10000000 };
-    const p12 = thresholds.phase1to2 || { hackLevel: 200, money: 100000000 };
-    const p23 = thresholds.phase2to3 || { hackLevel: 500, money: 500000000 };
-    const p34 = thresholds.phase3to4 || { hackLevel: 800, stats: 70 };
-
-    if (hack >= p34.hackLevel && minCombat >= p34.stats) return 4;
-    if (hack >= p23.hackLevel && money >= p23.money) return 3;
-    if (hack >= p12.hackLevel && money >= p12.money) return 2;
-    if (hack >= p01.hackLevel && money >= p01.money) return 1;
-    return 0;
+    const phasePortData = ns.peek(PHASE_PORT);
+    if (phasePortData === "NULL PORT DATA") return 0;
+    return parseInt(phasePortData) || 0;
 }
 
 export async function main(ns) {
@@ -80,8 +73,12 @@ export async function main(ns) {
 
     ui.log("✅ Singularity access confirmed", "success");
 
+    // Initialize telemetry
+    telemetryState.lastReportTime = Date.now();
+
     while (true) {
         try {
+            const loopStartTime = Date.now();
             const gamePhase = readGamePhase(ns);
             lastState.loopCount++;
 
@@ -104,6 +101,13 @@ export async function main(ns) {
             // Activity work: ALL PHASES
             // Priority: Faction work for augments > training > company > crime
             await processActivity(ns, gamePhase, ui);
+
+            // Report telemetry every 5 seconds
+            const timeSinceLastReport = Date.now() - telemetryState.lastReportTime;
+            if (timeSinceLastReport >= 5000) {
+                reportActivitiesTelemetry(ns);
+                telemetryState.lastReportTime = Date.now();
+            }
 
             await ns.sleep(5000);
         } catch (e) {
@@ -742,6 +746,99 @@ function claimLock(ns, owner, ttlMs) {
         return true;
     }
     return false;
+}
+
+function reportActivitiesTelemetry(ns) {
+    try {
+        const now = Date.now();
+        const player = ns.getPlayer();
+        const phase = readGamePhase(ns);
+        const currentWork = ns.singularity.getCurrentWork();
+        const lock = getLock(ns);
+        const bestCrime = getBestCrime(ns);
+
+        const trainingTargets = config.training?.targetStats || { strength: 60, defense: 60, dexterity: 60, agility: 60 };
+        const targetHacking = config.training?.targetHacking || 75;
+        const minCombat = Math.min(player.skills.strength, player.skills.defense, player.skills.dexterity, player.skills.agility);
+        const combatGap = Math.max(
+            0,
+            trainingTargets.strength - player.skills.strength,
+            trainingTargets.defense - player.skills.defense,
+            trainingTargets.dexterity - player.skills.dexterity,
+            trainingTargets.agility - player.skills.agility
+        );
+        const hackingGap = Math.max(0, targetHacking - player.skills.hacking);
+
+        let liveWorkType = "idle";
+        let liveTarget = "none";
+        if (currentWork) {
+            liveWorkType = String(currentWork.type || "working").toLowerCase();
+            liveTarget = String(
+                currentWork.crimeType ||
+                currentWork.factionName ||
+                currentWork.companyName ||
+                currentWork.classType ||
+                currentWork.location ||
+                "active"
+            );
+        }
+
+        const factionCandidates = (player.factions || []).filter(f => f !== "NiteSec");
+        let factionFocus = "none";
+        let factionRepNeeded = 0;
+        let bestFactionScore = -1;
+        for (const faction of factionCandidates) {
+            const summary = getFactionOpportunitySummary(ns, faction);
+            if (summary.grindableCount <= 0) continue;
+
+            const score = (summary.grindableCount * 1_000_000_000) + Number(summary.grindableValue || 0);
+            const isBetter = score > bestFactionScore;
+
+            if (isBetter) {
+                bestFactionScore = score;
+                factionFocus = faction;
+                factionRepNeeded = Math.floor(summary.maxRepNeeded || 0);
+            }
+        }
+        
+        const metricsPayload = {
+            currentActivity: lastState.currentActivity || "idle",
+            plannedActivity: lastState.plannedActivity || "none",
+            phase,
+            liveWorkType,
+            liveTarget,
+            lockOwner: lock?.owner || "none",
+            lockTtlSec: lock?.expires ? Math.max(0, Math.floor((lock.expires - now) / 1000)) : 0,
+            factionFocus,
+            factionRepNeeded,
+            bestCrime: bestCrime?.crime || "Shoplift",
+            bestCrimeChance: Number(bestCrime?.chance || 0),
+            minCombat,
+            hacking: Number(player.skills.hacking || 0),
+            combatGap,
+            hackingGap,
+            loopCount: lastState.loopCount,
+            stats: minCombat
+        };
+        
+        writeActivitiesMetrics(ns, metricsPayload);
+        telemetryState.lastReportTime = now;
+    } catch (e) {
+        ns.print(`❌ Activities telemetry error: ${e}`);
+    }
+}
+
+function writeActivitiesMetrics(ns, metricsPayload) {
+    try {
+        const payload = JSON.stringify({
+            module: 'activities',
+            timestamp: Date.now(),
+            metrics: metricsPayload,
+        });
+        ns.writePort(TELEMETRY_PORT, payload);
+    } catch (e) {
+        ns.print(`❌ Failed to write activities metrics: ${e}`);
+    }
 }
 
 function releaseLock(ns, owner) {

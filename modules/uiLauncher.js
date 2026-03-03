@@ -2,6 +2,7 @@ import { createWindow, setWindowVisibility, getWindowVisibility } from "/angel/m
 
 const WINDOW_OPTIONS = [
     { id: "dashboard", label: "Dashboard" },
+    { id: "phase", label: "Phase Tracker" },
     { id: "activities", label: "Activities" },
     { id: "augments", label: "Augments" },
     { id: "programs", label: "Programs" },

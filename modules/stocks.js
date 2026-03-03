@@ -9,6 +9,7 @@ import { formatMoney } from "/angel/utils.js";
 import { createWindow } from "/angel/modules/uiManager.js";
 
 const PHASE_PORT = 7;
+const TELEMETRY_PORT = 20;
 
 // State tracking
 let lastState = {
@@ -17,6 +18,13 @@ let lastState = {
     sold: 0,
     totalProfits: 0,
     loopCount: 0
+};
+
+// Telemetry tracking
+let telemetryState = {
+    lastReportTime: 0,
+    lastProfits: 0,
+    lastPortfolioValue: 0
 };
 
 /**
@@ -65,6 +73,9 @@ export async function main(ns) {
 
     ui.log("✅ Stock trading active", "success");
 
+    // Initialize telemetry
+    telemetryState.lastReportTime = Date.now();
+
     while (true) {
         try {
             const gamePhase = readGamePhase(ns);
@@ -77,8 +88,16 @@ export async function main(ns) {
                 continue;
             }
 
+            const loopStartTime = Date.now();
             lastState.loopCount++;
             await processStocks(ns, gamePhase, ui);
+            
+            // Report telemetry every 5 seconds
+            const timeSinceLastReport = Date.now() - telemetryState.lastReportTime;
+            if (timeSinceLastReport >= 5000) {
+                reportStocksTelemetry(ns);
+            }
+            
             await ns.sleep(60000);
         } catch (e) {
             if (isScriptDeathError(e)) {
@@ -222,5 +241,62 @@ function getDynamicSpendRatio(gamePhase) {
         case 3: return 0.15;    // Gang phase: start building positions
         case 4: return 0.20;    // Late game: aggressive
         default: return 0.08;   // Early/mid: conservative
+    }
+}
+function reportStocksTelemetry(ns) {
+    try {
+        const now = Date.now();
+        const stocks = ns.stock.getSymbols();
+        let portfolioValue = 0;
+        let totalShares = 0;
+        
+        for (const symbol of stocks) {
+            const position = ns.stock.getPosition(symbol);
+            if (position[0] > 0 || position[2] > 0) {
+                const price = ns.stock.getPrice(symbol);
+                portfolioValue += (position[0] * price) + (position[2] * price);
+                totalShares += position[0] + position[2];
+            }
+        }
+        
+        // Calculate money rate using portfolio delta (primary) and realized profit delta (fallback)
+        const timeDelta = now - telemetryState.lastReportTime;
+        const seconds = timeDelta > 0 ? (timeDelta / 1000) : 0;
+        const profitDelta = lastState.totalProfits - (telemetryState.lastProfits || 0);
+        const portfolioDelta = portfolioValue - (telemetryState.lastPortfolioValue || portfolioValue);
+
+        const realizedRate = seconds > 0 ? profitDelta / seconds : 0;
+        const portfolioRate = seconds > 0 ? portfolioDelta / seconds : 0;
+        const moneyRate = portfolioRate !== 0 ? portfolioRate : realizedRate;
+        
+        const metricsPayload = {
+            moneyRate: moneyRate,
+            portfolioValue: portfolioValue,
+            stocks: stocks.length,
+            totalShares: totalShares,
+            bought: lastState.bought,
+            sold: lastState.sold,
+            totalProfits: lastState.totalProfits
+        };
+        
+        writeStocksMetrics(ns, metricsPayload);
+        telemetryState.lastReportTime = now;
+        telemetryState.lastProfits = lastState.totalProfits;
+        telemetryState.lastPortfolioValue = portfolioValue;
+    } catch (e) {
+        ns.print(`❌ Stocks telemetry error: ${e}`);
+    }
+}
+
+function writeStocksMetrics(ns, metricsPayload) {
+    try {
+        const payload = JSON.stringify({
+            module: 'stocks',
+            timestamp: Date.now(),
+            metrics: metricsPayload,
+        });
+        ns.writePort(TELEMETRY_PORT, payload);
+    } catch (e) {
+        ns.print(`❌ Failed to write stocks metrics: ${e}`);
     }
 }

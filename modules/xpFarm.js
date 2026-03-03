@@ -19,6 +19,7 @@ import { calcThreads, getAvailableRam } from "/angel/utils.js";
 import { createWindow } from "/angel/modules/uiManager.js";
 
 const XP_FARM_MARKER = "__angel_xpfarm__";
+const TELEMETRY_PORT = 20;
 
 let lastState = {
     target: "",
@@ -26,6 +27,11 @@ let lastState = {
     usedServers: 0,
     deployed: 0,
     loopCount: 0,
+};
+
+// Telemetry tracking
+let telemetryState = {
+    lastReportTime: 0
 };
 
 export async function main(ns) {
@@ -82,7 +88,11 @@ export async function main(ns) {
         ui.log(`🎯 Target Locked: ${flags.target}`, "info");
     }
 
+    // Initialize telemetry
+    telemetryState.lastReportTime = Date.now();
+
     while (true) {
+        const loopStartTime = Date.now();
         lastState.loopCount++;
 
         const servers = mode === "hyper" ? getRunnableServers(ns) : ["home"];
@@ -145,6 +155,12 @@ export async function main(ns) {
         if (flags.once) {
             ui.log("✅ One-shot mode complete", "success");
             break;
+        }
+
+        // Report telemetry every 5 seconds
+        const timeSinceLastReport = Date.now() - telemetryState.lastReportTime;
+        if (timeSinceLastReport >= 5000) {
+            reportXpFarmTelemetry(ns, lastState);
         }
 
         await ns.sleep(effectiveInterval);
@@ -254,4 +270,35 @@ function stopWorkers(ns, servers, worker, strategy = "xpfarm-only") {
 function isSameScriptPath(actualPath, expectedPath) {
     const normalize = (path) => String(path || "").replace(/^\//, "");
     return normalize(actualPath) === normalize(expectedPath);
+}
+function reportXpFarmTelemetry(ns, state) {
+    try {
+        const now = Date.now();
+        
+        const metricsPayload = {
+            target: state.target,
+            threads: state.totalThreads,
+            servers: state.usedServers,
+            deployed: state.deployed,
+            loopCount: state.loopCount
+        };
+        
+        writeXpFarmMetrics(ns, metricsPayload);
+        telemetryState.lastReportTime = now;
+    } catch (e) {
+        ns.print(`❌ XP Farm telemetry error: ${e}`);
+    }
+}
+
+function writeXpFarmMetrics(ns, metricsPayload) {
+    try {
+        const payload = JSON.stringify({
+            module: 'xpfarm',
+            timestamp: Date.now(),
+            metrics: metricsPayload,
+        });
+        ns.tryWritePort(TELEMETRY_PORT, payload);
+    } catch (e) {
+        ns.print(`❌ Failed to write xpfarm metrics: ${e}`);
+    }
 }

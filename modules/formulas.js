@@ -7,11 +7,17 @@
 import { createWindow } from "/angel/modules/uiManager.js";
 import { formatMoney } from "/angel/utils.js";
 
+const TELEMETRY_PORT = 20;
+
 let lastState = {
     hasFormulas: false,
     farmingActive: false,
     sessionHashes: 0,
     loopCount: 0
+};
+
+let telemetryState = {
+    lastReportTime: 0
 };
 
 export async function main(ns) {
@@ -21,6 +27,8 @@ export async function main(ns) {
     ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     ui.log("📐 Formulas.exe farming module initialized", "success");
     ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+    
+    telemetryState.lastReportTime = Date.now();
     
     while (true) {
         try {
@@ -59,6 +67,13 @@ export async function main(ns) {
                 }
             }
             
+            // Report telemetry every 5 seconds
+            const now = Date.now();
+            if (now - telemetryState.lastReportTime >= 5000) {
+                reportTelemetry(ns);
+                telemetryState.lastReportTime = now;
+            }
+            
             await ns.sleep(10000);  // Check every 10 seconds
         } catch (e) {
             if (isScriptDeathError(e)) {
@@ -73,6 +88,25 @@ export async function main(ns) {
 function isScriptDeathError(error) {
     const message = String(error || "");
     return message.includes("ScriptDeath") || message.includes("NS instance has already been killed");
+}
+
+function reportTelemetry(ns) {
+    try {
+        const payload = JSON.stringify({
+            module: 'formulas',
+            timestamp: Date.now(),
+            metrics: {
+                farmingActive: lastState.farmingActive,
+                hasFormulas: lastState.hasFormulas,
+                sessionHashes: lastState.sessionHashes,
+                loopCount: lastState.loopCount,
+            },
+        });
+        
+        ns.writePort(TELEMETRY_PORT, payload);
+    } catch (e) {
+        // Silently fail telemetry
+    }
 }
 
 function farmFormulas(ns, ui) {

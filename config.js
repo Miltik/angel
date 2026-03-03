@@ -143,6 +143,7 @@ export const config = {
         enableServerMgmt: true,
         enableAugments: true,
         enablePrograms: true,
+        enablePhase: true,         // Phase tracker (single source of truth)
         enableActivities: true,    // Handles crime, training, faction, company (all phases)
         enableSleeves: true,
         enableStocks: true,
@@ -565,6 +566,7 @@ export const SCRIPTS = {
     serverMgmt: "/angel/modules/servers.js",
     augments: "/angel/modules/augments.js",
     programs: "/angel/modules/programs.js",
+    phase: "/angel/modules/phase.js",
     activities: "/angel/modules/activities.js",
     sleeves: "/angel/modules/sleeves.js",
     stocks: "/angel/modules/stocks.js",

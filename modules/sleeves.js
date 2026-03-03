@@ -8,12 +8,18 @@ import { config } from "/angel/config.js";
 import { createWindow } from "/angel/modules/uiManager.js";
 
 const PHASE_PORT = 7;
+const TELEMETRY_PORT = 20;
 
 // State tracking
 let lastState = {
     phase: null,
     summary: null,
     loopCount: 0
+};
+
+// Telemetry tracking
+let telemetryState = {
+    lastReportTime: 0
 };
 
 /**
@@ -53,8 +59,12 @@ export async function main(ns) {
 
     ui.log("✅ Sleeves active - starting automation", "success");
 
+    // Initialize telemetry
+    telemetryState.lastReportTime = Date.now();
+
     while (true) {
         try {
+            const loopStartTime = Date.now();
             const gamePhase = readGamePhase(ns);
             if (gamePhase < 3) {
                 if (lastState.phase !== "paused") {
@@ -74,6 +84,13 @@ export async function main(ns) {
             }
             
             lastState.loopCount++;
+            
+            // Report telemetry every 5 seconds
+            const timeSinceLastReport = Date.now() - telemetryState.lastReportTime;
+            if (timeSinceLastReport >= 5000) {
+                reportSleevesTelemetry(ns, count, summary);
+            }
+            
             printStatus(ui, count, summary, gamePhase, lastState);
             await ns.sleep(30000);
         } catch (e) {
@@ -197,5 +214,48 @@ function printStatus(ui, count, summary, gamePhase, lastState) {
         
         lastState.summary = summaryStr;
         lastState.phase = gamePhase;
+    }
+}
+function reportSleevesTelemetry(ns, count, summary) {
+    try {
+        const now = Date.now();
+        let totalStats = { str: 0, def: 0, dex: 0, agi: 0, hck: 0 };
+        
+        for (let i = 0; i < count; i++) {
+            const stats = ns.sleeve.getSleeveStats(i);
+            totalStats.str += stats.strength;
+            totalStats.def += stats.defense;
+            totalStats.dex += stats.dexterity;
+            totalStats.agi += stats.agility;
+            totalStats.hck += stats.hacking;
+        }
+        
+        const avgLevel = count > 0 ? (totalStats.str + totalStats.def + totalStats.dex + totalStats.agi) / (count * 4) : 0;
+        
+        const metricsPayload = {
+            sleeves: count,
+            trained: summary.trained,
+            working: summary.working,
+            recovering: summary.recovering,
+            avgLevel: avgLevel
+        };
+        
+        writeSlievesMetrics(ns, metricsPayload);
+        telemetryState.lastReportTime = now;
+    } catch (e) {
+        ns.print(`❌ Sleeves telemetry error: ${e}`);
+    }
+}
+
+function writeSlievesMetrics(ns, metricsPayload) {
+    try {
+        const payload = JSON.stringify({
+            module: 'sleeves',
+            timestamp: Date.now(),
+            metrics: metricsPayload,
+        });
+        ns.tryWritePort(TELEMETRY_PORT, payload);
+    } catch (e) {
+        ns.print(`❌ Failed to write sleeves metrics: ${e}`);
     }
 }

@@ -45,10 +45,29 @@ export async function main(ns) {
         ns.tprint(`Available RAM: ${availableRam.toFixed(2)}GB`);
     } else {
         ns.tprint(`✓ ANGEL started (PID: ${pid})`);
-        ns.tprint("");
-        ns.tprint("The orchestrator is now running!");
-        ns.tprint("Tail window will open automatically");
     }
+    
+    // Check if telemetry is running
+    if (!ns.isRunning("/angel/telemetry/telemetry.js", "home")) {
+        ns.tprint("Starting Telemetry collector...");
+        const telemetryPid = ns.exec("/angel/telemetry/telemetry.js", "home");
+        
+        if (telemetryPid === 0) {
+            ns.tprint("✗ Failed to start Telemetry (insufficient RAM?)");
+            const telemetryRam = ns.getScriptRam("/angel/telemetry/telemetry.js");
+            const availableRam = ns.getServerMaxRam("home") - ns.getServerUsedRam("home");
+            ns.tprint(`Required RAM: ${telemetryRam.toFixed(2)}GB`);
+            ns.tprint(`Available RAM: ${availableRam.toFixed(2)}GB`);
+        } else {
+            ns.tprint(`✓ Telemetry started (PID: ${telemetryPid})`);
+        }
+    } else {
+        ns.tprint("✓ Telemetry is already running");
+    }
+    
+    ns.tprint("");
+    ns.tprint("The orchestrator and telemetry are now running!");
+    ns.tprint("Tail window will open automatically");
 }
 
 function ensureLootArchiveSeed(ns) {

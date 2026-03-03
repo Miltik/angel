@@ -1,0 +1,13 @@
+{
+  "dependencies": {
+    "bitburner-filesync": "^1.2.0-beta4"
+  },
+  "scripts": {
+    "watch": "npm run watch:stop && npm run watch:run",
+    "watch:run": "bitburner-filesync",
+    "watch:stop": "powershell -NoProfile -Command \"Get-NetTCPConnection -LocalPort 12525 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force }\"",
+    "watch:restart": "npm run watch",
+    "backend:start": "npm --prefix server start",
+    "backend:dev": "npm --prefix server run dev"
+  }
+}

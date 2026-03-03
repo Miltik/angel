@@ -22,28 +22,31 @@ if errorlevel 1 (
 echo ✅ Node.js detected
 echo.
 
-REM Kill any existing node processes on ports 3000/5173 (optional)
-echo Checking for existing processes...
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":3000"') do (
-    taskkill /PID %%a /F 2>nul
-)
-for /f "tokens=5" %%a in ('netstat -ano ^| findstr ":5173"') do (
-    taskkill /PID %%a /F 2>nul
-)
+echo Checking existing ANGEL services...
 
 echo.
 echo Starting ANGEL services...
 echo.
 
-REM Start Backend
-echo 📦 Starting Backend (http://localhost:3000)...
-start "ANGEL Backend" cmd /k "title ANGEL Backend && cd server && npm start"
-timeout /t 3 /nobreak
+REM Start Backend only if not already healthy
+powershell -NoProfile -Command "try { $r = Invoke-RestMethod -Uri 'http://localhost:3000/health' -TimeoutSec 2; if ($r.status -eq 'ok') { exit 0 } else { exit 1 } } catch { exit 1 }"
+if errorlevel 1 (
+    echo 📦 Starting Backend (http://localhost:3000)...
+    start "ANGEL Backend" cmd /k "title ANGEL Backend && cd server && npm start"
+    timeout /t 3 /nobreak >nul
+) else (
+    echo ✅ Backend already healthy on http://localhost:3000
+)
 
-REM Start Frontend
-echo 🎨 Starting Frontend (http://localhost:5173)...
-start "ANGEL Frontend" cmd /k "title ANGEL Frontend && cd web && npm run dev"
-timeout /t 3 /nobreak
+REM Start Frontend only if already not reachable
+powershell -NoProfile -Command "try { $null = Invoke-WebRequest -UseBasicParsing -Uri 'http://localhost:5173' -TimeoutSec 2; exit 0 } catch { exit 1 }"
+if errorlevel 1 (
+    echo 🎨 Starting Frontend (http://localhost:5173)...
+    start "ANGEL Frontend" cmd /k "title ANGEL Frontend && cd web && npm run dev"
+    timeout /t 3 /nobreak >nul
+) else (
+    echo ✅ Frontend already reachable on http://localhost:5173
+)
 
 REM Success message
 echo.

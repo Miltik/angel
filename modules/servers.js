@@ -4,6 +4,7 @@ import { rootAll } from "/angel/scanner.js";
 import { createWindow } from "/angel/modules/uiManager.js";
 
 const PHASE_PORT = 7;
+const TELEMETRY_PORT = 20;
 
 // State tracking to avoid log spam
 let lastState = {
@@ -12,6 +13,11 @@ let lastState = {
     totalRam: 0,
     lastRootCount: 0,
     loopCount: 0
+};
+
+// Telemetry tracking
+const telemetryState = {
+    lastReportTime: 0
 };
 
 /** @param {NS} ns */
@@ -23,9 +29,19 @@ export async function main(ns) {
     ui.log("🖥️  Server management initialized", "success");
     ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     
+    // Initialize telemetry
+    telemetryState.lastReportTime = Date.now();
+    
     while (true) {
         try {
+            const loopStartTime = Date.now();
             await serverLoop(ns, ui);
+            
+            // Report telemetry every 5 seconds
+            const timeSinceLastReport = Date.now() - telemetryState.lastReportTime;
+            if (timeSinceLastReport >= 5000) {
+                reportServersTelemetry(ns);
+            }
         } catch (e) {
             ui.log(`❌ Server management error: ${e}`, "error");
         }
@@ -407,4 +423,34 @@ export function getServerStats(ns) {
         maxRam,
         maxPossible: config.servers.maxServers,
     };
+}
+function reportServersTelemetry(ns) {
+    try {
+        const now = Date.now();
+        const stats = getServerStats(ns);
+        
+        const metricsPayload = {
+            servers: stats.count,
+            totalRam: stats.totalRam,
+            maxServers: stats.maxPossible
+        };
+        
+        writeServersMetrics(ns, metricsPayload);
+        telemetryState.lastReportTime = now;
+    } catch (e) {
+        ns.print(`❌ Servers telemetry error: ${e}`);
+    }
+}
+
+function writeServersMetrics(ns, metricsPayload) {
+    try {
+        const payload = JSON.stringify({
+            module: 'servers',
+            timestamp: Date.now(),
+            metrics: metricsPayload,
+        });
+        ns.tryWritePort(TELEMETRY_PORT, payload);
+    } catch (e) {
+        ns.print(`❌ Failed to write servers metrics: ${e}`);
+    }
 }

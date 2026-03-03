@@ -12,12 +12,23 @@ import { formatMoney } from "/angel/utils.js";
 import { createWindow } from "/angel/modules/uiManager.js";
 
 const PHASE_PORT = 7;
+const TELEMETRY_PORT = 20;
+
+// Telemetry tracking
+let telemetryState = {
+    lastReportTime: 0,
+    membersRecruited: 0,
+    lastMemberCount: 0
+};
 
 export async function main(ns) {
     ns.disableLog("ALL");
     
     const ui = createWindow("gang", "👾 Gang Management", 700, 450, ns);
     ui.log("Gang module started - Phase-aware respect maximization with clash timing", "info");
+
+    // Initialize telemetry
+    telemetryState.lastReportTime = Date.now();
 
     while (true) {
         try {
@@ -27,11 +38,18 @@ export async function main(ns) {
                 continue;
             }
 
+            const loopStartTime = Date.now();
             recruitMembers(ns, ui);
             const summary = assignTasks(ns, ui);
             
             // NEW: Manage territory clashes  
             manageTerritoryclashes(ns, ui);
+            
+            // Report telemetry every 5 seconds
+            const timeSinceLastReport = Date.now() - telemetryState.lastReportTime;
+            if (timeSinceLastReport >= 5000) {
+                reportTelemetry(ns, summary);
+            }
             
             printStatus(ns, summary, ui);
             await ns.sleep(30000);
@@ -455,4 +473,39 @@ function printStatus(ns, summary, ui) {
     }
     
     return;
+}
+function reportTelemetry(ns, summary) {
+    try {
+        const now = Date.now();
+        const info = summary.info;
+        const memberCount = summary.members.length;
+        const moneyPerSec = Math.floor(info.moneyGainRate * 5);
+        
+        const metricsPayload = {
+            moneyRate: moneyPerSec,
+            members: memberCount,
+            respect: info.respect,
+            wantedPenalty: info.wantedPenalty,
+            territory: info.territory,
+            power: info.power
+        };
+        
+        writeGangMetrics(ns, metricsPayload);
+        telemetryState.lastReportTime = now;
+    } catch (e) {
+        ns.print(`❌ Gang telemetry error: ${e}`);
+    }
+}
+
+function writeGangMetrics(ns, metricsPayload) {
+    try {
+        const payload = JSON.stringify({
+            module: 'gang',
+            timestamp: Date.now(),
+            metrics: metricsPayload,
+        });
+        ns.tryWritePort(TELEMETRY_PORT, payload);
+    } catch (e) {
+        ns.print(`❌ Failed to write gang metrics: ${e}`);
+    }
 }

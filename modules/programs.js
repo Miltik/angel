@@ -1,11 +1,17 @@
 import { createWindow } from "/angel/modules/uiManager.js";
 
+const TELEMETRY_PORT = 20;
+
 // State tracking to avoid log spam
 let lastState = {
     hasTor: false,
     ownedPrograms: [],
     lastLoggedStatus: null,
     loopCount: 0
+};
+
+let telemetryState = {
+    lastReportTime: 0
 };
 
 /** @param {NS} ns */
@@ -32,6 +38,9 @@ export async function main(ns) {
                 ui.log("✅ All programs acquired - entering idle mode", "success");
                 lastState.lastLoggedStatus = "complete";
             }
+            
+            // Report telemetry
+            reportProgramsTelemetry(ns);
             
         } catch (e) {
             if (isScriptDeathError(e)) {
@@ -203,5 +212,34 @@ function hasTor(ns) {
         return Array.isArray(programs) && programs.length > 0;
     } catch (e) {
         return false;
+    }
+}
+function reportProgramsTelemetry(ns) {
+    try {
+        const now = Date.now();
+        
+        const metricsPayload = {
+            programsOwned: lastState.ownedPrograms.length,
+            hasTor: lastState.hasTor,
+            loopCount: lastState.loopCount
+        };
+        
+        writeProgramsMetrics(ns, metricsPayload);
+        telemetryState.lastReportTime = now;
+    } catch (e) {
+        ns.print(`❌ Programs telemetry error: ${e}`);
+    }
+}
+
+function writeProgramsMetrics(ns, metricsPayload) {
+    try {
+        const payload = JSON.stringify({
+            module: 'programs',
+            timestamp: Date.now(),
+            metrics: metricsPayload,
+        });
+        ns.tryWritePort(TELEMETRY_PORT, payload);
+    } catch (e) {
+        ns.print(`❌ Failed to write programs metrics: ${e}`);
     }
 }

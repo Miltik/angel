@@ -3,6 +3,7 @@ import { formatMoney } from "/angel/utils.js";
 import { createWindow } from "/angel/modules/uiManager.js";
 
 const PHASE_PORT = 7;
+const TELEMETRY_PORT = 20;
 
 // State tracking
 let lastState = {
@@ -10,7 +11,13 @@ let lastState = {
     availableCount: 0,
     queuedCount: 0,
     loopCount: 0,
-    lastPurchaseLoop: -10
+    lastPurchaseLoop: -10,
+    lastInstalledCount: 0
+};
+
+let telemetryState = {
+    lastReportTime: 0,
+    lastResetReportTime: 0
 };
 
 /** @param {NS} ns */
@@ -201,73 +208,77 @@ function getPriorityAugmentsInline(ns, available) {
  * @param {object} ui - UI window API
  */
 async function augmentLoop(ns, ui) {
-    const phase = readGamePhase(ns);
-    const strategy = getAugmentStrategy(phase);
-    const money = ns.getServerMoneyAvailable("home");
-    const available = getAvailableAugmentsInline(ns);
-    
-    // Get queue status
-    const ownedCount = ns.singularity.getOwnedAugmentations(false).length;
-    const installedCount = ns.singularity.getOwnedAugmentations(true).length;
-    const queuedCount = ownedCount - installedCount;
-    const queueBoostTarget = config.augmentations.aggressiveQueueTarget ?? 3;
-    
-    lastState.loopCount++;
-    
-    // Log status only on changes or every 5 loops (5 minutes)
-    const statusChanged = phase !== lastState.phase || 
-                         available.length !== lastState.availableCount ||
-                         queuedCount !== lastState.queuedCount;
-    
-    if (statusChanged || lastState.loopCount % 5 === 0) {
-        ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
-        ui.log(`🧬 Phase ${phase} | 💰 ${formatMoney(money)} | 📋 Strategy: ${strategy.strategy}`, "info");
-        ui.log(`📦 Available: ${available.length} | 🎯 Queued: ${queuedCount}`, "info");
-    }
-    
-    lastState.phase = phase;
-    lastState.availableCount = available.length;
-    lastState.queuedCount = queuedCount;
-    
-    if (available.length === 0) {
-        if (statusChanged || lastState.loopCount % 10 === 0) {
-            ui.log(`⏰ No augmentations available yet - waiting for faction rep`, "info");
+    try {
+        const phase = readGamePhase(ns);
+        const strategy = getAugmentStrategy(phase);
+        const money = ns.getServerMoneyAvailable("home");
+        const available = getAvailableAugmentsInline(ns);
+        
+        // Get queue status
+        const ownedCount = ns.singularity.getOwnedAugmentations(false).length;
+        const installedCount = ns.singularity.getOwnedAugmentations(true).length;
+        const queuedCount = ownedCount - installedCount;
+        const queueBoostTarget = config.augmentations.aggressiveQueueTarget ?? 3;
+        
+        lastState.loopCount++;
+        
+        // Log status only on changes or every 5 loops (5 minutes)
+        const statusChanged = phase !== lastState.phase || 
+                             available.length !== lastState.availableCount ||
+                             queuedCount !== lastState.queuedCount;
+        
+        if (statusChanged || lastState.loopCount % 5 === 0) {
+            ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
+            ui.log(`🧬 Phase ${phase} | 💰 ${formatMoney(money)} | 📋 Strategy: ${strategy.strategy}`, "info");
+            ui.log(`📦 Available: ${available.length} | 🎯 Queued: ${queuedCount}`, "info");
         }
-        return;
-    }
-    
-    // Sort by price (cheapest first)
-    available.sort((a, b) => a.price - b.price);
-    
-    // Strategy: buyAll (phases 3-4)
-    if (strategy.buyAll) {
-        await buyAllAvailable(ns, available, money, ui);
-        return;
-    }
-    
-    // Strategy: Priority focus (phases 0-2)
-    const priority = getPriorityAugmentsInline(ns, available);
-    if (priority.length > 0) {
-        const purchasedPriority = await buyPriorityAugments(ns, priority, money, strategy, ui);
-        if (purchasedPriority > 0) {
+        
+        lastState.phase = phase;
+        lastState.availableCount = available.length;
+        lastState.queuedCount = queuedCount;
+        
+        if (available.length === 0) {
+            if (statusChanged || lastState.loopCount % 10 === 0) {
+                ui.log(`⏰ No augmentations available yet - waiting for faction rep`, "info");
+            }
             return;
         }
-    }
+        
+        // Sort by price (cheapest first)
+        available.sort((a, b) => a.price - b.price);
+        
+        // Strategy: buyAll (phases 3-4)
+        if (strategy.buyAll) {
+            await buyAllAvailable(ns, available, money, ui);
+            return;
+        }
+        
+        // Strategy: Priority focus (phases 0-2)
+        const priority = getPriorityAugmentsInline(ns, available);
+        if (priority.length > 0) {
+            const purchasedPriority = await buyPriorityAugments(ns, priority, money, strategy, ui);
+            if (purchasedPriority > 0) {
+                return;
+            }
+        }
 
-    // Queue boost mode: if queue is low, buy cheapest available to keep reset pipeline moving
-    if (queuedCount < queueBoostTarget) {
-        const boosted = await buyQueueBoostAugments(ns, available, money, strategy, ui);
-        if (boosted > 0) {
-            ui.log(`⚡ Queue boost active (${queuedCount}/${queueBoostTarget}) - purchased ${boosted}`, "success");
-            return;
+        // Queue boost mode: if queue is low, buy cheapest available to keep reset pipeline moving
+        if (queuedCount < queueBoostTarget) {
+            const boosted = await buyQueueBoostAugments(ns, available, money, strategy, ui);
+            if (boosted > 0) {
+                ui.log(`⚡ Queue boost active (${queuedCount}/${queueBoostTarget}) - purchased ${boosted}`, "success");
+                return;
+            }
         }
-    }
-    
-    // Fallback: Show next affordable aug
-    if (available.length > 0 && money < available[0].price) {
-        const nextAug = available[0];
-        const needed = nextAug.price - money;
-        ui.log(`Next: ${nextAug.name} - Need ${formatMoney(needed)} more`, "info");
+        
+        // Fallback: Show next affordable aug
+        if (available.length > 0 && money < available[0].price) {
+            const nextAug = available[0];
+            const needed = nextAug.price - money;
+            ui.log(`Next: ${nextAug.name} - Need ${formatMoney(needed)} more`, "info");
+        }
+    } finally {
+        reportAugmentsTelemetry(ns);
     }
 }
 
@@ -495,5 +506,71 @@ export function installAugmentations(ns) {
         // Always restart with angel-lite.js for seamless post-reset continuity
         // Angel-lite will auto-transition to full Angel if RAM >= 64GB
         ns.singularity.installAugmentations("/angel/angel-lite.js");
+    }
+}
+function reportAugmentsTelemetry(ns) {
+    try {
+        const now = Date.now();
+        let ownedCount = 0;
+        let installedCount = 0;
+        let resetMetadata = null;
+
+        if (hasSingularityAccess(ns)) {
+            const installedAugs = ns.singularity.getOwnedAugmentations(true);
+            installedCount = installedAugs.length;
+            ownedCount = ns.singularity.getOwnedAugmentations(false).length;
+            
+            // Detect reset: installed count dropped significantly (more than 2 augs)
+            if (installedCount < lastState.lastInstalledCount - 2) {
+                // Reset detected - calculate cost and rep for ALL installed augs
+                let totalCost = 0;
+                let totalRep = 0;
+                
+                for (const augName of installedAugs) {
+                    try {
+                        const stats = ns.singularity.getAugmentationStats(augName);
+                        totalCost += stats.cost || 0;
+                        totalRep += stats.repCost || 0;
+                    } catch (e) {
+                        // Skip if we can't get stats
+                    }
+                }
+                
+                resetMetadata = {
+                    detectedAtResetTime: now,
+                    totalAugmentsCost: totalCost,
+                    totalAugmentsReputation: totalRep,
+                    augmentsInstalledCount: installedCount
+                };
+            }
+            
+            lastState.lastInstalledCount = installedCount;
+        }
+        
+        const metricsPayload = {
+            installed: installedCount,
+            queued: ownedCount - installedCount,
+            available: lastState.availableCount,
+            loopCount: lastState.loopCount,
+            ...(resetMetadata && { resetMetadata })
+        };
+        
+        writeAugmentsMetrics(ns, metricsPayload);
+        telemetryState.lastReportTime = now;
+    } catch (e) {
+        ns.print(`❌ Augments telemetry error: ${e}`);
+    }
+}
+
+function writeAugmentsMetrics(ns, metricsPayload) {
+    try {
+        const payload = JSON.stringify({
+            module: 'augments',
+            timestamp: Date.now(),
+            metrics: metricsPayload,
+        });
+        ns.tryWritePort(TELEMETRY_PORT, payload);
+    } catch (e) {
+        ns.print(`❌ Failed to write augments metrics: ${e}`);
     }
 }

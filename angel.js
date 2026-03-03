@@ -305,6 +305,14 @@ async function ensureModulesRunning(ns) {
         await ns.sleep(1500);
     }
     
+    // Phase tracker module (single source of truth for game phase)
+    if (config.orchestrator.enablePhase) {
+        const startedPhase = await ensureModuleRunning(ns, SCRIPTS.phase, "Phase Tracker");
+        if (!startedPhase) blockedCoreModules.push("Phase Tracker");
+        coreReady = coreReady && startedPhase;
+        await ns.sleep(1500);
+    }
+    
     // Activities module (unified: crime, training, faction, company)
     if (config.orchestrator.enableActivities) {
         const started = await ensureModuleRunning(ns, SCRIPTS.activities, "Activities");
@@ -741,10 +749,11 @@ async function executeBackendCommand(ns, cmd) {
                 break;
 
             case 'runModule':
-                const moduleName = cmd.parameters?.module;
-                if (moduleName && SCRIPTS[moduleName]) {
+                const moduleName = String(cmd.parameters?.module || '');
+                const runScript = resolveModuleScript(moduleName);
+                if (moduleName && runScript) {
                     log(ns, `▶️ Running module: ${moduleName}`, 'INFO');
-                    const pid = ns.exec(SCRIPTS[moduleName], 'home');
+                    const pid = ns.exec(runScript, 'home');
                     await markCommandExecuted(backendUrl, cmd.id, {
                         status: 'executing',
                         modulePid: pid
@@ -753,6 +762,24 @@ async function executeBackendCommand(ns, cmd) {
                     await markCommandExecuted(backendUrl, cmd.id, {
                         status: 'failed',
                         error: `Unknown module: ${moduleName}`
+                    });
+                }
+                break;
+
+            case 'stopModule':
+                const stopModuleName = String(cmd.parameters?.module || '');
+                const stopScript = resolveModuleScript(stopModuleName);
+                if (stopModuleName && stopScript) {
+                    log(ns, `⏹️ Stopping module: ${stopModuleName}`, 'INFO');
+                    const stopped = ns.kill(stopScript, 'home');
+                    await markCommandExecuted(backendUrl, cmd.id, {
+                        status: stopped ? 'stopped' : 'not-running',
+                        module: stopModuleName,
+                    });
+                } else {
+                    await markCommandExecuted(backendUrl, cmd.id, {
+                        status: 'failed',
+                        error: `Unknown module: ${stopModuleName}`
                     });
                 }
                 break;
@@ -789,4 +816,37 @@ async function markCommandExecuted(backendUrl, commandId, result) {
     } catch (error) {
         // Silently fail - don't disrupt if backend is unavailable
     }
+}
+
+function resolveModuleScript(moduleName) {
+    const normalized = String(moduleName || '').toLowerCase();
+    const moduleScriptMap = {
+        activities: SCRIPTS.activities,
+        augments: SCRIPTS.augments,
+        backdoorrunner: '/angel/modules/backdoorRunner.js',
+        bladeburner: SCRIPTS.bladeburner,
+        contracts: SCRIPTS.contracts,
+        corporation: SCRIPTS.corporation,
+        formulas: SCRIPTS.formulas,
+        gang: SCRIPTS.gang,
+        hacking: SCRIPTS.hacking,
+        hacknet: SCRIPTS.hacknet,
+        loot: SCRIPTS.loot,
+        phase: SCRIPTS.phase,
+        programs: SCRIPTS.programs,
+        servers: SCRIPTS.serverMgmt,
+        sleeves: SCRIPTS.sleeves,
+        stocks: SCRIPTS.stocks,
+        xpfarm: SCRIPTS.xpFarm,
+    };
+
+    if (moduleScriptMap[normalized]) {
+        return moduleScriptMap[normalized];
+    }
+
+    if (SCRIPTS[moduleName]) {
+        return SCRIPTS[moduleName];
+    }
+
+    return null;
 }

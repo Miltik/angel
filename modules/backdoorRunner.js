@@ -7,6 +7,13 @@
 
 import { createWindow } from "/angel/modules/uiManager.js";
 
+const TELEMETRY_PORT = 20;
+
+let runStats = {
+    attempted: 0,
+    completed: 0
+};
+
 export async function main(ns) {
     ns.disableLog("ALL");
 
@@ -73,12 +80,16 @@ export async function main(ns) {
 
     if (interrupted) {
         safeLog(ui, "⚠️ Backdoor runner interrupted (ScriptDeath). Re-run /angel/backdoor.js to resume.", "warn");
+        reportBackdoorTelemetry(ns, attempted, completed);
         return;
     }
 
     ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
     ui.log(`🏁 Backdoor complete | Installed: ${completed}/${attempted}`, "success");
     ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
+    
+    // Report final telemetry
+    reportBackdoorTelemetry(ns, attempted, completed);
 }
 
 function isScriptDeath(error) {
@@ -178,4 +189,29 @@ function connectPath(ns, path) {
 
 function shortError(error) {
     return String(error).replace(/\s+/g, " ").slice(0, 60);
+}
+function reportBackdoorTelemetry(ns, attempted, completed) {
+    try {
+        const metricsPayload = {
+            installed: completed,
+            attempted: attempted
+        };
+        
+        writeBackdoorMetrics(ns, metricsPayload);
+    } catch (e) {
+        ns.print(`❌ Backdoor telemetry error: ${e}`);
+    }
+}
+
+function writeBackdoorMetrics(ns, metricsPayload) {
+    try {
+        const payload = JSON.stringify({
+            module: 'backdoorRunner',
+            timestamp: Date.now(),
+            metrics: metricsPayload,
+        });
+        ns.tryWritePort(TELEMETRY_PORT, payload);
+    } catch (e) {
+        ns.print(`❌ Failed to write backdoor metrics: ${e}`);
+    }
 }

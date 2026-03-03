@@ -89,31 +89,28 @@ function isScriptDeathError(error) {
 function reportTelemetry(ns) {
     try {
         const now = Date.now();
-        const currentMoney = ns.getServerMoneyAvailable('home');
-        const timeDelta = (now - telemetryState.lastReportTime) / 1000; // seconds
-        
-        // Calculate production rate
-        const moneyRate = timeDelta > 0 ? (currentMoney - telemetryState.lastMoney) / timeDelta : 0;
-        
+
         // Get hacknet stats
         const nodeCount = ns.hacknet.numNodes();
         let totalRam = 0;
         let totalCores = 0;
         let totalLevel = 0;
-        
+        let totalProduction = 0;
+
         for (let i = 0; i < nodeCount; i++) {
             const node = ns.hacknet.getNodeStats(i);
             totalRam += node.ram;
             totalCores += node.cores;
             totalLevel += node.level;
+            totalProduction += Number(node.production || 0);
         }
-        
+
         // Calculate total investment (rough estimate based on config)
         const budgetInfo = getHacknetBudget(ns);
-        
+
         // Report to telemetry
         const metricsPayload = {
-            moneyRate: Math.max(0, moneyRate),
+            moneyRate: Math.max(0, totalProduction),
             nodes: nodeCount,
             totalRam: totalRam,
             totalCores: totalCores,
@@ -124,12 +121,9 @@ function reportTelemetry(ns) {
             reserve: budgetInfo.reserve
         };
         writeHacknetMetrics(ns, metricsPayload);
-        
-        // Diagnostic: confirm reporting (100% for troubleshooting)
-        ns.print(`📊 Reported hacknet: ${nodeCount} nodes, ${telemetryState.upgradesCompleted} upgrades, $${(telemetryState.totalInvestment / 1e6).toFixed(2)}M invested`);
-        
+
         // Update state
-        telemetryState.lastMoney = currentMoney;
+        telemetryState.lastMoney = ns.getServerMoneyAvailable('home');
         telemetryState.lastReportTime = now;
     } catch (e) {
         ns.print(`❌ Hacknet telemetry error: ${e}`);

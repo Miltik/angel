@@ -7,10 +7,16 @@
 import { createWindow } from "/angel/modules/uiManager.js";
 import { formatMoney } from "/angel/utils.js";
 
+const TELEMETRY_PORT = 20;
+
 let lastState = {
     contractsSolved: 0,
     totalRewards: 0,
     loopCount: 0
+};
+
+let telemetryState = {
+    lastReportTime: 0
 };
 
 export async function main(ns) {
@@ -28,6 +34,9 @@ export async function main(ns) {
         try {
             lastState.loopCount++;
             const solved = await solveAllContracts(ns, ui);
+            
+            // Report telemetry
+            reportContractsTelemetry(ns);
             
             // Show session stats periodically
             if (lastState.loopCount % 10 === 0) {
@@ -880,4 +889,33 @@ function getAllServers(ns, server = "home", visited = new Set()) {
         }
     }
     return Array.from(visited);
+}
+function reportContractsTelemetry(ns) {
+    try {
+        const now = Date.now();
+        
+        const metricsPayload = {
+            contractsSolved: lastState.contractsSolved,
+            totalRewards: lastState.totalRewards,
+            loopCount: lastState.loopCount
+        };
+        
+        writeContractsMetrics(ns, metricsPayload);
+        telemetryState.lastReportTime = now;
+    } catch (e) {
+        ns.print(`❌ Contracts telemetry error: ${e}`);
+    }
+}
+
+function writeContractsMetrics(ns, metricsPayload) {
+    try {
+        const payload = JSON.stringify({
+            module: 'contracts',
+            timestamp: Date.now(),
+            metrics: metricsPayload,
+        });
+        ns.tryWritePort(TELEMETRY_PORT, payload);
+    } catch (e) {
+        ns.print(`❌ Failed to write contracts metrics: ${e}`);
+    }
 }

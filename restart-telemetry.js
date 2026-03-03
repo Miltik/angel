@@ -48,7 +48,7 @@ export async function main(ns) {
     await ns.sleep(2000);
     
     ns.tprint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    ns.tprint('🎯 Scripts restarted! Check logs for diagnostic output.');
-    ns.tprint('   Look for 📊 Reported and 📥 Ingested messages');
+    ns.tprint('🎯 Scripts restarted successfully.');
+    ns.tprint('   Verify data on the web dashboard/modules view.');
     ns.tprint('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 }

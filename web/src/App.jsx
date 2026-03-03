@@ -2,7 +2,16 @@ import React, { useState, useEffect } from 'react'
 import axios from 'axios'
 import './App.css'
 
-const BACKEND_URL = 'http://localhost:3000'
+// Determine backend URL - use same host as frontend for WiFi/remote access
+const getBackendUrl = () => {
+  if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    // Remote access (WiFi/network) - use same host, port 3000
+    return `http://${window.location.hostname}:3000`
+  }
+  // Local access - use localhost:3000
+  return 'http://localhost:3000'
+}
+const BACKEND_URL = getBackendUrl()
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {

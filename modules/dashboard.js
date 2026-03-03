@@ -156,6 +156,7 @@ export async function main(ns) {
     const ui = createWindow("dashboard", "📊 Comprehensive Dashboard", 1000, 800, ns);
     ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
     ui.log("📊 Comprehensive dashboard monitoring initialized", "success");
+    ui.log("🚫 DAEMON ADVANCEMENT: Manual unlock required (use Discord /angel-daemon-unlock)", "warn");
     ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
     
     while (true) {

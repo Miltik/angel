@@ -4,7 +4,6 @@ import { createWindow } from "/angel/modules/uiManager.js";
 
 const PHASE_PORT = 7;
 const TELEMETRY_PORT = 20;
-const DAEMON_LOCK_PORT = 15; // Port to communicate daemon advancement lock
 
 // State tracking
 let lastState = {
@@ -28,7 +27,6 @@ export async function main(ns) {
     const ui = createWindow("augments", "🧬 Augmentations", 700, 500, ns);
     ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
     ui.log("🧬 Augmentation automation initialized", "success");
-    ui.log("🚫 DAEMON PROTECTION: Manual advancement only", "warn");
     ui.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━", "info");
     
     // Check if we have SF4 (Singularity access)
@@ -40,7 +38,7 @@ export async function main(ns) {
     }
     
     ui.log("✅ Singularity access confirmed", "success");
-    ui.log("💡 NFG guard rails: Only buy if no other augs available (threshold: 15 queued)", "info");
+    ui.log("💡 NFG guard rails active: Only buy if no augs available (threshold: 15 for NFG-only)", "info");
     
     while (true) {
         try {

@@ -304,51 +304,124 @@ async function handleStatusFullCommand(interaction) {
         const statusPayload = statusResponse.data || {};
         const normalized = normalizeStatusPayload(statusPayload);
         const latestData = normalized.latestData;
-        const raw = parseRawData(latestData);
         const overview = statusPayload.overview || {};
-
         const modules = Array.isArray(modulesResponse?.data?.modules) ? modulesResponse.data.modules : [];
-        const topIncome = modules
-            .filter(m => toNum(m.money_rate) > 0)
-            .sort((a, b) => toNum(b.money_rate) - toNum(a.money_rate))
-            .slice(0, 3)
-            .map(m => `${m.module_name}:${formatNum(toNum(m.money_rate))}/s`)
-            .join(' | ') || 'None';
 
+        // Extract data per module from modules array
+        const moduleMap = {};
+        modules.forEach(m => {
+            moduleMap[m.module_name] = { ...m, raw: parseRawData(m) };
+        });
+
+        // PHASE
         const phase = toNum(overview?.phase?.current, 0);
         const phasePct = toNum(overview?.phase?.percent, 0);
         const phaseLabel = ['Bootstrap', 'Early Scaling', 'Mid-Game', 'Gang', 'Late'][Math.max(0, Math.min(4, phase))] || 'Unknown';
+        const phaseBar = `[${progressBar(phasePct, 16)}] ${phasePct.toFixed(1)}%`;
 
+        // Extract focus from augments or phase module
+        const augmentsRaw = moduleMap['augments']?.raw || {};
+        const phaseRaw = moduleMap['phase']?.raw || {};
+        const primaryActivity = phaseRaw?.primaryActivity || 'Unknown';
+        const secondaryActivities = phaseRaw?.secondaryActivities || [];
+        const secondary = Array.isArray(secondaryActivities) ? secondaryActivities.join(', ') : String(secondaryActivities);
+
+        // MONEY
         const currentMoney = toNum(latestData?.current_money);
         const moneyRate = toNum(latestData?.money_rate);
-        const xpRate = toNum(latestData?.xp_rate);
+        const dailyMoney = moneyRate * 86400;
+
+        // XP
         const hackLevel = String(latestData?.hack_level ?? 'N/A');
+        const xpRate = toNum(latestData?.xp_rate);
+
+        // NETWORK (from hacking module)
+        const hackingRaw = moduleMap['hacking']?.raw || {};
+        const rootedServers = toNum(hackingRaw?.rootedServers, 0);
+        const backdooredServers = toNum(hackingRaw?.backdooredServers, 0);
+        const purchasedServers = toNum(hackingRaw?.purchasedServers, 0);
+
+        // RAM
         const memoryUsedGb = (toNum(latestData?.memory_used) / 1024).toFixed(1);
-        const totalSamples = normalized.totalSamples;
-        const activeModules = modules.length;
-        const targetsPrepped = toNum(raw?.targetsPrepped, 0);
-        const currentTarget = raw?.currentTarget || 'n/a';
-        const prepState = raw?.prepState || 'n/a';
-        const threadCount = toNum(raw?.activeThreads, 0);
-        const successfulHacks = toNum(raw?.successfulHacks, 0);
+        const memoryMaxGb = toNum(overview?.angelLite?.currentRam, 8) / 1024;
+        const ramPct = toNum(overview?.angelLite?.percent, 0);
+        const ramBar = `${progressBar(ramPct, 14)} ${memoryUsedGb}GB`;
+
+        // XP FARM
+        const xpFarmRaw = moduleMap['xpFarm']?.raw || {};
+        const xpFarmThreads = toNum(xpFarmRaw?.threads, 0);
+        const xpFarmTarget = xpFarmRaw?.target || 'n/a';
+
+        // ACTIVITY
+        const activitiesRaw = moduleMap['activities']?.raw || {};
+        const activityStatus = activitiesRaw?.currentActivity || 'Idle';
+
+        // GANG
+        const gangRaw = moduleMap['gang']?.raw || {};
+        const gangName = gangRaw?.name || 'None';
+        const gangMembers = toNum(gangRaw?.members, 0);
+        const gangTerritory = ((toNum(gangRaw?.territory, 0) || 0) * 100).toFixed(1);
+        const gangRespect = formatNum(toNum(gangRaw?.respect, 0), 0);
+        const gangWanted = formatNum(toNum(gangRaw?.wantedLevel, 0), 2);
+        const gangMoneyRate = toNum(gangRaw?.moneyRate, 0);
+
+        // STOCKS
+        const stocksRaw = moduleMap['stocks']?.raw || {};
+        const stocksHoldings = toNum(stocksRaw?.stocks, 0);
+        const stocksInvested = formatNum(toNum(stocksRaw?.invested, 0));
+        const stocksValue = formatNum(toNum(stocksRaw?.portfolioValue, 0));
+        const stocksGain = toNum(stocksRaw?.totalProfits, 0);
+        const stocksGainPct = stocksValue > 0 ? ((stocksGain / toNum(stocksRaw?.invested, 1)) * 100).toFixed(1) : '0';
+
+        // HACKNET
+        const hacknetRaw = moduleMap['hacknet']?.raw || {};
+        const hacknetNodes = toNum(hacknetRaw?.nodeCount, 0);
+        const hacknetProduction = formatNum(toNum(hacknetRaw?.production, 0));
+        const hacknetTotal = formatNum(toNum(hacknetRaw?.total, 0));
+
+        // PROGRAMS
+        const programsRaw = moduleMap['programs']?.raw || {};
+        const programsPurchased = toNum(programsRaw?.purchased, 0);
+
+        // TIME TO RESET (estimate based on avg income and augment total cost)
+        const avgMoneyRate = toNum(statusPayload?.metrics?.avgMoneyRate, moneyRate);
+        let timeToResetStr = 'N/A';
+        
+        if (augmentsRaw?.resetMetadata?.totalAugmentsCost > 0 && avgMoneyRate > 0) {
+            const totalAugCost = toNum(augmentsRaw.resetMetadata.totalAugmentsCost, 0);
+            const moneyNeeded = Math.max(0, totalAugCost - currentMoney);
+            const timeToResetSec = moneyNeeded / avgMoneyRate;
+            timeToResetStr = timeToResetSec > 0 ? `~${formatUptime(timeToResetSec)}` : 'Ready!';
+        }
 
         const dashboardLines = [
             `ANGEL COMPREHENSIVE DASHBOARD`,
             `────────────────────────────────────────`,
-            `PHASE: ${phaseLabel} [${progressBar(phasePct, 14)}] ${phasePct.toFixed(1)}%`,
-            `MONEY: $${formatNum(currentMoney)} | Rate: $${formatNum(moneyRate)}/s | Daily: $${formatNum(moneyRate * 86400)}`,
-            `INCOME SOURCES: ${topIncome}`,
+            `PHASE: ${phaseLabel} ${phaseBar}`,
+            `Focus: ${primaryActivity} | Secondary: ${secondary}`,
+            ``,
+            `MONEY: $${formatNum(currentMoney)} | Rate: $${formatNum(moneyRate)}/s | Daily: $${formatNum(dailyMoney)}`,
             `XP: Level ${hackLevel} | Rate: ${formatNum(xpRate)}/s`,
-            `RAM: ${memoryUsedGb}GB used | Active modules: ${activeModules}`,
-            `HACKING: target=${currentTarget} | prep=${prepState} | prepped=${targetsPrepped}`,
-            `THREADS: ${formatNum(threadCount, 0)} | successful hacks: ${formatNum(successfulHacks, 0)}`,
-            `UPTIME: ${formatUptime(toNum(latestData?.uptime))}`,
-            `SAMPLES: ${totalSamples} | Last module: ${latestData?.module_name || 'n/a'}`,
+            ``,
+            `NETWORK: Rooted ${rootedServers} | Backdoored ${backdooredServers} | Purchased ${purchasedServers}`,
+            `RAM: ${ramBar}`,
+            ``,
+            `XP FARM: Threads ${xpFarmThreads} | Target ${xpFarmTarget}`,
+            `ACTIVITY: ${activityStatus}`,
+            ``,
+            `GANG: ${gangName} | Members ${gangMembers} | Territory ${gangTerritory}% | Respect ${gangRespect}`,
+            `        Wanted ${gangWanted} | Income $${formatNum(gangMoneyRate)}/s`,
+            ``,
+            `STOCKS: Holdings ${stocksHoldings} | Invested $${stocksInvested} | Value $${stocksValue} | Gain ${stocksGainPct}%`,
+            `HACKNET: ${hacknetNodes} nodes | Production $${hacknetProduction}/s | Total $${hacknetTotal}`,
+            `PROGRAMS: ${programsPurchased} purchased`,
+            ``,
+            `TIME TO RESET: ${timeToResetStr}`,
         ];
 
         const embed = new EmbedBuilder()
             .setColor(0x4da3ff)
-            .setTitle('🧾 ANGEL Status (Full)')
+            .setTitle('🧾 ANGEL Status (Full Dashboard)')
             .setDescription(`\`\`\`\n${dashboardLines.join('\n')}\n\`\`\``)
             .setFooter({ text: `Last update: ${new Date(normalized.lastUpdate).toLocaleString()}` })
             .setTimestamp(new Date(normalized.lastUpdate));

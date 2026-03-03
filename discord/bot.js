@@ -321,9 +321,7 @@ async function handleStatusFullCommand(interaction) {
 
         // Extract focus from phase module details
         const phaseDetails = moduleMap['phase'] || {};
-        const primaryActivity = phaseDetails?.plannedActivity || 'Unknown';
-        const secondaryActivities = phaseDetails?.secondaryActivities || [];
-        const secondary = Array.isArray(secondaryActivities) ? secondaryActivities.join(', ') : String(secondaryActivities);
+        // (Focus/secondary removed from dashboard display)
 
         // MONEY
         const currentMoney = toNum(latestData?.current_money);
@@ -351,13 +349,11 @@ async function handleStatusFullCommand(interaction) {
         const xpFarmThreads = toNum(hackingDetails?.activeThreads, 0);
         const xpFarmTarget = hackingDetails?.currentTarget || 'n/a';
 
-        // ACTIVITY
-        const activitiesDetails = moduleMap['activities'] || {};
-        const activityStatus = activitiesDetails?.liveWorkType || activitiesDetails?.currentActivity || 'Idle';
+        // ACTIVITY (not displayed in trimmed dashboard)
+        // const activitiesDetails = moduleMap['activities'] || {};
 
         // GANG
         const gangDetails = moduleMap['gang'] || {};
-        const gangName = gangDetails?.name || 'None';
         const gangMembers = toNum(gangDetails?.members, 0);
         const gangTerritory = ((toNum(gangDetails?.territory, 0) || 0) * 100).toFixed(1);
         const gangRespect = formatNum(toNum(gangDetails?.respect, 0), 0);
@@ -399,24 +395,15 @@ async function handleStatusFullCommand(interaction) {
             `ANGEL COMPREHENSIVE DASHBOARD`,
             `────────────────────────────────────────`,
             `PHASE: ${phaseLabel} ${phaseBar}`,
-            `Focus: ${primaryActivity} | Secondary: ${secondary}`,
-            ``,
+            `RAM: ${ramBar}`,
             `MONEY: $${formatNum(currentMoney)} | Rate: $${formatNum(moneyRate)}/s | Daily: $${formatNum(dailyMoney)}`,
             `XP: Level ${hackLevel} | Rate: ${formatNum(xpRate)}/s`,
-            ``,
             `NETWORK: Rooted ${rootedServers} | Backdoored ${backdooredServers} | Purchased ${purchasedServers}`,
-            `RAM: ${ramBar}`,
-            ``,
             `XP FARM: Threads ${xpFarmThreads} | Target ${xpFarmTarget}`,
-            `ACTIVITY: ${activityStatus}`,
-            ``,
-            `GANG: ${gangName} | Members ${gangMembers} | Territory ${gangTerritory}% | Respect ${gangRespect}`,
-            `        Wanted ${gangWanted} | Income $${formatNum(gangMoneyRate)}/s`,
-            ``,
+            `GANG: Members ${gangMembers} | Territory ${gangTerritory}% | Respect ${gangRespect} | Wanted ${gangWanted} | Income $${formatNum(gangMoneyRate)}/s`,
             `STOCKS: Holdings ${stocksHoldings} | Bought ${stocksBought} | Value $${stocksValue} | Gain ${stocksGainPct}%`,
             `HACKNET: ${hacknetNodes} nodes | Production $${hacknetProduction}/s | Total $${hacknetTotal}`,
             `PROGRAMS: ${programsPurchased} purchased`,
-            ``,
             `TIME TO RESET: ${timeToResetStr}`,
         ];
 

@@ -384,25 +384,24 @@ async function handleStatusFullCommand(interaction) {
         const augmentsDetails = moduleMap['augments'] || {};
         let timeToResetStr = 'N/A';
         
-        if (augmentsDetails?.details) {
-            const installed = toNum(augmentsDetails.details.installed, 0);
-            const queued = toNum(augmentsDetails.details.queued, 0);
-            const resetData = augmentsDetails.details.resetCountdown;
+        // augmentsDetails is the 'details' object, not wrapped
+        const installed = toNum(augmentsDetails?.installed, 0);
+        const queued = toNum(augmentsDetails?.queued, 0);
+        const resetData = augmentsDetails?.resetCountdown;
+        
+        if (queued > 0) {
+            // Augmentations are queued and ready to install
+            timeToResetStr = `Ready! (${queued} queued)`;
+        } else if (resetData) {
+            // Calculate countdown to accumulate money for augmentations
+            const moneyNeeded = toNum(resetData.moneyNeeded, 0);
             
-            if (queued > 0) {
-                // Augmentations are queued and ready to install
-                timeToResetStr = `Ready! (${queued} queued)`;
-            } else if (resetData) {
-                // Calculate countdown to accumulate money for augmentations
-                const moneyNeeded = toNum(resetData.moneyNeeded, 0);
-                
-                if (moneyNeeded > 0 && avgMoneyRate > 0) {
-                    const timeToResetSec = moneyNeeded / avgMoneyRate;
-                    timeToResetStr = `~${formatUptime(timeToResetSec)}`;
-                } else if (moneyNeeded <= 0) {
-                    // Have money but no augmentations queued - waiting for faction rep
-                    timeToResetStr = `Waiting for augs...`;
-                }
+            if (moneyNeeded > 0 && avgMoneyRate > 0) {
+                const timeToResetSec = moneyNeeded / avgMoneyRate;
+                timeToResetStr = `~${formatUptime(timeToResetSec)}`;
+            } else if (moneyNeeded <= 0) {
+                // Have money but no augmentations queued - waiting for faction rep
+                timeToResetStr = `Waiting for augs...`;
             }
         }
 

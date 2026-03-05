@@ -5,8 +5,6 @@
  * @param {NS} ns
  */
 
-import { stopAll } from "/angel/angel.js";
-
 export async function main(ns) {
     ensureLootArchiveSeed(ns);
 
@@ -15,7 +13,7 @@ export async function main(ns) {
     
     if (shouldStop || shouldRestart) {
         ns.tprint("Stopping ANGEL...");
-        stopAll(ns);
+        await stopAngelProcesses(ns);
         
         if (shouldStop) {
             ns.tprint("✓ ANGEL stopped");
@@ -68,6 +66,24 @@ export async function main(ns) {
     ns.tprint("");
     ns.tprint("The orchestrator and telemetry are now running!");
     ns.tprint("Tail window will open automatically");
+}
+
+// Lightweight stop without importing angel.js modules
+async function stopAngelProcesses(ns) {
+    // Kill main orchestrator
+    if (ns.isRunning("/angel/angel.js", "home")) {
+        ns.kill("/angel/angel.js", "home");
+    }
+    
+    // Kill telemetry
+    if (ns.isRunning("/angel/telemetry/telemetry.js", "home")) {
+        ns.kill("/angel/telemetry/telemetry.js", "home");
+    }
+    
+    // Kill all workers
+    ns.killall("home", true);
+    
+    await ns.sleep(500);
 }
 
 function ensureLootArchiveSeed(ns) {

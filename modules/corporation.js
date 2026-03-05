@@ -1,10 +1,9 @@
 import { config } from "/angel/config.js";
 import { createWindow } from "/angel/modules/uiManager.js";
 import { formatMoney, isScriptDeathError } from "/angel/utils.js";
-import { formatMoney, isScriptDeathError } from "/angel/utils.js";
+import { TELEMETRY_PORT } from "/angel/ports.js";
 
 const CITIES = ["Aevum", "Chongqing", "Sector-12", "New Tokyo", "Ishima", "Volhaven"];
-import { TELEMETRY_PORT } from "/angel/ports.js";
 const RESEARCH_QUEUE = [
     "Market Research", "Data Hubs",
     "Smart Factories", "Smart Storage", "Wilson Analytics", "Overclock",

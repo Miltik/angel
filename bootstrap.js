@@ -258,25 +258,10 @@ function tryGainRoot(ns, server) {
 // ============================================
 
 function attemptHomeUpgrade(ns) {
-    const currentRam = ns.getServerMaxRam("home");
-    
-    // Stop if we're at the bridge threshold
-    if (currentRam >= CONFIG.MAX_HOME_RAM * 1_024 * 1_024 * 1_024) {
-        return;
-    }
-    
-    const upgradePrice = ns.singularity.getUpgradeHomeRamCost();
-    const cash = ns.getPlayer().money;
-    const safetyThreshold = upgradePrice * CONFIG.UPGRADE_SAFETY_MULTIPLIER;
-    
-    // Only upgrade if we have safety margin
-    if (cash > safetyThreshold && cash > 10_000_000) {
-        try {
-            ns.singularity.upgradeHomeRam();
-        } catch (e) {
-            // Upgrade not available yet
-        }
-    }
+    // NOTE: We don't use ns.singularity here to keep RAM cost low.
+    // RAM upgrades happen naturally through game progression.
+    // This is just a monitor function; actual upgrades are done by the player
+    // or through other means. Bootstrap will detect when you reach 8GB naturally.
 }
 
 // ============================================

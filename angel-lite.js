@@ -377,26 +377,17 @@ function deployWorkerType(ns, serverRams, script, target, threads) {
 // ============================================
 
 async function manageHomeUpgrade(ns) {
+    // NOTE: We don't use singularity API to keep RAM cost minimal.
+    // Angel-lite detects when you've upgraded RAM naturally; doesn't do it automatically.
+    // This keeps the script lightweight enough to run on 8GB+.
+    
     const currentRam = ns.getServerMaxRam("home");
     
     if (currentRam >= CONFIG.MAX_HOME_RAM) {
         return false;
     }
     
-    const upgradeCost = ns.singularity.getUpgradeHomeRamCost();
-    const money = ns.getServerMoneyAvailable("home");
-    
-    // Buy if we have 2x the cost (safety margin)
-    if (money >= upgradeCost * CONFIG.UPGRADE_SAFETY_MULTIPLIER) {
-        const success = ns.singularity.upgradeHomeRam();
-        if (success) {
-            const newRam = ns.getServerMaxRam("home");
-            ns.print(`✓ Upgraded home RAM: ${currentRam}GB → ${newRam}GB`);
-            ns.tprint(`✓ Home RAM upgraded to ${newRam}GB`);
-            return true;
-        }
-    }
-    
+    // Just monitoring - player upgrades naturally through gameplay
     return false;
 }
 

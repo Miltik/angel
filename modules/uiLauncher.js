@@ -15,6 +15,8 @@ const WINDOW_OPTIONS = [
     { id: "sleeves", label: "Sleeves" },
     { id: "bladeburner", label: "Bladeburner" },
     { id: "contracts", label: "Contracts" },
+    { id: "crime", label: "Crime" },
+    { id: "factions", label: "Factions" },
     { id: "loot", label: "Loot" },
     { id: "formulas", label: "Formulas" },
     { id: "netmap", label: "Network Map" },

@@ -1,14 +1,17 @@
 /**
  * ANGEL-LITE - Bootstrap System for Post-BitNode Victory
  * 
- * Bridges the gap between BitNode win (8GB home RAM) and full Angel readiness (64GB+).
+ * Bridges the gap between BitNode win (8GB home RAM) and full Angel readiness.
  * Runs autonomously to generate money, purchase RAM upgrades, and automatically
  * transition to full ANGEL orchestrator when ready.
  * 
  * AUTO-RESTART: Angel is configured to restart with this script after augmentation
- * resets. If you already have 64GB+ RAM, it will immediately transition to full Angel.
- * If you have less, it will bootstrap until ready, then transition. This ensures
- * Angel never dies, regardless of post-reset RAM.
+ * resets. If you already have sufficient RAM for core modules, it will immediately 
+ * transition to full Angel. If you have less, it will bootstrap until ready, then 
+ * transition. This ensures Angel never dies, regardless of post-reset RAM.
+ * 
+ * RAM REQUIREMENT: Dynamically calculated based on actual core module sizes.
+ * Typically ranges from 25-40GB depending on which modules are present.
  * 
  * Usage:
  *   run angel-lite.js
@@ -20,6 +23,7 @@
  * - Network scanning and rooting
  * - Worker deployment across network
  * - Angel-ready detection and handoff
+ * - Dynamic RAM requirement calculation
  * 
  * @param {NS} ns
  */
@@ -29,10 +33,10 @@
 // ============================================
 
 const CONFIG = {
-    // RAM thresholds
-    ANGEL_READY_RAM: 64,           // GB needed to run Angel
+    // RAM thresholds (ANGEL_READY_RAM calculated dynamically)
     MAX_HOME_RAM: 1024,             // Stop upgrading at this point
     ANGEL_READY_MONEY: 1000000,     // $1M for comfort margin
+    RAM_SAFETY_BUFFER: 5,           // Extra GB for worker threads and safety
     
     // Upgrade behavior
     UPGRADE_SAFETY_MULTIPLIER: 2,   // Have 2x cost before buying
@@ -395,16 +399,91 @@ async function manageHomeUpgrade(ns) {
 // ANGEL READINESS & TRANSITION
 // ============================================
 
+/**
+ * Calculate the minimum RAM needed to run core ANGEL modules
+ * Dynamically checks actual file sizes instead of using hardcoded values
+ * @param {NS} ns
+ * @returns {number} - Required RAM in GB
+ */
+function calculateAngelRamRequirement(ns) {
+    const angelPath = "/angel/angel.js";
+    
+    // If Angel files don't exist yet, return conservative estimate
+    if (!ns.fileExists(angelPath, "home")) {
+        return 32; // Conservative estimate for full core Angel
+    }
+    
+    let totalRam = 0;
+    
+    // Core orchestrator
+    totalRam += ns.getScriptRam(angelPath, "home");
+    
+    // Core modules (required for Angel to function)
+    const coreModules = [
+        "/angel/modules/phase.js",
+        "/angel/modules/programs.js",
+        "/angel/modules/servers.js",
+        "/angel/modules/factions.js",
+        "/angel/modules/activities.js",
+        "/angel/modules/crime.js",
+        "/angel/modules/augments.js",
+        "/angel/modules/hacking.js",
+    ];
+    
+    // Services layer (shared infrastructure)
+    const services = [
+        "/angel/services/network.js",
+        "/angel/services/rooting.js",
+        "/angel/services/stats.js",
+        "/angel/services/moduleRegistry.js",
+        "/angel/services/events.js",
+        "/angel/services/cache.js",
+    ];
+    
+    // Supporting modules (needed by core modules)
+    const supporting = [
+        "/angel/modules/training.js",
+        "/angel/modules/work.js",
+        "/angel/modules/reset.js",
+        "/angel/modules/history.js",
+        "/angel/modules/metrics.js",
+    ];
+    
+    // Calculate total for files that exist
+    const allFiles = [...coreModules, ...services, ...supporting];
+    let foundFiles = 0;
+    
+    for (const file of allFiles) {
+        if (ns.fileExists(file, "home")) {
+            totalRam += ns.getScriptRam(file, "home");
+            foundFiles++;
+        }
+    }
+    
+    // Add safety buffer for worker threads and overhead
+    totalRam += CONFIG.RAM_SAFETY_BUFFER;
+    
+    // If we found fewer than half the expected files, use estimate
+    if (foundFiles < allFiles.length / 2) {
+        return 32; // Files incomplete, use conservative estimate
+    }
+    
+    return Math.ceil(totalRam);
+}
+
 function checkAngelReady(ns) {
     const homeRam = ns.getServerMaxRam("home");
     const money = ns.getServerMoneyAvailable("home");
     
+    // Calculate required RAM dynamically
+    const requiredRam = calculateAngelRamRequirement(ns);
+    
     // Criteria:
-    // 1. Home RAM >= 64GB
+    // 1. Home RAM >= required for core modules
     // 2. Money >= $1M
     // 3. Either Angel files exist OR we have sync.js to download them
     
-    const ramReady = homeRam >= CONFIG.ANGEL_READY_RAM;
+    const ramReady = homeRam >= requiredRam;
     const moneyReady = money >= CONFIG.ANGEL_READY_MONEY;
     const angelExists = ns.fileExists("/angel/angel.js", "home");
     const syncExists = ns.fileExists("/angel/sync.js", "home");
@@ -489,6 +568,7 @@ function updateDisplay(ns) {
     const homeRam = ns.getServerMaxRam("home");
     const money = ns.getServerMoneyAvailable("home");
     const hackLevel = ns.getHackingLevel();
+    const requiredRam = calculateAngelRamRequirement(ns);
     
     // Calculate money rate
     const now = Date.now();
@@ -502,7 +582,7 @@ function updateDisplay(ns) {
     state.lastMoney = money;
     
     // Calculate progress
-    const ramProgress = Math.min(100, (homeRam / CONFIG.ANGEL_READY_RAM) * 100);
+    const ramProgress = Math.min(100, (homeRam / requiredRam) * 100);
     const moneyProgress = Math.min(100, (money / CONFIG.ANGEL_READY_MONEY) * 100);
     const overallProgress = Math.min(100, (ramProgress + moneyProgress) / 2);
     
@@ -528,12 +608,12 @@ function updateDisplay(ns) {
     ns.print(`  ${getProgressBar(overallProgress)}  ${overallProgress.toFixed(0)}%`);
     ns.print("");
     
-    if (homeRam >= CONFIG.ANGEL_READY_RAM && money >= CONFIG.ANGEL_READY_MONEY) {
+    if (homeRam >= requiredRam && money >= CONFIG.ANGEL_READY_MONEY) {
         ns.print("  ✓ Home RAM: Ready");
         ns.print("  ✓ Money: Ready");
         ns.print("  ⏳ Transitioning to Angel...");
     } else {
-        ns.print(`  ${homeRam >= CONFIG.ANGEL_READY_RAM ? "✓" : "⏳"} Home RAM: ${homeRam}GB / ${CONFIG.ANGEL_READY_RAM}GB`);
+        ns.print(`  ${homeRam >= requiredRam ? "✓" : "⏳"} Home RAM: ${homeRam}GB / ${requiredRam}GB (core modules)`);
         ns.print(`  ${money >= CONFIG.ANGEL_READY_MONEY ? "✓" : "⏳"} Money: ${formatMoney(money)} / ${formatMoney(CONFIG.ANGEL_READY_MONEY)}`);
     }
     ns.print("");

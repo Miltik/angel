@@ -15,15 +15,7 @@ import { config, PORTS } from "/angel/config.js";
 import { formatMoney } from "/angel/utils.js";
 import { createWindow } from "/angel/modules/uiManager.js";
 import { PHASE_PORT, TELEMETRY_PORT, DAEMON_LOCK_PORT } from "/angel/ports.js";
-import {
-    syncFactionMembership,
-    getMissingCrimeFactions,
-    getAugmentRepGoal,
-    hasAnyViableFactionWork,
-    getFactionOpportunitySummary,
-} from "/angel/modules/factions.js";
-import { doTraining, needsTraining as checkNeedsTraining } from "/angel/modules/training.js";
-import { doFactionWork, doCompanyWork, shouldDoFactionWork, shouldDoCompanyWork } from "/angel/modules/work.js";
+import { syncFactionMembership, getMissingCrimeFactions } from "/angel/modules/factions-membership.js";
 
 const ACTIVITY_OWNER = "activity";
 const ACTIVITY_LOCK_TTL = 180000;
@@ -138,10 +130,11 @@ export async function main(ns) {
  * Chooses and executes best activity (crime, training, faction, company)
  */
 async function processActivity(ns, gamePhase, ui) {
+    const factionState = readFactionState(ns);
     // Check if already working on something
     const currentWork = ns.singularity.getCurrentWork();
     if (currentWork) {
-        const shouldForceFaction = config.factions?.workForFactionRep !== false && hasAnyViableFactionWork(ns);
+        const shouldForceFaction = config.factions?.workForFactionRep !== false && Boolean(factionState.hasViableFactionWork);
         const isLowerPriorityWork = currentWork.type === "CRIME" ||
                                     currentWork.type === "COMPANY" ||
                                     currentWork.type === "UNIVERSITY" ||
@@ -162,8 +155,7 @@ async function processActivity(ns, gamePhase, ui) {
             if (shouldLog) {
                 if (currentWork.type === "CRIME") {
                     const crime = currentWork.crimeType;
-                    const chance = ns.singularity.getCrimeChance(crime);
-                    ui.log(`🔪 Crime in progress: ${crime} (${(chance * 100).toFixed(1)}% success)`, "info");
+                    ui.log(`🔪 Crime in progress: ${crime}`, "info");
                 } else if (currentWork.type === "FACTION") {
                     const workType = currentWork.factionWorkType || currentWork.workType || "Unknown";
                     ui.log(`🤝 Faction work: ${currentWork.factionName} (${workType})`, "info");
@@ -234,6 +226,7 @@ function chooseActivity(ns, gamePhase) {
     const player = ns.getPlayer();
     const money = ns.getServerMoneyAvailable("home");
     const missingCrimeFactions = getMissingCrimeFactions(player);
+    const factionState = readFactionState(ns);
     const lateCrimeMoneyCap = config.activities?.lateCrimeMoneyCap ?? 100000000;
     const forceCrimeUnlockUntilPhase = config.activities?.forceCrimeFactionUnlockUntilPhase ?? 2;
 
@@ -245,7 +238,7 @@ function chooseActivity(ns, gamePhase) {
     const needsTrainingBool = checkNeedsTraining(ns);
 
     // Check if any faction actually has viable work (not just gang-only like Nitesec)
-    const hasViableFactionWork = config.factions?.workForFactionRep !== false && hasAnyViableFactionWork(ns);
+    const hasViableFactionWork = config.factions?.workForFactionRep !== false && Boolean(factionState.hasViableFactionWork);
 
     // ALWAYS prioritize faction work if we have augments that need rep (all phases)
     if (hasViableFactionWork) {
@@ -279,6 +272,20 @@ function chooseActivity(ns, gamePhase) {
     
     // All stats trained, no faction work needed - crime for money
     return "crime";
+}
+
+function checkNeedsTraining(ns) {
+    const player = ns.getPlayer();
+    const targets = config.training?.targetStats || { strength: 60, defense: 60, dexterity: 60, agility: 60 };
+
+    if (player.skills.hacking < (config.training?.targetHacking || 75)) {
+        return true;
+    }
+
+    return player.skills.strength < targets.strength ||
+           player.skills.defense < targets.defense ||
+           player.skills.dexterity < targets.dexterity ||
+           player.skills.agility < targets.agility;
 }
 
 /**
@@ -369,89 +376,18 @@ async function doTraining(ns, ui) {
  * Work for a faction
  */
 async function doFactionWork(ns, ui) {
+    const factionState = readFactionState(ns);
+    const focusFaction = String(factionState.factionFocus || "none");
+    const repNeeded = Number(factionState.factionRepNeeded || 0);
     const player = ns.getPlayer();
-    const augGoal = getAugmentRepGoal(ns);
 
-    if (augGoal && augGoal.repShort > 0 && (player.factions || []).includes(augGoal.faction)) {
-        const currentWork = ns.singularity.getCurrentWork();
-        if (currentWork && currentWork.type === "FACTION" && currentWork.factionName === augGoal.faction) {
-            await ns.sleep(180000);
-            return;
-        }
-
-        const configuredWorkType = config.factions?.workType || "Hacking Contracts";
-        const workTypes = [configuredWorkType, "Hacking Contracts", "Field Work", "Security Work"];
-        let started = false;
-        let selectedWorkType = configuredWorkType;
-
-        for (const workType of [...new Set(workTypes)]) {
-            try {
-                if (ns.singularity.workForFaction(augGoal.faction, workType, config.factions?.focus || false)) {
-                    started = true;
-                    selectedWorkType = workType;
-                    break;
-                }
-            } catch (e) {
-                // Try next work type
-            }
-        }
-
-        if (started) {
-            const factionKey = `${augGoal.faction}-${selectedWorkType}`;
-            if (factionKey !== lastState.lastFaction || lastState.loopCount - lastState.lastActivityChange > 12) {
-                ui.log(`🎯 Aug goal faction: ${augGoal.faction} (${selectedWorkType}) | Target: ${augGoal.name} | Rep needed: ${Math.floor(augGoal.repShort)}`, "info");
-                lastState.lastFaction = factionKey;
-                lastState.lastActivityChange = lastState.loopCount;
-            }
-
-            await ns.sleep(180000);
-            return;
-        }
-    }
-
-    // Filter to factions with actual rep-needed augment opportunities (excluding NiteSec)
-    const factions = player.factions.filter(f => {
-        if (f === "NiteSec") return false;
-        const summary = getFactionOpportunitySummary(ns, f);
-        return summary.grindableCount > 0;
-    });
-
-    if (factions.length === 0) {
-        await doCrime(ns, ui);
-        return;
-    }
-
-    // Find faction with best opportunity: most grindable augs, then highest total value
-    let bestFaction = null;
-    let bestSummary = null;
-
-    for (const faction of factions) {
-        const summary = getFactionOpportunitySummary(ns, faction);
-        if (!bestSummary) {
-            bestSummary = summary;
-            bestFaction = faction;
-            continue;
-        }
-
-        const isBetter =
-            summary.grindableCount > bestSummary.grindableCount ||
-            (summary.grindableCount === bestSummary.grindableCount && summary.grindableValue > bestSummary.grindableValue) ||
-            (summary.grindableCount === bestSummary.grindableCount && summary.grindableValue === bestSummary.grindableValue && summary.maxRepNeeded > bestSummary.maxRepNeeded);
-
-        if (isBetter) {
-            bestSummary = summary;
-            bestFaction = faction;
-        }
-    }
-
-    if (!bestFaction || !bestSummary || bestSummary.grindableCount <= 0) {
+    if (!focusFaction || focusFaction === "none" || repNeeded <= 0 || !(player.factions || []).includes(focusFaction)) {
         await doCrime(ns, ui);
         return;
     }
 
     const currentWork = ns.singularity.getCurrentWork();
-    if (currentWork && currentWork.type === "FACTION" && currentWork.factionName === bestFaction) {
-        // Already working on best faction
+    if (currentWork && currentWork.type === "FACTION" && currentWork.factionName === focusFaction) {
         await ns.sleep(180000);
         return;
     }
@@ -463,7 +399,7 @@ async function doFactionWork(ns, ui) {
 
     for (const workType of [...new Set(workTypes)]) {
         try {
-            if (ns.singularity.workForFaction(bestFaction, workType, config.factions?.focus || false)) {
+            if (ns.singularity.workForFaction(focusFaction, workType, config.factions?.focus || false)) {
                 started = true;
                 selectedWorkType = workType;
                 break;
@@ -475,16 +411,15 @@ async function doFactionWork(ns, ui) {
 
     if (!started) {
         if (lastState.loopCount % 12 === 0) {
-            ui.log(`⚠️ Could not start faction work for ${bestFaction} (all work types unavailable)`, "warn");
+            ui.log(`⚠️ Could not start faction work for ${focusFaction} (all work types unavailable)`, "warn");
         }
         await doCrime(ns, ui);
         return;
     }
 
-    // Only log if faction/work type changed or periodic heartbeat
-    const factionKey = `${bestFaction}-${selectedWorkType}`;
+    const factionKey = `${focusFaction}-${selectedWorkType}`;
     if (factionKey !== lastState.lastFaction || lastState.loopCount - lastState.lastActivityChange > 12) {
-        ui.log(`🤝 Working for ${bestFaction} (${selectedWorkType}) | Augs: ${bestSummary.grindableCount} | Value: ${formatMoney(bestSummary.grindableValue)} | Rep needed: ${Math.floor(bestSummary.maxRepNeeded)}`, "info");
+        ui.log(`🤝 Working for ${focusFaction} (${selectedWorkType}) | Rep needed: ${Math.floor(repNeeded)}`, "info");
         lastState.lastFaction = factionKey;
         lastState.lastActivityChange = lastState.loopCount;
     }
@@ -549,71 +484,6 @@ async function doCompanyWork(ns, ui) {
     await ns.sleep(180000);
 }
 
-function getBestCrime(ns) {
-    const crimes = [
-        "Shoplift",
-        "Rob Store",
-        "Mug someone",
-        "Larceny",
-        "Deal Drugs",
-        "Bond Forgery",
-        "Traffick illegal Arms",
-        "Homicide",
-        "Grand Theft Auto",
-        "Kidnap",
-        "Assassination",
-        "Heist",
-    ];
-
-    const minSuccessChance = config.crime?.minSuccessChance || 0.25;
-    let best = null;
-    let fallback = null;
-
-    for (const crime of crimes) {
-        try {
-            const stats = ns.singularity.getCrimeStats(crime);
-            const chance = ns.singularity.getCrimeChance(crime);
-            const score = (stats.money * chance) / Math.max(1, stats.time);
-            const record = { crime, score, chance };
-
-            if (!fallback || record.score > fallback.score) {
-                fallback = record;
-            }
-
-            if (chance >= minSuccessChance && (!best || record.score > best.score)) {
-                best = record;
-            }
-        } catch (e) {
-            // unavailable crime label
-        }
-    }
-
-    return best || fallback || { crime: "Shoplift", score: 0, chance: 1 };
-}
-
-/**
- * Get total rep needed for unowned augments in a faction
- */
-function getRepNeeded(ns, faction) {
-    const currentRep = ns.singularity.getFactionRep(faction);
-    const augments = ns.singularity.getAugmentationsFromFaction(faction);
-
-    let maxRepNeeded = 0;
-
-    for (const aug of augments) {
-        if (ns.singularity.getOwnedAugmentations(true).includes(aug)) {
-            continue;
-        }
-
-        const repReq = ns.singularity.getAugmentationRepReq(aug);
-        if (repReq > currentRep) {
-            maxRepNeeded = Math.max(maxRepNeeded, repReq - currentRep);
-        }
-    }
-
-    return maxRepNeeded;
-}
-
 /**
  * Check singularity access
  */
@@ -664,6 +534,32 @@ function desiredModeFromWork(work) {
     if (type === "COMPANY") return "company";
     if (type === "UNIVERSITY" || type === "GYM" || type === "CLASS") return "training";
     return "none";
+}
+
+function readFactionState(ns) {
+    try {
+        const raw = ns.peek(PORTS.FACTIONS);
+        if (raw === "NULL PORT DATA") {
+            return {
+                hasViableFactionWork: false,
+                factionFocus: "none",
+                factionRepNeeded: 0,
+            };
+        }
+
+        const parsed = JSON.parse(String(raw));
+        return {
+            hasViableFactionWork: Boolean(parsed?.hasViableFactionWork),
+            factionFocus: String(parsed?.factionFocus || "none"),
+            factionRepNeeded: Number(parsed?.factionRepNeeded || 0),
+        };
+    } catch (e) {
+        return {
+            hasViableFactionWork: false,
+            factionFocus: "none",
+            factionRepNeeded: 0,
+        };
+    }
 }
 
 function updateResetProgressState(queuedCount, queuedCost, now) {
@@ -848,7 +744,7 @@ function reportActivitiesTelemetry(ns) {
         const phase = readGamePhase(ns);
         const currentWork = ns.singularity.getCurrentWork();
         const lock = getLock(ns);
-        const bestCrime = getBestCrime(ns);
+        const factionState = readFactionState(ns);
 
         const trainingTargets = config.training?.targetStats || { strength: 60, defense: 60, dexterity: 60, agility: 60 };
         const targetHacking = config.training?.targetHacking || 75;
@@ -875,17 +771,6 @@ function reportActivitiesTelemetry(ns) {
                 "active"
             );
         }
-
-        const augGoal = getAugmentRepGoal(ns);
-        const factionFocus = augGoal?.faction || "none";
-        const factionRepNeeded = Math.floor(augGoal?.repShort || 0);
-        const daemon = getDaemonPrepStatusForReset(ns);
-        let daemonUnlockSignal = false;
-        try {
-            daemonUnlockSignal = ns.peek(DAEMON_LOCK_PORT) === "UNLOCK_DAEMON";
-        } catch (e) {
-            daemonUnlockSignal = false;
-        }
         
         const metricsPayload = {
             currentActivity: lastState.currentActivity || "idle",
@@ -895,16 +780,8 @@ function reportActivitiesTelemetry(ns) {
             liveTarget,
             lockOwner: lock?.owner || "none",
             lockTtlSec: lock?.expires ? Math.max(0, Math.floor((lock.expires - now) / 1000)) : 0,
-            factionFocus,
-            factionRepNeeded,
-            bestCrime: bestCrime?.crime || "Shoplift",
-            bestCrimeChance: Number(bestCrime?.chance || 0),
-            daemonReady: Boolean(daemon?.ready),
-            daemonLocked: !daemonUnlockSignal,
-            daemonRequiredHack: Number(daemon?.requiredHack || 0),
-            daemonCurrentHack: Number(daemon?.hackLevel || 0),
-            daemonRooted: Boolean(daemon?.rooted),
-            daemonHasRedPill: Boolean(daemon?.hasRedPillInstalled || daemon?.hasRedPillQueued),
+            factionFocus: String(factionState.factionFocus || "none"),
+            factionRepNeeded: Number(factionState.factionRepNeeded || 0),
             minCombat,
             hacking: Number(player.skills.hacking || 0),
             combatGap,

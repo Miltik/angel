@@ -1,5 +1,5 @@
 import { createWindow } from "/angel/modules/uiManager.js";
-import { reportModuleMetrics } from "/angel/telemetry/telemetry.js";
+import { reportModuleMetrics } from "/angel/telemetry/telemetry-core.js";
 import { scanAll, getRootedServers, getMoneyServers, getHackableServers } from "/angel/services/network.js";
 import { getTotalAvailableRam as getAvailableRamFromService } from "/angel/services/stats.js";
 

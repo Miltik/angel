@@ -20,7 +20,6 @@ import { scanAll } from "/angel/services/network.js";
 import { PHASE_PORT } from "/angel/ports.js";
 import { 
     initializeResetTracking, 
-    loadResetState, 
     recordResetSnapshot,
     formatDuration,
     getCurrentRunDuration 
@@ -38,6 +37,34 @@ import {
     calculateXpRate,
     formatPhaseLabel
 } from "/angel/modules/metrics.js";
+import {
+    displayFactionStatus,
+    getFactionGrindCandidates,
+    getFactionOpportunitySummaryDashboard
+} from "/angel/modules/dashboard-factions.js";
+import {
+    displayAugmentationStatus,
+    displayResetStatus
+} from "/angel/modules/dashboard-augments.js";
+import {
+    displayGangStatus,
+    displayBladeburnerStatus,
+    displaySleevesStatus,
+    displayHacknetStatus,
+    displayProgramsStatus,
+    displayContractsStatus,
+    displayLootStatus,
+    displayFormulasStatus,
+    hasBladeburnerAccess
+} from "/angel/modules/dashboard-optional.js";
+import {
+    displayStockStatus,
+    hasStockAccess
+} from "/angel/modules/dashboard-stocks.js";
+import {
+    displayNetworkStatus,
+    displayWorldDaemonStatus
+} from "/angel/modules/dashboard-combat.js";
 const XP_FARM_SCRIPT = "/angel/modules/xpFarm.js";
 const XP_FARM_WORKER = "/angel/workers/weaken.js";
 const XP_FARM_MARKER = "__angel_xpfarm__";
@@ -49,121 +76,49 @@ let lastMoneySourceUpdate = 0;
 
 // Note: Reset tracking moved to /angel/modules/history.js
 // Note: Metrics collection moved to /angel/modules/metrics.js
+
+// Caching for expensive operations (Phase 1 optimization)
+let dashboardCache = {
+    allServers: null,
+    allServersCacheTime: 0,
+    ownedAllAugs: null,
+    ownedInstalledAugs: null,
+    augsCacheTime: 0,
+};
+
+const CACHE_TTL = 2000; // 2 second cache for dashboard cycle
+
+/**
+ * Get cached allServers or freshen cache
+ */
+function getCachedServers(ns) {
+    const now = Date.now();
+    if (!dashboardCache.allServers || (now - dashboardCache.allServersCacheTime > CACHE_TTL)) {
+        dashboardCache.allServers = scanAll(ns);
+        dashboardCache.allServersCacheTime = now;
+    }
+    return dashboardCache.allServers;
+}
+
+/**
+ * Get cached augmentations or freshen cache  
+ */
+function getCachedAugmentations(ns) {
+    const now = Date.now();
+    if (!dashboardCache.ownedAllAugs || (now - dashboardCache.augsCacheTime > CACHE_TTL)) {
+        dashboardCache.ownedAllAugs = ns.singularity.getOwnedAugmentations(true);
+        dashboardCache.ownedInstalledAugs = ns.singularity.getOwnedAugmentations(false);
+        dashboardCache.augsCacheTime = now;
+    }
+    return { all: dashboardCache.ownedAllAugs, installed: dashboardCache.ownedInstalledAugs };
+}
+
 let augmentQueueState = {
     noQueueSince: 0,
 };
 let coordinatorState = {
     currentPhase: 0,
 };
-
-// Reset tracking
-const RESET_HISTORY_KEY = "angelResetHistory";
-const RESET_STATE_KEY = "angelResetState";
-const MAX_RESET_HISTORY = 50;
-
-function initializeResetTracking(ns) {
-    const now = Date.now();
-    const resetInfo = ns.getResetInfo();
-    const lastAugReset = Number(resetInfo?.lastAugReset || now);
-
-    let state = loadResetState();
-    
-    // Detect if we've reset since last session
-    const resetDetected = state.lastSeenAugReset > 0 && lastAugReset !== state.lastSeenAugReset;
-    
-    if (resetDetected || !state.currentRun) {
-        state.currentRun = {
-            startEpoch: lastAugReset,
-            startedAt: new Date(lastAugReset).toISOString(),
-            startHackLevel: Number(ns.getPlayer().skills.hacking || 0),
-            startCash: Number(ns.getServerMoneyAvailable("home") || 0),
-        };
-    }
-    
-    state.lastSeenAugReset = lastAugReset;
-    state.lastHeartbeat = now;
-    saveResetState(state);
-    return state;
-}
-
-function loadResetState() {
-    try {
-        const stored = localStorage.getItem(RESET_STATE_KEY);
-        return stored ? JSON.parse(stored) : { currentRun: null, lastSeenAugReset: 0, lastHeartbeat: 0 };
-    } catch (e) {
-        return { currentRun: null, lastSeenAugReset: 0, lastHeartbeat: 0 };
-    }
-}
-
-function saveResetState(state) {
-    try {
-        localStorage.setItem(RESET_STATE_KEY, JSON.stringify(state));
-    } catch (e) {
-        // Ignore storage errors
-    }
-}
-
-function recordResetSnapshot(ns) {
-    const state = loadResetState();
-    const player = ns.getPlayer();
-    const now = Date.now();
-    const resetInfo = ns.getResetInfo();
-    const lastAugReset = Number(resetInfo?.lastAugReset || now);
-    
-    const playtimeMs = Math.max(0, now - lastAugReset);
-    const finalCash = Number(ns.getServerMoneyAvailable("home") || 0);
-    const finalHackLevel = Number(player.skills.hacking || 0);
-    
-    const snapshot = {
-        timestamp: new Date(now).toISOString(),
-        startEpoch: state.currentRun?.startEpoch || lastAugReset,
-        endEpoch: now,
-        durationMs: playtimeMs,
-        durationLabel: formatDuration(playtimeMs),
-        finalCash,
-        finalHackLevel,
-        purchasedAugCount: ns.singularity.getOwnedAugmentations(true).length - ns.singularity.getOwnedAugmentations(false).length,
-    };
-    
-    // Add to history
-    let history = loadResetHistory();
-    history.push(snapshot);
-    
-    // Keep only last N resets
-    if (history.length > MAX_RESET_HISTORY) {
-        history = history.slice(-MAX_RESET_HISTORY);
-    }
-    
-    saveResetHistory(history);
-    return snapshot;
-}
-
-function loadResetHistory() {
-    try {
-        const stored = localStorage.getItem(RESET_HISTORY_KEY);
-        return stored ? JSON.parse(stored) : [];
-    } catch (e) {
-        return [];
-    }
-}
-
-function saveResetHistory(history) {
-    try {
-        localStorage.setItem(RESET_HISTORY_KEY, JSON.stringify(history));
-    } catch (e) {
-        // Ignore storage errors
-    }
-}
-
-function formatDuration(ms) {
-    const seconds = Math.floor(ms / 1000);
-    const hours = Math.floor(seconds / 3600);
-    const minutes = Math.floor((seconds % 3600) / 60);
-    const secs = seconds % 60;
-    if (hours > 0) return `${hours}h ${minutes}m`;
-    if (minutes > 0) return `${minutes}m ${secs}s`;
-    return `${secs}s`;
-}
 
 export async function main(ns) {
     ns.disableLog("ALL");
@@ -193,6 +148,10 @@ export async function main(ns) {
 async function updateDashboard(ns, ui) {
     // Initialize reset tracking
     initializeResetTracking(ns);
+
+    // Freshen caches (Phase 1 optimization: single scan + aug query per cycle)
+    getCachedServers(ns);
+    getCachedAugmentations(ns);
 
     const now = Date.now();
     const player = ns.getPlayer();
@@ -398,407 +357,26 @@ function displayCurrentActivity(ui, ns) {
     }
 }
 
-/**
- * Display faction memberships and rep
- */
-function displayFactionStatus(ui, ns, player) {
-    try {
-        const factions = player.factions || [];
-        const invites = ns.singularity.checkFactionInvitations();
-        
-        if (factions.length === 0 && invites.length === 0) {
-            ui.log(`🏛️  FACTIONS: None joined | No pending invitations`, "info");
-            return;
-        }
-        
-        // Sort factions by rep (highest first)
-        const factionInfo = factions.map(f => ({
-            name: f,
-            rep: ns.singularity.getFactionRep(f),
-            favor: ns.singularity.getFactionFavor(f)
-        })).sort((a, b) => b.rep - a.rep);
-        
-        if (factionInfo.length > 0) {
-            const top2 = factionInfo.slice(0, 2);
-            const topRep = factionInfo[0];
-            ui.log(`🏛️  FACTIONS: ${factions.length} joined | ${invites.length} invites | Top rep: ${topRep.name} (${formatMoney(topRep.rep)})`, "info");
+// Optional systems display moved to dashboard-optional.js, dashboard-stocks.js, dashboard-combat.js
+// Functions now imported:
+//  - displaySleevesStatus (from dashboard-optional.js)
+//  - displayBladeburnerStatus (from dashboard-optional.js)
+//  - displayHacknetStatus (from dashboard-optional.js)
+//  - displayProgramsStatus (from dashboard-optional.js)
+//  - displayContractsStatus (from dashboard-optional.js)
+//  - displayLootStatus (from dashboard-optional.js)
+//  - displayFormulasStatus (from dashboard-optional.js)
+//  - displayGangStatus (from dashboard-optional.js)
+//  - displayStockStatus (from dashboard-stocks.js)
+//  - displayNetworkStatus (from dashboard-combat.js)
 
-            const topLine = top2
-                .map(f => `${f.name}: ${formatMoney(f.rep)} (F${f.favor.toFixed(0)})`)
-                .join(" | ");
-            ui.log(`   Top: ${topLine}`, "info");
 
-            if (factionInfo.length > 2) {
-                ui.log(`   + ${factionInfo.length - 2} more joined factions`, "info");
-            }
-        }
 
-        const grindCandidates = getFactionGrindCandidates(ns, factions).slice(0, 2);
-        if (grindCandidates.length > 0) {
-            const candidateLine = grindCandidates
-                .map(c => `${c.name} (A${c.grindableCount} • ${formatMoney(c.grindableValue)} • Rep ${formatMoney(c.maxRepNeeded)})`)
-                .join(" | ");
-            ui.log(`   🎯 Grind Priority: ${candidateLine}`, "info");
-        }
 
-        const augGoal = getAugmentGoalSnapshot(ns);
-        if (augGoal) {
-            ui.log(`   🧬 Aug Goal: ${augGoal.name} @ ${augGoal.faction} | Rep ${formatMoney(augGoal.repShort)} | Money ${formatMoney(augGoal.moneyShort)}`, "info");
-        }
-        
-        if (invites.length > 0) {
-            ui.log(`   📨 Pending Invitations: ${invites.join(", ")}`, "info");
-        }
-    } catch (e) {
-        // Singularity not available
-    }
-}
 
-function getFactionGrindCandidates(ns, factions) {
-    const candidates = [];
-    for (const faction of factions) {
-        if (faction === "NiteSec") continue;
 
-        const summary = getFactionOpportunitySummaryDashboard(ns, faction);
-        if (summary.grindableCount <= 0) continue;
 
-        candidates.push({
-            name: faction,
-            ...summary,
-        });
-    }
 
-    candidates.sort((a, b) =>
-        b.grindableCount - a.grindableCount ||
-        b.grindableValue - a.grindableValue ||
-        b.maxRepNeeded - a.maxRepNeeded
-    );
-
-    return candidates;
-}
-
-function getFactionOpportunitySummaryDashboard(ns, faction) {
-    const currentRep = ns.singularity.getFactionRep(faction);
-    const augments = ns.singularity.getAugmentationsFromFaction(faction);
-    const owned = new Set(ns.singularity.getOwnedAugmentations(true));
-
-    let grindableCount = 0;
-    let grindableValue = 0;
-    let maxRepNeeded = 0;
-
-    for (const aug of augments) {
-        if (owned.has(aug)) continue;
-
-        const repReq = ns.singularity.getAugmentationRepReq(aug);
-        const repNeeded = Math.max(0, repReq - currentRep);
-        if (repNeeded <= 0) continue;
-
-        const price = ns.singularity.getAugmentationPrice(aug);
-        grindableCount++;
-        grindableValue += price;
-        if (repNeeded > maxRepNeeded) {
-            maxRepNeeded = repNeeded;
-        }
-    }
-
-    return { grindableCount, grindableValue, maxRepNeeded };
-}
-
-function hasMetAugPrereqsDashboard(ns, augName, ownedSet) {
-    try {
-        const prereqs = ns.singularity.getAugmentationPrereq(augName) || [];
-        if (!Array.isArray(prereqs) || prereqs.length === 0) return true;
-        return prereqs.every(prereq => ownedSet.has(prereq));
-    } catch (e) {
-        return true;
-    }
-}
-
-function getAugmentGoalSnapshot(ns) {
-    try {
-        const player = ns.getPlayer();
-        const currentMoney = Number(ns.getServerMoneyAvailable("home") || 0);
-        const owned = new Set(ns.singularity.getOwnedAugmentations(true));
-        const priorityList = config.augmentations?.augmentPriority || [];
-        const candidates = [];
-
-        for (const faction of player.factions || []) {
-            if (faction === "NiteSec") continue;
-
-            const factionRep = Number(ns.singularity.getFactionRep(faction) || 0);
-            const augments = ns.singularity.getAugmentationsFromFaction(faction) || [];
-
-            for (const aug of augments) {
-                if (owned.has(aug)) continue;
-                if (!hasMetAugPrereqsDashboard(ns, aug, owned)) continue;
-
-                const repReq = Number(ns.singularity.getAugmentationRepReq(aug) || 0);
-                const price = Number(ns.singularity.getAugmentationPrice(aug) || 0);
-                const repShort = Math.max(0, repReq - factionRep);
-                const moneyShort = Math.max(0, price - currentMoney);
-                const score = (moneyShort > 0 ? Math.log10(moneyShort + 1) : 0) + (repShort > 0 ? Math.log10(repShort + 1) : 0);
-                const effective = Math.max(0, score - (priorityList.includes(aug) ? 0.15 : 0));
-
-                candidates.push({ name: aug, faction, price, repReq, repShort, moneyShort, effective });
-            }
-        }
-
-        if (candidates.length === 0) return null;
-
-        candidates.sort((a, b) => {
-            if (a.effective !== b.effective) return a.effective - b.effective;
-            const aReady = a.repShort === 0 && a.moneyShort === 0;
-            const bReady = b.repShort === 0 && b.moneyShort === 0;
-            if (aReady !== bReady) return aReady ? -1 : 1;
-            if (a.price !== b.price) return a.price - b.price;
-            return a.name.localeCompare(b.name);
-        });
-
-        return candidates[0];
-    } catch (e) {
-        return null;
-    }
-}
-
-/**
- * Display sleeves status
- */
-function displaySleevesStatus(ui, ns) {
-    try {
-        const numSleeves = ns.sleeve.getNumSleeves();
-        if (numSleeves === 0) return;
-        
-        const sleeves = [];
-        for (let i = 0; i < numSleeves; i++) {
-            const task = ns.sleeve.getTask(i);
-            const stats = ns.sleeve.getSleeve(i);
-            
-            let activity = "Idle";
-            if (task) {
-                if (task.type === "FACTION") {
-                    activity = `${task.factionName} (${task.factionWorkType})`;
-                } else if (task.type === "COMPANY") {
-                    activity = `${task.companyName}`;
-                } else if (task.type === "CRIME") {
-                    activity = `Crime: ${task.crimeType}`;
-                } else if (task.type === "CLASS") {
-                    activity = `Study: ${task.classType}`;
-                } else if (task.type === "SYNCHRO") {
-                    activity = `Synchronizing`;
-                } else if (task.type === "RECOVERY") {
-                    activity = `Recovering ${stats.shock}%`;
-                } else {
-                    activity = task.type;
-                }
-            }
-            
-            sleeves.push({
-                id: i,
-                activity: activity,
-                sync: Math.floor(stats.sync),
-                shock: Math.floor(stats.shock)
-            });
-        }
-        
-        ui.log(`👥 SLEEVES (${numSleeves}):`, "info");
-        for (const sleeve of sleeves) {
-            const syncBar = "█".repeat(Math.floor(sleeve.sync / 5)) + "░".repeat(20 - Math.floor(sleeve.sync / 5));
-            ui.log(`   #${sleeve.id}: ${sleeve.activity.padEnd(30)} | Sync: ${syncBar} ${sleeve.sync}% | Shock: ${sleeve.shock}%`, "info");
-        }
-    } catch (e) {
-        // Sleeves not available
-    }
-}
-
-/**
- * Display Bladeburner status
- */
-function displayBladeburnerStatus(ui, ns) {
-    try {
-        const rank = ns.bladeburner.getRank();
-        const stamina = ns.bladeburner.getStamina();
-        const maxStamina = stamina[1];
-        const currentStamina = stamina[0];
-        const staminaPct = (currentStamina / maxStamina * 100).toFixed(0);
-        
-        const currentAction = ns.bladeburner.getCurrentAction();
-        let actionText = "Idle";
-        if (currentAction && currentAction.type !== "Idle") {
-            actionText = `${currentAction.name} (${currentAction.type})`;
-        }
-        
-        const city = ns.bladeburner.getCity();
-        const staminaBar = "▮".repeat(Math.floor(currentStamina / maxStamina * 20)) + 
-                          "▯".repeat(20 - Math.floor(currentStamina / maxStamina * 20));
-        
-        ui.log(`🗡️  BLADEBURNER: Rank ${rank.toFixed(0)} | ${city}`, "info");
-        ui.log(`   Action: ${actionText} | Stamina: ${staminaBar} ${staminaPct}%`, "info");
-    } catch (e) {
-        // Bladeburner not available
-    }
-}
-
-/**
- * Display Hacknet status
- */
-function displayHacknetStatus(ui, ns) {
-    try {
-        const numNodes = ns.hacknet.numNodes();
-        if (numNodes === 0) {
-            ui.log(`🌐 HACKNET: No nodes purchased`, "info");
-            return;
-        }
-        
-        let totalProduction = 0;
-        let totalValue = 0;
-        
-        for (let i = 0; i < numNodes; i++) {
-            const node = ns.hacknet.getNodeStats(i);
-            totalProduction += Number(node?.production || 0);
-            totalValue += Number(node?.totalProduction || 0);
-        }
-        
-        const productionPerSec = totalProduction;
-        const productionPerHour = productionPerSec * 3600;
-        
-        ui.log(`🌐 HACKNET: ${numNodes} nodes | Production: ${formatMoney(productionPerSec)}/s (${formatMoney(productionPerHour)}/hr) | Total: ${formatMoney(totalValue)}`, "info");
-    } catch (e) {
-        // Hacknet error
-    }
-}
-
-/**
- * Display program creation status
- */
-function displayProgramsStatus(ui, ns) {
-    try {
-        const isBusy = ns.singularity.isBusy();
-        
-        // Check if creating a program
-        const work = ns.singularity.getCurrentWork();
-        if (work && work.type === "CREATE_PROGRAM") {
-            const percent = work.cyclesWorked ? (work.cyclesWorked / 100).toFixed(1) : 0;
-            const progressBar = "▮".repeat(Math.floor(percent / 5)) + "▯".repeat(20 - Math.floor(percent / 5));
-            ui.log(`💾 PROGRAMS: Creating ${work.programName} ${progressBar} ${percent}%`, "info");
-            return;
-        }
-        
-        // List available programs to create
-        const programs = [
-            "BruteSSH.exe", "FTPCrack.exe", "relaySMTP.exe", "HTTPWorm.exe", "SQLInject.exe",
-            "DeepscanV1.exe", "DeepscanV2.exe", "ServerProfiler.exe", "AutoLink.exe",
-            "Formulas.exe"
-        ];
-        
-        const owned = programs.filter(p => ns.fileExists(p, "home"));
-        const missing = programs.filter(p => !ns.fileExists(p, "home"));
-        
-        if (missing.length === 0) {
-            ui.log(`💾 PROGRAMS: All ${owned.length} programs owned ✓`, "info");
-        } else {
-            ui.log(`💾 PROGRAMS: ${owned.length}/${programs.length} owned | Missing: ${missing[0]}${missing.length > 1 ? ` +${missing.length - 1} more` : ''}`, "info");
-        }
-    } catch (e) {
-        // Singularity not available
-    }
-}
-
-/**
- * Display Coding Contracts status
- */
-function displayContractsStatus(ui, ns) {
-    try {
-        let contractCount = 0;
-        
-        // Scan all servers for contracts
-        const servers = getAllServersForDashboard(ns);
-        for (const server of servers) {
-            try {
-                const contracts = ns.ls(server, ".cct");
-                contractCount += contracts.length;
-            } catch (e) {
-                // Ignore inaccessible servers
-            }
-        }
-        
-        if (contractCount === 0) {
-            ui.log(`📋 CONTRACTS: No pending contracts | ✅ Solving complete`, "info");
-        } else {
-            ui.log(`📋 CONTRACTS: ${contractCount} pending on network`, "info");
-        }
-    } catch (e) {
-        ui.log(`📋 CONTRACTS: Error - ${e.message.substring(0, 30)}`, "warn");
-    }
-}
-
-/**
- * Display loot archive status
- */
-function displayLootStatus(ui, ns) {
-    const lootFiles = ns.ls("home", "/angel/loot/").filter(file => file !== "/angel/loot/loot.txt");
-    const seedExists = ns.fileExists("/angel/loot/loot.txt", "home");
-
-    if (!seedExists && lootFiles.length === 0) {
-        ui.log("📚 LOOT: Archive not initialized", "info");
-        return;
-    }
-
-    ui.log(`📚 LOOT: ${lootFiles.length} archived files${seedExists ? " | seed ready" : ""}`, "info");
-}
-
-/**
- * Display Formulas.exe farming status
- */
-function displayFormulasStatus(ui, ns) {
-    try {
-        const hasFormulas = ns.fileExists("Formulas.exe", "home");
-        
-        if (!hasFormulas) {
-            ui.log(`📐 FORMULAS: Not yet acquired | Searching for hashes...`, "info");
-        } else {
-            ui.log(`📐 FORMULAS: ✅ Active | Farming optimizations...`, "success");
-        }
-    } catch (e) {
-        ui.log(`📐 FORMULAS: Error - ${e.message.substring(0, 30)}`, "warn");
-    }
-}
-
-/**
- * Get all servers for scanning (dashboard helper)
- */
-function getAllServersForDashboard(ns) {
-    const servers = [];
-    const visited = new Set();
-    const queue = ["home"];
-    
-    while (queue.length > 0) {
-        const server = queue.shift();
-        if (visited.has(server)) continue;
-        visited.add(server);
-        servers.push(server);
-        
-        const neighbors = ns.scan(server);
-        for (const neighbor of neighbors) {
-            if (!visited.has(neighbor)) {
-                queue.push(neighbor);
-            }
-        }
-    }
-    
-    return servers;
-}
-
-/**
- * Check if player has Bladeburner access
- */
-function hasBladeburnerAccess(ns) {
-    try {
-        ns.bladeburner.inBladeburner();
-        return true;
-    } catch (e) {
-        return false;
-    }
-}
 
 /**
  * Display game phase and transition progress
@@ -1049,45 +627,7 @@ function displayXPFarmStatus(ui, ns) {
     }
 }
 
-function displayWorldDaemonStatus(ui, ns) {
-    const daemonHost = "w0r1d_d43m0n";
-    const lockPort = 15;
-
-    let requiredHack = 3000;
-    let currentHack = 0;
-    let rooted = false;
-    let hasRedPill = false;
-    let unlocked = false;
-
-    try {
-        requiredHack = Number(ns.getServerRequiredHackingLevel(daemonHost) || 3000);
-    } catch (e) {}
-
-    try {
-        currentHack = Number(ns.getPlayer()?.skills?.hacking || 0);
-    } catch (e) {}
-
-    try {
-        rooted = Boolean(ns.hasRootAccess(daemonHost));
-    } catch (e) {}
-
-    try {
-        const installed = ns.singularity.getOwnedAugmentations(false) || [];
-        const queued = ns.singularity.getOwnedAugmentations(true) || [];
-        hasRedPill = installed.includes("The Red Pill") || queued.includes("The Red Pill");
-    } catch (e) {}
-
-    try {
-        unlocked = ns.peek(lockPort) === "UNLOCK_DAEMON";
-    } catch (e) {
-        unlocked = false;
-    }
-
-    const ready = hasRedPill && rooted && currentHack >= requiredHack;
-    const lockEmoji = unlocked ? "🔓" : "🔒";
-    const readyEmoji = ready ? "✅" : "⏳";
-    ui.log(`🌐 WORLD DAEMON: ${lockEmoji} LOCKED | ${readyEmoji} READY`, "info");
-}
+// displayWorldDaemonStatus moved to dashboard-combat.js
 
 function parseXPFarmMode(args) {
     for (let i = 0; i < args.length; i++) {
@@ -1105,134 +645,18 @@ function isSameScriptPath(actualPath, expectedPath) {
 
 /**
  * Display gang status
- */
-function displayGangStatus(ui, ns) {
-    try {
-        const info = ns.gang.getGangInformation();
-        const members = ns.gang.getMemberNames();
-        const territory = (info.territory * 100).toFixed(1);
-        
-        ui.log(`👾 GANG: ${info.faction} | Members: ${members.length} | Territory: ${territory}% | Power: ${info.power.toFixed(2)}`, "info");
-        ui.log(`   Respect: ${formatMoney(info.respect)} | Wanted: ${info.wantedLevel.toFixed(0)} (×${info.wantedPenalty.toFixed(2)})`, "info");
-    } catch (e) {
-        // Gang not available
-    }
-}
+ */// displayGangStatus moved to dashboard-optional.js
 
 /**
  * Display augmentation queue status
  */
-function displayAugmentationStatus(ui, ns, player) {
-    const ownedCount = player.augmentations ? player.augmentations.length : 0;
-    
-    // Get queued augmentations
-    let queuedCount = 0;
-    let queuedCost = 0;
-    try {
-        const purchased = ns.singularity.getOwnedAugmentations(true);  // installed + queued
-        const installed = ns.singularity.getOwnedAugmentations(false); // installed only
-        
-        // Safety check - ensure we have arrays
-        if (Array.isArray(purchased) && Array.isArray(installed)) {
-            queuedCount = Math.max(0, purchased.length - installed.length);
-            if (queuedCount > 0) {
-                const queued = purchased.filter(aug => !installed.includes(aug));
-                for (const aug of queued) {
-                    queuedCost += ns.singularity.getAugmentationPrice(aug);
-                }
-            }
-        }
-    } catch (e) {
-        // Singularity not available or error getting augs
-    }
-
-    const now = Date.now();
-    if (queuedCount <= 0) {
-        if (!augmentQueueState.noQueueSince) {
-            augmentQueueState.noQueueSince = now;
-        }
-    } else {
-        augmentQueueState.noQueueSince = 0;
-    }
-
-    const queuedText = queuedCount > 0 ? `Queued ${queuedCount} (${formatMoney(queuedCost)})` : "No queue";
-    const resetThreshold = config.augmentations?.minQueuedAugs || 7;
-    const status = queuedCount >= resetThreshold ? "🔴 READY FOR RESET" : "⏳ Building queue";
-    
-    ui.log(`🧬 AUGMENTS: Installed ${ownedCount} | ${queuedText} | ${status} (threshold: ${resetThreshold})`, "info");
-
-    const goal = getAugmentGoalSnapshot(ns);
-    if (goal) {
-        const readiness = goal.repShort <= 0 && goal.moneyShort <= 0 ? "READY" : "IN PROGRESS";
-        ui.log(`   🎯 Target: ${goal.name} (${goal.faction}) | Rep ${formatMoney(goal.repShort)} | Money ${formatMoney(goal.moneyShort)} | ${readiness}`, "info");
-    }
-
-    const noQueueWarnMinutes = Number(config.augmentations?.noQueueWarnMinutes ?? 20);
-    const noQueueCashThreshold = Number(config.augmentations?.noQueueWarnCash ?? 1000000000);
-    const money = player.money + ns.getServerMoneyAvailable("home");
-    if (queuedCount <= 0 && augmentQueueState.noQueueSince > 0 && money >= noQueueCashThreshold) {
-        const elapsedMin = (now - augmentQueueState.noQueueSince) / 60000;
-        if (elapsedMin >= noQueueWarnMinutes) {
-            ui.log(`   ⚠️ Queue stalled ${Math.floor(elapsedMin)}m with ${formatMoney(money)} cash — prioritize faction rep unlocks`, "warn");
-        }
-    }
-}
+// displayAugmentationStatus moved to dashboard-augments.js (imported at top)
 
 function getHackingExp(player) {
     return Number(player?.exp?.hacking ?? player?.hacking_exp ?? player?.skills?.hacking ?? 0);
 }
-
-/**
- * Display stock portfolio status
- */
-function displayStockStatus(ui, ns) {
-    try {
-        const symbols = ns.stock.getSymbols();
-        
-        // Safety check for symbols
-        if (!symbols || !Array.isArray(symbols)) {
-            return;
-        }
-        
-        let totalInvested = 0;
-        let totalValue = 0;
-        let holdings = 0;
-        
-        for (const sym of symbols) {
-            const pos = ns.stock.getPosition(sym);
-            if (pos && pos[0] > 0) {
-                holdings++;
-                const invested = pos[0] * pos[1]; // shares × avg price
-                const current = pos[0] * ns.stock.getBidPrice(sym); // current value
-                totalInvested += invested;
-                totalValue += current;
-            }
-        }
-        
-        const gain = totalValue - totalInvested;
-        const gainPct = totalInvested > 0 ? (gain / totalInvested * 100) : 0;
-        
-        ui.log(`📈 STOCKS: ${holdings} holdings | Invested: ${formatMoney(totalInvested)} | Value: ${formatMoney(totalValue)} | Gain: ${formatMoney(gain)} (${gainPct.toFixed(1)}%)`, "info");
-    } catch (e) {
-        // Stocks not available
-    }
-}
-
-/**
- * Display network and resource utilization
- */
-function displayNetworkStatus(ui, ns) {
-    const player = ns.getPlayer();
-    const stats = [
-        {name: "Strength", val: player.skills.strength},
-        {name: "Defense", val: player.skills.defense},
-        {name: "Dexterity", val: player.skills.dexterity},
-        {name: "Agility", val: player.skills.agility},
-    ];
-    
-    const statLine = stats.map(s => `${s.name}: ${s.val.toString().padStart(4)}`).join(" | ");
-    ui.log(`⚔️  COMBAT: ${statLine}`, "info");
-}
+// displayStockStatus moved to dashboard-stocks.js
+// displayNetworkStatus moved to dashboard-combat.js
 
 /**
  * Get game phase progress (0.0 to 1.0)
@@ -1355,35 +779,6 @@ function calculateUsedRam(ns) {
 }
 
 // Note: scanAll imported from /angel/services/network.js
+// hasStockAccess moved to dashboard-stocks.js
 
-/**
- * Check stock access
- */
-function hasStockAccess(ns) {
-    try {
-        return ns.stock && ns.stock.hasTIXAPIAccess && ns.stock.has4SDataTIXAPI && 
-               ns.stock.hasTIXAPIAccess() && ns.stock.has4SDataTIXAPI();
-    } catch (e) {
-        return false;
-    }
-}
-
-function displayResetStatus(ui, ns) {
-    try {
-        const history = loadResetHistory();
-        const last = history.length > 0 ? history[history.length - 1] : null;
-        const now = Date.now();
-        const resetInfo = ns.getResetInfo();
-        const lastAugReset = Number(resetInfo?.lastAugReset || now);
-        const runDuration = formatDuration(Math.max(0, now - lastAugReset));
-
-        if (!last) {
-            ui.log(`🔄 RESET TRACKING: Current run ${runDuration} | No history yet`, "info");
-            return;
-        }
-
-        ui.log(`🔄 RESET TRACKING: Run ${runDuration} | Last: ${last.durationLabel} → ${formatMoney(last.finalCash)} (Hack ${last.finalHackLevel}, ${last.purchasedAugCount} augs)`, "info");
-    } catch (e) {
-        ui.log(`🔄 RESET TRACKING: Unavailable`, "info");
-    }
-}
+// displayResetStatus moved to dashboard-augments.js (imported at top)

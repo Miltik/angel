@@ -9,9 +9,8 @@
 import { config, SCRIPTS } from "/angel/config.js";
 import { formatMoney, formatRam, formatNumber, log, deployFiles } from "/angel/utils.js";
 import { scanAll, rootAll, getRootedServers, getHackableServers } from "/angel/scanner.js";
-import { getTotalAvailableRam } from "/angel/modules/hacking.js";
-import { getServerStats } from "/angel/modules/servers.js";
-import { DAEMON_LOCK_PORT } from "/angel/ports.js";
+import { getTotalAvailableRam, getServerStats } from "/angel/services/stats.js";
+import { DAEMON_LOCK_PORT, PHASE_PORT } from "/angel/ports.js";
 import * as Registry from "/angel/services/moduleRegistry.js";
 import * as Events from "/angel/services/events.js";
 
@@ -299,6 +298,8 @@ async function ensureModulesRunning(ns) {
         SCRIPTS.backdoor,
     ];
 
+    const currentPhase = getCurrentPhaseFromPort(ns);
+
     // Start non-hacking modules first to ensure they have RAM
     
     // Programs module
@@ -370,26 +371,42 @@ async function ensureModulesRunning(ns) {
 
     // Stocks module
     if (config.orchestrator.enableStocks) {
-        await ensureModuleRunning(ns, SCRIPTS.stocks, "Stocks");
-        await ns.sleep(1500);
+        if (currentPhase >= 3) {
+            await ensureModuleRunning(ns, SCRIPTS.stocks, "Stocks");
+            await ns.sleep(1500);
+        } else if (shouldLogDeferredModule("stocks-phase")) {
+            log(ns, `Deferring Stocks module until phase 3 (current: ${currentPhase})`, "INFO");
+        }
     }
 
     // Gang module
     if (config.orchestrator.enableGang) {
-        await ensureModuleRunning(ns, SCRIPTS.gang, "Gang");
-        await ns.sleep(1500);
+        if (currentPhase >= 3) {
+            await ensureModuleRunning(ns, SCRIPTS.gang, "Gang");
+            await ns.sleep(1500);
+        } else if (shouldLogDeferredModule("gang-phase")) {
+            log(ns, `Deferring Gang module until phase 3 (current: ${currentPhase})`, "INFO");
+        }
     }
 
     // Bladeburner module
     if (config.orchestrator.enableBladeburner) {
-        await ensureModuleRunning(ns, SCRIPTS.bladeburner, "Bladeburner");
-        await ns.sleep(1500);
+        if (currentPhase >= 4) {
+            await ensureModuleRunning(ns, SCRIPTS.bladeburner, "Bladeburner");
+            await ns.sleep(1500);
+        } else if (shouldLogDeferredModule("bladeburner-phase")) {
+            log(ns, `Deferring Bladeburner module until phase 4 (current: ${currentPhase})`, "INFO");
+        }
     }
 
     // Sleeves module
     if (config.orchestrator.enableSleeves) {
-        await ensureModuleRunning(ns, SCRIPTS.sleeves, "Sleeves");
-        await ns.sleep(1500);
+        if (currentPhase >= 3) {
+            await ensureModuleRunning(ns, SCRIPTS.sleeves, "Sleeves");
+            await ns.sleep(1500);
+        } else if (shouldLogDeferredModule("sleeves-phase")) {
+            log(ns, `Deferring Sleeves module until phase 3 (current: ${currentPhase})`, "INFO");
+        }
     }
 
     startupState.blockedCoreModules = blockedCoreModules;
@@ -452,10 +469,14 @@ async function ensureModulesRunning(ns) {
     // Corporation module - starts first after core setup (before hacking RAM spike)
     if (config.orchestrator.enableCorporation) {
         if (startupElapsedMs >= corporationDelayMs) {
-            await ensureModuleRunning(ns, SCRIPTS.corporation, "Corporation", [], {
-                deferIfInsufficientRam: true,
-                lowRamLogIntervalMs: 45000,
-            });
+            if (currentPhase >= 3) {
+                await ensureModuleRunning(ns, SCRIPTS.corporation, "Corporation", [], {
+                    deferIfInsufficientRam: true,
+                    lowRamLogIntervalMs: 45000,
+                });
+            } else if (shouldLogDeferredModule("corporation-phase")) {
+                log(ns, `Deferring Corporation module until phase 3 (current: ${currentPhase})`, "INFO");
+            }
         } else if (shouldLogDeferredModule("corporation")) {
             const remainingSec = Math.ceil((corporationDelayMs - startupElapsedMs) / 1000);
             log(ns, `Deferring Corporation module startup for ${remainingSec}s to prioritize core stability`, "INFO");
@@ -947,4 +968,13 @@ function resolveModuleScript(moduleName) {
     }
 
     return null;
+}
+
+function getCurrentPhaseFromPort(ns) {
+    const raw = ns.peek(PHASE_PORT);
+    if (raw === "NULL PORT DATA") {
+        return 0;
+    }
+    const phase = Number.parseInt(String(raw), 10);
+    return Number.isFinite(phase) ? phase : 0;
 }

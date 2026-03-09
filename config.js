@@ -556,6 +556,7 @@ export const PORTS = {
     FACTIONS: 4,
     ACTIVITY: 5,
     ACTIVITY_MODE: 6,
+    AUGMENTS_DATA: 8,
 };
 
 // Script paths (relative to /angel/)

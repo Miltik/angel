@@ -8,6 +8,7 @@ const state = {
     loopCount: 0,
     lastCrime: null,
     lastReportTime: 0,
+    crimeStartedForMode: false,
 };
 
 export async function main(ns) {
@@ -32,6 +33,8 @@ export async function main(ns) {
 
             const mode = readActivityMode(ns);
             if (mode !== "crime") {
+                // Reset one-shot guard when leaving crime mode.
+                state.crimeStartedForMode = false;
                 if (state.loopCount % 24 === 0) {
                     ui.log(`⏸️ Idle (mode=${mode})`, "info");
                 }
@@ -45,11 +48,31 @@ export async function main(ns) {
                 continue;
             }
 
+            // Critical: commitCrime should only be called once per crime-mode session.
+            // After initial start, Bitburner continues the selected crime behavior without
+            // us force-reissuing task starts every loop.
+            if (state.crimeStartedForMode) {
+                let currentCrime = state.lastCrime;
+                try {
+                    const work = ns.singularity.getCurrentWork();
+                    if (work && work.type === "CRIME") {
+                        currentCrime = work.crimeType || currentCrime;
+                    }
+                } catch (e) {
+                    // ignore work probe failures
+                }
+
+                maybeReportTelemetry(ns, mode, currentCrime || "none", 0, 0);
+                await ns.sleep(2000);
+                continue;
+            }
+
             const best = getBestCrime(ns);
             const crime = best.crime || "Shoplift";
             const chance = Number(best.chance || 0);
 
             const duration = ns.singularity.commitCrime(crime, config.crime?.focus || "maximum");
+            state.crimeStartedForMode = true;
 
             if (crime !== state.lastCrime || state.loopCount % 12 === 0) {
                 ui.log(`🔪 ${crime} | ${(chance * 100).toFixed(0)}% | ${(duration / 1000).toFixed(1)}s`, "info");
@@ -100,19 +123,21 @@ function claimLock(ns, owner, ttlMs) {
 }
 
 function getBestCrime(ns) {
+    // Approximate score table: money-per-second baseline by crime.
+    // We still multiply by live success chance to stay adaptive.
     const crimes = [
-        "Shoplift",
-        "Rob Store",
-        "Mug someone",
-        "Larceny",
-        "Deal Drugs",
-        "Bond Forgery",
-        "Traffick illegal Arms",
-        "Homicide",
-        "Grand Theft Auto",
-        "Kidnap",
-        "Assassination",
-        "Heist",
+        { name: "Shoplift", baseMps: 15 },
+        { name: "Rob Store", baseMps: 40 },
+        { name: "Mug someone", baseMps: 60 },
+        { name: "Larceny", baseMps: 130 },
+        { name: "Deal Drugs", baseMps: 200 },
+        { name: "Bond Forgery", baseMps: 300 },
+        { name: "Traffick illegal Arms", baseMps: 500 },
+        { name: "Homicide", baseMps: 450 },
+        { name: "Grand Theft Auto", baseMps: 700 },
+        { name: "Kidnap", baseMps: 900 },
+        { name: "Assassination", baseMps: 1300 },
+        { name: "Heist", baseMps: 1800 },
     ];
 
     const minSuccessChance = config.crime?.minSuccessChance || 0.25;
@@ -121,10 +146,9 @@ function getBestCrime(ns) {
 
     for (const crime of crimes) {
         try {
-            const stats = ns.singularity.getCrimeStats(crime);
-            const chance = ns.singularity.getCrimeChance(crime);
-            const score = (stats.money * chance) / Math.max(1, stats.time);
-            const record = { crime, score, chance };
+            const chance = ns.singularity.getCrimeChance(crime.name);
+            const score = crime.baseMps * chance;
+            const record = { crime: crime.name, score, chance };
 
             if (!fallback || record.score > fallback.score) {
                 fallback = record;

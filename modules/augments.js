@@ -1,4 +1,4 @@
-import { config } from "/angel/config.js";
+import { config, PORTS } from "/angel/config.js";
 import { formatMoney } from "/angel/utils.js";
 import { createWindow } from "/angel/modules/uiManager.js";
 import { PHASE_PORT, TELEMETRY_PORT, DAEMON_LOCK_PORT } from "/angel/ports.js";
@@ -9,6 +9,7 @@ import {
     getInstalledAugmentInfo,
     detectReset 
 } from "/angel/modules/reset.js";
+import { scanAllAugments, encodeScanResults, decodeScanResults } from "/angel/modules/augment-scanner.js";
 
 // State tracking
 let lastState = {
@@ -17,7 +18,8 @@ let lastState = {
     queuedCount: 0,
     loopCount: 0,
     lastPurchaseLoop: -10,
-    lastInstalledCount: 0
+    lastInstalledCount: 0,
+    lastScanResults: null,  // Cache latest scan results
 };
 
 let telemetryState = {
@@ -148,152 +150,33 @@ function hasSingularityAccess(ns) {
     }
 }
 
-function hasMetPrerequisites(ns, augName, ownedAugSet) {
-    try {
-        const prereqs = ns.singularity.getAugmentationPrereq(augName) || [];
-        if (!Array.isArray(prereqs) || prereqs.length === 0) return true;
-        return prereqs.every(prereq => ownedAugSet.has(prereq));
-    } catch (e) {
-        return true;
-    }
-}
-
 /**
- * Get available augmentations from joined factions
- * Filters by reputation requirement
- * @param {NS} ns
+ * Get available augmentations - now uses cached scan results
+ * @param {Object} scanResults - Cached results from augment-scanner
  * @returns {Array}
  */
-function getAvailableAugmentsInline(ns) {
-    if (!hasSingularityAccess(ns)) return [];
-    
-    const player = ns.getPlayer();
-    const owned = ns.singularity.getOwnedAugmentations(true);
-    const available = [];
-    const ownedSet = new Set(owned);
-    
-    for (const faction of player.factions) {
-        const augments = ns.singularity.getAugmentationsFromFaction(faction);
-        const factionRep = ns.singularity.getFactionRep(faction);
-        
-        for (const aug of augments) {
-            if (owned.includes(aug)) continue;
-            if (!hasMetPrerequisites(ns, aug, ownedSet)) continue;
-            
-            const repReq = ns.singularity.getAugmentationRepReq(aug);
-            const price = ns.singularity.getAugmentationPrice(aug);
-            
-            if (factionRep >= repReq) {
-                available.push({
-                    name: aug,
-                    faction,
-                    price,
-                    repReq,
-                });
-            }
-        }
-    }
-    
-    return available;
+function getAvailableAugmentsInline(scanResults) {
+    return scanResults?.available || [];
 }
 
 /**
- * Get priority augmentations from config
+ * Get priority augmentations - now uses cached scan results
  * Uses augmentPriority list from config
- * @param {NS} ns
- * @param {Array} available
+ * @param {Object} scanResults - Cached results from augment-scanner
  * @returns {Array}
  */
-function getPriorityAugmentsInline(ns, available) {
-    const priorities = config.augmentations.augmentPriority || [];
-    
-    if (priorities.length === 0) {
-        // Default fallback if config is empty
-        const defaults = [
-            "BitWire",
-            "Artificial Bio-neural Network Implant",
-            "Artificial Synaptic Potentiation",
-        ];
-        return available.filter(aug => defaults.includes(aug.name));
-    }
-    
-    return available.filter(aug => priorities.includes(aug.name));
+function getPriorityAugmentsInline(scanResults) {
+    return scanResults?.priority || [];
 }
 
 /**
- * Intelligent target selection - picks augmentation closest to being available
- * Considers both money and reputation gaps, normalizes them, and picks the lowest total gap
- * @param {NS} ns
- * @param {Array} priorityList - Priority augmentations to bias toward (not hard-locked)
- * @returns {{name: string, faction: string, price: number, repReq: number, gapScore: number} | null}
+ * Get smartest target augmentation - now uses cached scan results
+ * Picks augmentation closest to being available (lowest combined gap score)
+ * @param {Object} scanResults - Cached results from augment-scanner
+ * @returns {Object | null}
  */
-function selectSmartestTargetAug(ns, priorityList = []) {
-    if (!hasSingularityAccess(ns)) return null;
-    
-    const player = ns.getPlayer();
-    const currentMoney = ns.getServerMoneyAvailable("home");
-    const owned = ns.singularity.getOwnedAugmentations(true);
-    const ownedSet = new Set(owned);
-    const candidatesAll = [];
-
-    // Gather ALL not-yet-owned augmentations
-    for (const faction of player.factions) {
-        const augments = ns.singularity.getAugmentationsFromFaction(faction);
-        const factionRep = ns.singularity.getFactionRep(faction);
-
-        for (const aug of augments) {
-            if (owned.includes(aug)) continue;
-            if (!hasMetPrerequisites(ns, aug, ownedSet)) continue;
-
-            const repReq = ns.singularity.getAugmentationRepReq(aug);
-            const price = ns.singularity.getAugmentationPrice(aug);
-
-            // Calculate gaps (0 if already met, otherwise how much short)
-            const moneyGap = Math.max(0, price - currentMoney);
-            const repGap = Math.max(0, repReq - factionRep);
-
-            // Normalize gaps using a logarithmic scale to balance money/rep importance
-            const moneyGapScore = moneyGap > 0 ? Math.log10(moneyGap + 1) : 0;
-            const repGapScore = repGap > 0 ? Math.log10(repGap + 1) : 0;
-
-            // Composite gap score: lower is better (closer to available)
-            const gapScore = moneyGapScore + repGapScore;
-            const isPriority = priorityList.includes(aug);
-            const priorityBonus = isPriority ? 0.15 : 0;
-            const effectiveScore = Math.max(0, gapScore - priorityBonus);
-
-            const augData = {
-                name: aug,
-                faction,
-                price,
-                repReq,
-                moneyShort: moneyGap,
-                repShort: repGap,
-                gapScore,
-                effectiveScore,
-                isPriority
-            };
-
-            // Always consider all candidates; priority is a soft preference only
-            candidatesAll.push(augData);
-        }
-    }
-
-    if (candidatesAll.length === 0) return null;
-
-    // Sort by effective score first, then prefer immediately purchasable, then cheaper
-    candidatesAll.sort((a, b) => {
-        if (a.effectiveScore !== b.effectiveScore) return a.effectiveScore - b.effectiveScore;
-
-        const aReady = a.moneyShort === 0 && a.repShort === 0;
-        const bReady = b.moneyShort === 0 && b.repShort === 0;
-        if (aReady !== bReady) return aReady ? -1 : 1;
-
-        if (a.price !== b.price) return a.price - b.price;
-        return a.name.localeCompare(b.name);
-    });
-
-    return candidatesAll[0];
+function selectSmartestTargetAug(scanResults) {
+    return scanResults?.smartTarget || null;
 }
 
 /**
@@ -306,7 +189,20 @@ async function augmentLoop(ns, ui) {
         const phase = readGamePhase(ns);
         const strategy = getAugmentStrategy(phase);
         const money = ns.getServerMoneyAvailable("home");
-        const available = getAvailableAugmentsInline(ns);
+        
+        // Centralized scan - replaces two nested loop scans with one pass
+        const scanResults = scanAllAugments(ns);
+        lastState.lastScanResults = scanResults;
+        
+        // Broadcast scan results to port for other modules
+        try {
+            ns.clearPort(PORTS.AUGMENTS_DATA);
+            ns.writePort(PORTS.AUGMENTS_DATA, encodeScanResults(scanResults));
+        } catch (e) {
+            // Ignore port write failures
+        }
+        
+        const available = getAvailableAugmentsInline(scanResults);
         
         // Get queue status
         const ownedCount = ns.singularity.getOwnedAugmentations(false).length;
@@ -315,24 +211,19 @@ async function augmentLoop(ns, ui) {
         const queueBoostTarget = config.augmentations.aggressiveQueueTarget ?? 3;
         
         // Get smart target for display
-        const priorityList = config.augmentations.augmentPriority || [];
-        let smartTarget = null;
-        try {
-            smartTarget = selectSmartestTargetAug(ns, priorityList);
-        } catch (e) {
-            // If smart targeting fails, fall back to cheapest available
-            if (available.length > 0) {
-                const sorted = [...available].sort((a, b) => a.price - b.price);
-                const fallback = sorted[0];
-                smartTarget = {
-                    name: fallback.name,
-                    faction: fallback.faction,
-                    price: fallback.price,
-                    repReq: fallback.repReq,
-                    moneyShort: Math.max(0, fallback.price - money),
-                    repShort: 0
-                };
-            }
+        let smartTarget = selectSmartestTargetAug(scanResults);
+        
+        // Fallback if smart target calculation somehow failed (shouldn't happen with scanner)
+        if (!smartTarget && available.length > 0) {
+            const fallback = available[0];
+            smartTarget = {
+                name: fallback.name,
+                faction: fallback.faction,
+                price: fallback.price,
+                repReq: fallback.repReq,
+                moneyShort: Math.max(0, fallback.price - money),
+                repShort: 0
+            };
         }
         
         lastState.loopCount++;
@@ -391,7 +282,7 @@ async function augmentLoop(ns, ui) {
         }
         
         // Strategy: Priority focus (phases 0-2)
-        const priority = getPriorityAugmentsInline(ns, available);
+        const priority = getPriorityAugmentsInline(scanResults);
         if (priority.length > 0) {
             const purchasedPriority = await buyPriorityAugments(ns, priority, money, strategy, ui);
             if (purchasedPriority > 0) {
@@ -566,7 +457,8 @@ async function buyQueueBoostAugments(ns, available, initialMoney, strategy, ui) 
 export function buyAllAffordable(ns) {
     if (!hasSingularityAccess(ns)) return 0;
     
-    const available = getAvailableAugmentsInline(ns);
+    const scanResults = scanAllAugments(ns);
+    const available = getAvailableAugmentsInline(scanResults);
     let purchased = 0;
     let money = ns.getServerMoneyAvailable("home");
     
@@ -594,8 +486,8 @@ export function buyAllAffordable(ns) {
 export function buyPriority(ns) {
     if (!hasSingularityAccess(ns)) return 0;
     
-    const available = getAvailableAugmentsInline(ns);
-    const priority = getPriorityAugmentsInline(ns, available);
+    const scanResults = scanAllAugments(ns);
+    const priority = getPriorityAugmentsInline(scanResults);
     let purchased = 0;
     let money = ns.getServerMoneyAvailable("home");
     
@@ -622,8 +514,9 @@ export function displayAugments(ns) {
         return;
     }
     
-    const available = getAvailableAugmentsInline(ns);
-    const priority = getPriorityAugmentsInline(ns, available);
+    const scanResults = scanAllAugments(ns);
+    const available = getAvailableAugmentsInline(scanResults);
+    const priority = getPriorityAugmentsInline(scanResults);
     const phase = readGamePhase(ns);
     
     ns.tprint("\n╔════════════════════════════════════════╗");
@@ -663,18 +556,15 @@ function reportAugmentsTelemetry(ns) {
         const strategy = getAugmentStrategy(phase);
         const currentMoney = ns.getServerMoneyAvailable("home");
         
-        // Find the next target augmentation to track - use smart targeting
+        // Use cached scan results or do a fresh scan if needed
         let targetAug = null;
         let targetAugCost = strategy.maxSpend;
         
         if (hasSingularityAccess(ns)) {
-            // Get priority list from config
-            const priorityList = config.augmentations.augmentPriority || [];
-            
-            // Use smart targeting: picks aug closest to being available (lowest gap)
-            const smartTarget = selectSmartestTargetAug(ns, priorityList);
-            if (smartTarget) {
-                targetAug = smartTarget;
+            // Use cached smart target if available and fresh
+            const scanResults = lastState.lastScanResults;
+            if (scanResults && scanResults.smartTarget) {
+                targetAug = scanResults.smartTarget;
                 targetAugCost = targetAug.price;
             }
         }

@@ -38,18 +38,28 @@ const CONFIG = {
     RAM_SAFETY_BUFFER: 5,           // Extra GB for worker threads and safety
     
     // Upgrade behavior
-    UPGRADE_SAFETY_MULTIPLIER: 2,   // Have 2x cost before buying
+    UPGRADE_SAFETY_MULTIPLIER: 1.5, // Have 1.5x cost before buying (more aggressive)
+    AUTO_UPGRADE_RAM: true,          // Automatically purchase RAM upgrades
     
-    // Worker ratios
+    // Crime settings
+    USE_CRIME: true,                 // Use crime for early money (if singularity available)
+    CRIME_UNTIL_LEVEL: 50,           // Stop crime at level 50 (reach this much faster now)
+    CRIME_CYCLE_TIME: 30000,         // Check crime every 30s (less frequent interruption)
+    
+    // Worker ratios (prep-focused)
     HACK_RATIO: 1,
-    GROW_RATIO: 10,
-    WEAKEN_RATIO: 5,
+    GROW_RATIO: 12,                  // More aggressive growth
+    WEAKEN_RATIO: 8,                 // More weakening for prep
+    
+    // Prep phase settings
+    PREP_THRESHOLD: 0.9,             // Prep until 90% optimal
+    PREP_CHECK_INTERVAL: 5000,       // Check prep status every 5s
     
     // Timings (ms)
     ANGEL_CHECK_INTERVAL: 5000,     // Check every 5s
-    UPGRADE_CHECK_INTERVAL: 10000,  // Check every 10s
+    UPGRADE_CHECK_INTERVAL: 5000,   // Check every 5s (more frequent)
     NETWORK_SCAN_INTERVAL: 30000,   // Scan every 30s
-    WORKER_DEPLOY_INTERVAL: 60000,  // Redeploy every 60s
+    WORKER_DEPLOY_INTERVAL: 30000,  // Redeploy every 30s (more responsive)
     DISPLAY_UPDATE_INTERVAL: 1000,  // Update display every 1s
     
     // Transition
@@ -72,6 +82,12 @@ let state = {
     lastMoneyCheck: 0,
     lastMoney: 0,
     moneyRate: 0,
+    hasSingularity: false,
+    currentActivity: "initializing",
+    prepProgress: 0,
+    crimeIncome: 0,
+    hackIncome: 0,
+    crimeAutoStartUsed: false,          // One-shot guard: only auto-start crime once per script run
 };
 
 // ============================================
@@ -94,10 +110,18 @@ export async function main(ns) {
     // Initial setup
     deployWorkerScripts(ns);
     
+    // Check for Singularity access
+    state.hasSingularity = checkSingularityAccess(ns);
+    if (state.hasSingularity) {
+        ns.print("✓ Singularity access detected - crime automation enabled");
+    }
+    
     let lastAngelCheck = 0;
     let lastUpgradeCheck = 0;
     let lastNetworkScan = 0;
     let lastWorkerDeploy = 0;
+    let lastCrimeCheck = 0;
+    let lastPrepCheck = 0;
     let lastDisplay = 0;
     
     ns.print("🚀 Angel-lite bootstrap started");
@@ -117,10 +141,22 @@ export async function main(ns) {
                 lastAngelCheck = now;
             }
             
-            // Attempt home RAM upgrade (every 10s)
+            // Attempt home RAM upgrade (every 5s)
             if (now - lastUpgradeCheck > CONFIG.UPGRADE_CHECK_INTERVAL) {
                 await manageHomeUpgrade(ns);
                 lastUpgradeCheck = now;
+            }
+            
+            // Crime check (if enabled and singularity available)
+            if (CONFIG.USE_CRIME && state.hasSingularity && now - lastCrimeCheck > CONFIG.CRIME_CYCLE_TIME) {
+                await manageCrime(ns);
+                lastCrimeCheck = now;
+            }
+            
+            // Check prep status (every 5s)
+            if (now - lastPrepCheck > CONFIG.PREP_CHECK_INTERVAL) {
+                checkPrepStatus(ns);
+                lastPrepCheck = now;
             }
             
             // Full network scan + rooting (every 30s)
@@ -129,9 +165,9 @@ export async function main(ns) {
                 lastNetworkScan = now;
             }
             
-            // Redeploy workers (every 60s)
+            // Redeploy workers (every 30s)
             if (now - lastWorkerDeploy > CONFIG.WORKER_DEPLOY_INTERVAL) {
-                deployHackingWorkers(ns);
+                await deployHackingWorkers(ns);
                 lastWorkerDeploy = now;
             }
             
@@ -146,6 +182,19 @@ export async function main(ns) {
         }
         
         await ns.sleep(1000);
+    }
+}
+
+// ============================================
+// SINGULARITY ACCESS CHECK
+// ============================================
+
+function checkSingularityAccess(ns) {
+    try {
+        ns.singularity.getOwnedAugmentations();
+        return true;
+    } catch (e) {
+        return false;
     }
 }
 
@@ -258,6 +307,107 @@ function tryGainRoot(ns, server) {
 }
 
 // ============================================
+// CRIME AUTOMATION
+// ============================================
+
+async function manageCrime(ns) {
+    const hackLevel = ns.getHackingLevel();
+    
+    if (hackLevel >= CONFIG.CRIME_UNTIL_LEVEL) {
+        state.currentActivity = "hacking";
+        return;
+    }
+    
+    try {
+        const currentWork = ns.singularity.getCurrentWork();
+        
+        // If already doing crime, just track it
+        if (currentWork && currentWork.type === "CRIME") {
+            state.currentActivity = `crime: ${currentWork.crimeType}`;
+            return; // Crime is running, never touch it again
+        }
+        
+        // If player manually switched to something else, respect it
+        if (currentWork && currentWork.type && currentWork.type !== "IDLE") {
+            state.currentActivity = currentWork.type.toLowerCase();
+            return;
+        }
+    } catch (e) {
+        return;
+    }
+    
+    // Player is idle and no crime running.
+    // Hard guard: never auto-start another crime after the first auto-start.
+    if (state.crimeAutoStartUsed) {
+        return;
+    }
+    
+    // First time: evaluate and start initial crime
+    const crimes = [
+        { name: "Shoplift", moneyPerSec: 15 },
+        { name: "Rob Store", moneyPerSec: 60 },
+        { name: "Mug", moneyPerSec: 45 },
+        { name: "Larceny", moneyPerSec: 90 },
+        { name: "Deal Drugs", moneyPerSec: 120 },
+        { name: "Bond Forgery", moneyPerSec: 150 },
+        { name: "Traffick Arms", moneyPerSec: 200 },
+        { name: "Homicide", moneyPerSec: 250 },
+        { name: "Grand Theft Auto", moneyPerSec: 300 },
+        { name: "Kidnap", moneyPerSec: 350 },
+        { name: "Assassination", moneyPerSec: 400 },
+        { name: "Heist", moneyPerSec: 800 },
+    ];
+    
+    let bestCrime = crimes[0];
+    let bestScore = 0;
+    
+    for (const crime of crimes) {
+        try {
+            const chance = ns.singularity.getCrimeChance(crime.name);
+            const score = crime.moneyPerSec * chance;
+            if (score > bestScore) {
+                bestScore = score;
+                bestCrime = crime;
+            }
+        } catch (e) {
+            // Not available
+        }
+    }
+    
+    try {
+        ns.singularity.commitCrime(bestCrime.name);
+        state.crimeAutoStartUsed = true;
+        state.currentActivity = `crime: ${bestCrime.name}`;
+    } catch (e) {
+        state.currentActivity = "hacking";
+    }
+}
+
+// ============================================
+// PREP STATUS CHECKING
+// ============================================
+
+function checkPrepStatus(ns) {
+    const target = state.currentTarget;
+    if (!target) return;
+    
+    try {
+        const server = ns.getServer(target);
+        const minSec = server.minDifficulty;
+        const maxMoney = server.moneyMax;
+        const currentSec = server.hackDifficulty;
+        const currentMoney = server.moneyAvailable;
+        
+        const secProgress = currentSec <= minSec * 1.1 ? 1 : (minSec / currentSec);
+        const moneyProgress = maxMoney > 0 ? (currentMoney / maxMoney) : 1;
+        
+        state.prepProgress = Math.min(secProgress, moneyProgress) * 100;
+    } catch (e) {
+        state.prepProgress = 0;
+    }
+}
+
+// ============================================
 // TARGET SELECTION
 // ============================================
 
@@ -269,28 +419,47 @@ function selectBestTarget(ns) {
     const candidates = rootedServers
         .filter(s => ns.getServerMaxMoney(s) > 0)
         .filter(s => ns.getServerRequiredHackingLevel(s) <= hackLevel)
-        .map(s => ({
-            name: s,
-            maxMoney: ns.getServerMaxMoney(s),
-            minSec: ns.getServerMinSecurityLevel(s),
-            reqLevel: ns.getServerRequiredHackingLevel(s),
-            score: ns.getServerMaxMoney(s) / Math.max(1, ns.getServerMinSecurityLevel(s)),
-        }))
+        .map(s => {
+            const maxMoney = ns.getServerMaxMoney(s);
+            const minSec = ns.getServerMinSecurityLevel(s);
+            const reqLevel = ns.getServerRequiredHackingLevel(s);
+            const growthRate = ns.getServerGrowth(s);
+            
+            // Score based on money, growth rate, and inverse of security
+            const score = (maxMoney * (growthRate / 100)) / Math.max(1, minSec);
+            
+            return {
+                name: s,
+                maxMoney,
+                minSec,
+                reqLevel,
+                growthRate,
+                score,
+            };
+        })
         .sort((a, b) => b.score - a.score);
     
     if (candidates.length === 0) {
         return "n00dles"; // Fallback
     }
     
-    state.currentTarget = candidates[0].name;
-    return candidates[0].name;
+    // Select top target
+    const newTarget = candidates[0].name;
+    
+    // Only log if target changed
+    if (newTarget !== state.currentTarget) {
+        ns.print(`✓ New target: ${newTarget} (max: ${formatMoney(candidates[0].maxMoney)}, growth: ${candidates[0].growthRate})`);
+    }
+    
+    state.currentTarget = newTarget;
+    return newTarget;
 }
 
 // ============================================
 // WORKER DEPLOYMENT
 // ============================================
 
-function deployHackingWorkers(ns) {
+async function deployHackingWorkers(ns) {
     // Kill existing workers
     for (const server of state.rootedServers) {
         ns.killall(server, true);
@@ -310,7 +479,7 @@ function deployHackingWorkers(ns) {
         
         // Reserve RAM on home for angel-lite
         if (server === "home") {
-            availRam = Math.max(0, availRam - 4); // Reserve 4GB
+            availRam = Math.max(0, availRam - 8); // Reserve 8GB for angel-lite + singularity operations
         }
         
         if (availRam > 1.75) { // Minimum for one worker
@@ -321,6 +490,7 @@ function deployHackingWorkers(ns) {
     
     if (totalRam < 2) {
         ns.print("⚠️  Insufficient RAM for workers");
+        state.deployedWorkers = 0;
         return;
     }
     
@@ -380,17 +550,35 @@ function deployWorkerType(ns, serverRams, script, target, threads) {
 // ============================================
 
 async function manageHomeUpgrade(ns) {
-    // NOTE: We don't use singularity API to keep RAM cost minimal.
-    // Angel-lite detects when you've upgraded RAM naturally; doesn't do it automatically.
-    // This keeps the script lightweight enough to run on 8GB+.
-    
     const currentRam = ns.getServerMaxRam("home");
     
     if (currentRam >= CONFIG.MAX_HOME_RAM) {
         return false;
     }
     
-    // Just monitoring - player upgrades naturally through gameplay
+    // If we have singularity and auto-upgrade is enabled, buy upgrades
+    if (!state.hasSingularity || !CONFIG.AUTO_UPGRADE_RAM) {
+        return false;
+    }
+    
+    try {
+        const upgradeCost = ns.singularity.getUpgradeHomeRamCost();
+        const money = ns.getServerMoneyAvailable("home");
+        const safeThreshold = upgradeCost * CONFIG.UPGRADE_SAFETY_MULTIPLIER;
+        
+        if (money >= safeThreshold) {
+            const success = ns.singularity.upgradeHomeRam();
+            if (success) {
+                const newRam = ns.getServerMaxRam("home");
+                ns.print(`✓ RAM UPGRADED: ${currentRam}GB → ${newRam}GB`);
+                ns.tprint(`✓ RAM UPGRADED: ${currentRam}GB → ${newRam}GB for ${formatMoney(upgradeCost)}`);
+                return true;
+            }
+        }
+    } catch (e) {
+        // Upgrade not available or error
+    }
+    
     return false;
 }
 
@@ -582,22 +770,38 @@ function updateDisplay(ns) {
     const overallProgress = ramProgress;
     
     // Next upgrade info
-    const upgradeCost = ns.singularity.getUpgradeHomeRamCost();
-    const nextRam = homeRam * 2;
-    const canAfford = money >= upgradeCost * CONFIG.UPGRADE_SAFETY_MULTIPLIER;
+    let upgradeCost = 0;
+    let nextRam = homeRam * 2;
+    let canAfford = false;
+    
+    if (state.hasSingularity) {
+        try {
+            upgradeCost = ns.singularity.getUpgradeHomeRamCost();
+            canAfford = money >= upgradeCost * CONFIG.UPGRADE_SAFETY_MULTIPLIER;
+        } catch (e) {
+            // Can't get upgrade cost
+        }
+    }
     
     // Build display
     ns.clearLog();
     ns.print("╔════════════════════════════════════════════════════════════╗");
-    ns.print("║              ANGEL-LITE BOOTSTRAP v1.0                     ║");
+    ns.print("║              ANGEL-LITE BOOTSTRAP v1.1                     ║");
     ns.print("╚════════════════════════════════════════════════════════════╝");
     ns.print("");
     ns.print(`💰 Money:        ${formatMoney(money)}  (${state.moneyRate >= 0 ? "+" : ""}${formatMoney(state.moneyRate)}/sec)`);
     ns.print(`💾 Home RAM:     ${homeRam}GB / ${CONFIG.MAX_HOME_RAM}GB max`);
-    ns.print(`🎯 Target:       ${state.currentTarget}`);
-    ns.print(`🌐 Network:      ${state.rootedServers.length} servers rooted`);
-    ns.print(`⚙️  Workers:      ${state.deployedWorkers} deployed`);
     ns.print(`💻 Hack Level:   ${hackLevel}`);
+    ns.print(`🎯 Current:      ${state.currentActivity}`);
+    ns.print("");
+    ns.print(`🎯 Target:       ${state.currentTarget} (prep: ${state.prepProgress.toFixed(0)}%)`);
+    ns.print(`🌐 Network:      ${state.rootedServers.length} servers rooted`);
+    ns.print(`⚙️  Workers:      ${state.deployedWorkers} threads deployed`);
+    
+    if (state.hasSingularity) {
+        ns.print(`🔓 Singularity:  Enabled (crime + auto-upgrade)`);
+    }
+    
     ns.print("");
     ns.print("📈 Progress to Angel:");
     ns.print(`  ${getProgressBar(overallProgress)}  ${overallProgress.toFixed(0)}%`);
@@ -611,10 +815,13 @@ function updateDisplay(ns) {
     }
     ns.print("");
     
-    if (homeRam < CONFIG.MAX_HOME_RAM) {
+    if (homeRam < CONFIG.MAX_HOME_RAM && state.hasSingularity) {
         const timeToUpgrade = canAfford ? "Ready now!" : 
             state.moneyRate > 0 ? formatTime((upgradeCost * CONFIG.UPGRADE_SAFETY_MULTIPLIER - money) / state.moneyRate) : "Unknown";
-        ns.print(`Next upgrade: ${nextRam}GB RAM for ${formatMoney(upgradeCost)} ${canAfford ? "✓" : `(${timeToUpgrade})`}`);
+        const autoStatus = CONFIG.AUTO_UPGRADE_RAM && canAfford ? " [AUTO-BUY]" : "";
+        ns.print(`Next upgrade: ${nextRam}GB RAM for ${formatMoney(upgradeCost)} ${canAfford ? "✓" : `(${timeToUpgrade})`}${autoStatus}`);
+    } else if (homeRam < CONFIG.MAX_HOME_RAM) {
+        ns.print(`Next upgrade: ${nextRam}GB RAM (buy via City → Purchase RAM)`);
     }
 }
 

@@ -35,7 +35,6 @@
 const CONFIG = {
     // RAM thresholds (ANGEL_READY_RAM calculated dynamically)
     MAX_HOME_RAM: 1024,             // Stop upgrading at this point
-    ANGEL_READY_MONEY: 1000000,     // $1M for comfort margin
     RAM_SAFETY_BUFFER: 5,           // Extra GB for worker threads and safety
     
     // Upgrade behavior
@@ -473,22 +472,19 @@ function calculateAngelRamRequirement(ns) {
 
 function checkAngelReady(ns) {
     const homeRam = ns.getServerMaxRam("home");
-    const money = ns.getServerMoneyAvailable("home");
     
     // Calculate required RAM dynamically
     const requiredRam = calculateAngelRamRequirement(ns);
     
     // Criteria:
     // 1. Home RAM >= required for core modules
-    // 2. Money >= $1M
-    // 3. Either Angel files exist OR we have sync.js to download them
+    // 2. Either Angel files exist OR we have sync.js to download them
     
     const ramReady = homeRam >= requiredRam;
-    const moneyReady = money >= CONFIG.ANGEL_READY_MONEY;
     const angelExists = ns.fileExists("/angel/angel.js", "home");
     const syncExists = ns.fileExists("/angel/sync.js", "home");
     
-    return ramReady && moneyReady && (angelExists || syncExists);
+    return ramReady && (angelExists || syncExists);
 }
 
 async function transitionToAngel(ns) {
@@ -581,10 +577,9 @@ function updateDisplay(ns) {
     state.lastMoneyCheck = now;
     state.lastMoney = money;
     
-    // Calculate progress
+    // Calculate progress (RAM only)
     const ramProgress = Math.min(100, (homeRam / requiredRam) * 100);
-    const moneyProgress = Math.min(100, (money / CONFIG.ANGEL_READY_MONEY) * 100);
-    const overallProgress = Math.min(100, (ramProgress + moneyProgress) / 2);
+    const overallProgress = ramProgress;
     
     // Next upgrade info
     const upgradeCost = ns.singularity.getUpgradeHomeRamCost();
@@ -608,13 +603,11 @@ function updateDisplay(ns) {
     ns.print(`  ${getProgressBar(overallProgress)}  ${overallProgress.toFixed(0)}%`);
     ns.print("");
     
-    if (homeRam >= requiredRam && money >= CONFIG.ANGEL_READY_MONEY) {
+    if (homeRam >= requiredRam) {
         ns.print("  ✓ Home RAM: Ready");
-        ns.print("  ✓ Money: Ready");
         ns.print("  ⏳ Transitioning to Angel...");
     } else {
-        ns.print(`  ${homeRam >= requiredRam ? "✓" : "⏳"} Home RAM: ${homeRam}GB / ${requiredRam}GB (core modules)`);
-        ns.print(`  ${money >= CONFIG.ANGEL_READY_MONEY ? "✓" : "⏳"} Money: ${formatMoney(money)} / ${formatMoney(CONFIG.ANGEL_READY_MONEY)}`);
+        ns.print(`  ⏳ Home RAM: ${homeRam}GB / ${requiredRam}GB (core modules)`);
     }
     ns.print("");
     

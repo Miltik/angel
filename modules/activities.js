@@ -22,6 +22,8 @@ import {
     hasAnyViableFactionWork,
     getFactionOpportunitySummary,
 } from "/angel/modules/factions.js";
+import { doTraining, needsTraining as checkNeedsTraining } from "/angel/modules/training.js";
+import { doFactionWork, doCompanyWork, shouldDoFactionWork, shouldDoCompanyWork } from "/angel/modules/work.js";
 
 const ACTIVITY_OWNER = "activity";
 const ACTIVITY_LOCK_TTL = 180000;
@@ -231,7 +233,6 @@ async function processActivity(ns, gamePhase, ui) {
 function chooseActivity(ns, gamePhase) {
     const player = ns.getPlayer();
     const money = ns.getServerMoneyAvailable("home");
-    const targets = config.training?.targetStats || { strength: 60, defense: 60, dexterity: 60, agility: 60 };
     const missingCrimeFactions = getMissingCrimeFactions(player);
     const lateCrimeMoneyCap = config.activities?.lateCrimeMoneyCap ?? 100000000;
     const forceCrimeUnlockUntilPhase = config.activities?.forceCrimeFactionUnlockUntilPhase ?? 2;
@@ -241,12 +242,7 @@ function chooseActivity(ns, gamePhase) {
         return "crime";
     }
 
-    const needsTraining = 
-        player.skills.hacking < (config.training?.targetHacking || 75) ||
-        player.skills.strength < targets.strength ||
-        player.skills.defense < targets.defense ||
-        player.skills.dexterity < targets.dexterity ||
-        player.skills.agility < targets.agility;
+    const needsTrainingBool = checkNeedsTraining(ns);
 
     // Check if any faction actually has viable work (not just gang-only like Nitesec)
     const hasViableFactionWork = config.factions?.workForFactionRep !== false && hasAnyViableFactionWork(ns);
@@ -259,13 +255,13 @@ function chooseActivity(ns, gamePhase) {
     // Phase 0: Bootstrap - prioritize cash, then training
     if (gamePhase === 0) {
         if (money < 10000000) return "crime";
-        if (needsTraining) return "training";
+        if (needsTrainingBool) return "training";
         return "crime";
     }
 
     // Phase 1: Early - training, then company
     if (gamePhase === 1) {
-        if (needsTraining) return "training";
+        if (needsTrainingBool) return "training";
         const companyThreshold = config.company?.onlyWhenMoneyBelow || 200000000;
         if (money < companyThreshold) return "company";
         return "crime";
@@ -273,20 +269,13 @@ function chooseActivity(ns, gamePhase) {
 
     // Late-game focus: rep + hacking progression, avoid crime unless cash-starved
     if (gamePhase >= 3) {
-        if (needsTraining) return "training";
+        if (needsTrainingBool) return "training";
         if (money < lateCrimeMoneyCap) return "crime";
         return "none";
     }
 
-    // Phase 2+: Training if needed, otherwise crime for stats/money
-    const allTrained = 
-        player.skills.strength >= targets.strength &&
-        player.skills.defense >= targets.defense &&
-        player.skills.dexterity >= targets.dexterity &&
-        player.skills.agility >= targets.agility &&
-        player.skills.hacking >= (config.training?.targetHacking || 75);
-
-    if (!allTrained) return "training";
+    // Phase 2: Training if needed, otherwise crime for stats/money
+    if (needsTrainingBool) return "training";
     
     // All stats trained, no faction work needed - crime for money
     return "crime";

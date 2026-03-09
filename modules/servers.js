@@ -1,6 +1,7 @@
 import { config } from "/angel/config.js";
 import { formatMoney, formatRam } from "/angel/utils.js";
 import { rootAll } from "/angel/scanner.js";
+import { getServerStats as getServerStatsFromService } from "/angel/services/stats.js";
 import { createWindow } from "/angel/modules/uiManager.js";
 import { PHASE_PORT, TELEMETRY_PORT } from "/angel/ports.js";
 
@@ -402,25 +403,8 @@ export function getTotalPurchasedRam(ns) {
  * @returns {object}
  */
 export function getServerStats(ns) {
-    const servers = ns.getPurchasedServers();
-    const totalRam = getTotalPurchasedRam(ns);
-    
-    let minRam = Infinity;
-    let maxRam = 0;
-    
-    for (const server of servers) {
-        const ram = ns.getServerMaxRam(server);
-        minRam = Math.min(minRam, ram);
-        maxRam = Math.max(maxRam, ram);
-    }
-    
-    return {
-        count: servers.length,
-        totalRam,
-        minRam: minRam === Infinity ? 0 : minRam,
-        maxRam,
-        maxPossible: config.servers.maxServers,
-    };
+    // Use centralized stats service
+    return getServerStatsFromService(ns);
 }
 function reportServersTelemetry(ns) {
     try {

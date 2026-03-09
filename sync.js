@@ -41,10 +41,13 @@ export async function main(ns) {
         "modules/hacking.js",
         "modules/servers.js",
         "modules/augments.js",
+        "modules/reset.js",
         "modules/programs.js",
         "modules/phase.js",
         "modules/factions.js",
         "modules/activities.js",
+        "modules/training.js",
+        "modules/work.js",
         "modules/crime.js",
         "modules/sleeves.js",
         "modules/stocks.js",
@@ -52,6 +55,8 @@ export async function main(ns) {
         "modules/bladeburner.js",
         "modules/hacknet.js",
         "modules/dashboard.js",
+        "modules/metrics.js",
+        "modules/history.js",
         "modules/networkMap.js",
         "modules/xpFarm.js",
         "modules/backdoor.js",
@@ -60,6 +65,14 @@ export async function main(ns) {
         "modules/loot.js",
         "modules/formulas.js",
         "modules/corporation.js",
+        
+        // Services (centralized shared functionality)
+        "services/network.js",
+        "services/rooting.js",
+        "services/stats.js",
+        "services/moduleRegistry.js",
+        "services/events.js",
+        "services/cache.js",
         
         // Workers
         "workers/hack.js",

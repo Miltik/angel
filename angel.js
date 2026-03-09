@@ -12,6 +12,8 @@ import { scanAll, rootAll, getRootedServers, getHackableServers } from "/angel/s
 import { getTotalAvailableRam } from "/angel/modules/hacking.js";
 import { getServerStats } from "/angel/modules/servers.js";
 import { DAEMON_LOCK_PORT } from "/angel/ports.js";
+import * as Registry from "/angel/services/moduleRegistry.js";
+import * as Events from "/angel/services/events.js";
 
 let backdoorState = {
     lastCheckTime: 0,
@@ -75,6 +77,12 @@ async function initialize(ns) {
 
     log(ns, "Initializing ANGEL orchestrator...", "INFO");
 
+    // Initialize module registry from config
+    Registry.clearRegistry();
+    Registry.initializeFromConfig(ns);
+    const moduleCount = Registry.getAllModules().size;
+    log(ns, `Module registry initialized with ${moduleCount} modules`, "INFO");
+
     ensureLootArchiveSeed(ns);
     
     // Scan network
@@ -85,6 +93,10 @@ async function initialize(ns) {
     const rooted = rootAll(ns);
     if (rooted > 0) {
         log(ns, `Successfully rooted ${rooted} servers`, "INFO");
+        Events.publish("server.rooted.batch", {
+            count: rooted,
+            total: servers.length
+        }, { source: "orchestrator" });
     }
     
     // Deploy worker scripts to home
@@ -234,6 +246,9 @@ function displayStatus(ns) {
     const homeRam = ns.getServerMaxRam("home");
     const homeFreeRam = Math.max(0, homeRam - ns.getServerUsedRam("home"));
     
+    // Registry health
+    const health = Registry.getHealthSummary(ns);
+    
     ns.print("┌─────────────────────────────────────┐");
     ns.print("│         ANGEL STATUS REPORT         │");
     ns.print("├─────────────────────────────────────┤");
@@ -248,6 +263,14 @@ function displayStatus(ns) {
     ns.print(`│ Total RAM: ${formatRam(serverStats.totalRam).padEnd(19)}│`);
     ns.print(`│ Net Free RAM: ${formatRam(totalRam).padEnd(14)}│`);
     ns.print(`Home Free RAM: ${formatRam(homeFreeRam)} / ${formatRam(homeRam)}`);
+    ns.print("├─────────────────────────────────────┤");
+    ns.print(`│ Modules: ${health.running}/${health.enabled} running      │`);
+    if (health.error > 0) {
+        ns.print(`│ Errors: ${health.error}                         │`);
+    }
+    if (health.unhealthy.length > 0) {
+        ns.print(`│ Unhealthy: ${health.unhealthy.slice(0, 2).join(", ")}...│`);
+    }
     if (!startupState.coreReady) {
         const blocked = startupState.blockedCoreModules.length > 0
             ? startupState.blockedCoreModules.join(", ")
@@ -537,6 +560,11 @@ async function ensureModuleRunning(ns, script, name, args = [], options = {}) {
     // Check if script exists
     if (!ns.fileExists(script, "home")) {
         log(ns, `Module ${name} not found at ${script}`, "WARN");
+        Registry.recordModuleError(name, `File not found: ${script}`);
+        Events.publish(`module.${name}.error`, {
+            error: "File not found",
+            script
+        }, { source: "orchestrator" });
         return false;
     }
     
@@ -547,6 +575,15 @@ async function ensureModuleRunning(ns, script, name, args = [], options = {}) {
 
     // Check if already running
     if (ns.isRunning(script, "home")) {
+        // Update registry state if not already marked as running
+        const module = Registry.getModule(name);
+        if (module && module.state !== Registry.ModuleState.RUNNING) {
+            Registry.updateModuleState(name, Registry.ModuleState.RUNNING, null);
+            Events.publish(`module.${name}.start`, {
+                script,
+                recovered: true
+            }, { source: "orchestrator" });
+        }
         return true;
     }
     
@@ -573,6 +610,10 @@ async function ensureModuleRunning(ns, script, name, args = [], options = {}) {
 
         if (reclaimed.length > 0) {
             log(ns, `Reclaimed RAM for ${name}: stopped ${reclaimed.join(", ")}`, "WARN");
+            Events.publish("system.ram.reclaim", {
+                target: name,
+                reclaimed
+            }, { source: "orchestrator" });
         }
     }
     
@@ -587,17 +628,32 @@ async function ensureModuleRunning(ns, script, name, args = [], options = {}) {
         } else {
             logThrottled(ns, `module-lowram-${name}`, `Failed to start ${name} module: ${detail}`, "WARN", lowRamLogIntervalMs);
         }
+        
+        // Update registry state
+        Registry.updateModuleState(name, Registry.ModuleState.STOPPED);
         return false;
     }
     
     // Try to start it
+    Registry.updateModuleState(name, Registry.ModuleState.STARTING);
     const pid = ns.exec(script, "home", 1, ...args);
     
     if (pid === 0) {
         log(ns, `Failed to start ${name} module: exec returned 0 (check for errors in module)`, "WARN");
+        Registry.recordModuleError(name, "exec() returned 0");
+        Events.publish(`module.${name}.error`, {
+            error: "exec() returned 0",
+            script
+        }, { source: "orchestrator" });
         return false;
     } else {
         log(ns, `Started ${name} module (PID: ${pid})`, "INFO");
+        Registry.updateModuleState(name, Registry.ModuleState.RUNNING, pid);
+        Events.publish(`module.${name}.start`, {
+            script,
+            pid,
+            args
+        }, { source: "orchestrator" });
         return true;
     }
 }

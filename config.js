@@ -567,10 +567,13 @@ export const SCRIPTS = {
     hacking: "/angel/modules/hacking.js",
     serverMgmt: "/angel/modules/servers.js",
     augments: "/angel/modules/augments.js",
+    reset: "/angel/modules/reset.js",
     programs: "/angel/modules/programs.js",
     phase: "/angel/modules/phase.js",
     factions: "/angel/modules/factions.js",
     activities: "/angel/modules/activities.js",
+    training: "/angel/modules/training.js",
+    work: "/angel/modules/work.js",
     crime: "/angel/modules/crime.js",
     sleeves: "/angel/modules/sleeves.js",
     stocks: "/angel/modules/stocks.js",
@@ -578,6 +581,8 @@ export const SCRIPTS = {
     bladeburner: "/angel/modules/bladeburner.js",
     hacknet: "/angel/modules/hacknet.js",
     dashboard: "/angel/modules/dashboard.js",
+    metrics: "/angel/modules/metrics.js",
+    history: "/angel/modules/history.js",
     uiLauncher: "/angel/modules/uiLauncher.js",
     networkMap: "/angel/modules/networkMap.js",
     contracts: "/angel/modules/contracts.js",
@@ -601,4 +606,12 @@ export const SCRIPTS = {
     // Utils
     utils: "/angel/utils.js",
     scanner: "/angel/scanner.js",
+    
+    // Services
+    network: "/angel/services/network.js",
+    rooting: "/angel/services/rooting.js",
+    stats: "/angel/services/stats.js",
+    moduleRegistry: "/angel/services/moduleRegistry.js",
+    events: "/angel/services/events.js",
+    cache: "/angel/services/cache.js",
 };

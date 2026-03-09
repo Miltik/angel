@@ -16,7 +16,28 @@
 import { config } from "/angel/config.js";
 import { formatMoney } from "/angel/utils.js";
 import { createWindow } from "/angel/modules/uiManager.js";
+import { scanAll } from "/angel/services/network.js";
 import { PHASE_PORT } from "/angel/ports.js";
+import { 
+    initializeResetTracking, 
+    loadResetState, 
+    recordResetSnapshot,
+    formatDuration,
+    getCurrentRunDuration 
+} from "/angel/modules/history.js";
+import {
+    getIncomeBreakdown,
+    getPhaseGoalSummary,
+    countRootedServers,
+    countBackdooredServers,
+    countPurchasedServers,
+    calculateTotalRam,
+    calculateUsedRam,
+    getHackingExp,
+    calculateMoneyRate,
+    calculateXpRate,
+    formatPhaseLabel
+} from "/angel/modules/metrics.js";
 const XP_FARM_SCRIPT = "/angel/modules/xpFarm.js";
 const XP_FARM_WORKER = "/angel/workers/weaken.js";
 const XP_FARM_MARKER = "__angel_xpfarm__";
@@ -25,6 +46,9 @@ let lastMoney = 0;
 let lastXp = 0;
 let lastMoneySources = null;
 let lastMoneySourceUpdate = 0;
+
+// Note: Reset tracking moved to /angel/modules/history.js
+// Note: Metrics collection moved to /angel/modules/metrics.js
 let augmentQueueState = {
     noQueueSince: 0,
 };
@@ -1330,30 +1354,7 @@ function calculateUsedRam(ns) {
     }
 }
 
-/**
- * Scan all servers
- */
-function scanAll(ns, server = "home", visited = new Set()) {
-    try {
-        visited.add(server);
-        const neighbors = ns.scan(server);
-        
-        // Safety check for neighbors
-        if (!neighbors || !Array.isArray(neighbors)) {
-            return Array.from(visited);
-        }
-        
-        for (const neighbor of neighbors) {
-            if (!visited.has(neighbor)) {
-                scanAll(ns, neighbor, visited);
-            }
-        }
-    } catch (e) {
-        // Scan failed, return what we have
-    }
-    
-    return Array.from(visited);
-}
+// Note: scanAll imported from /angel/services/network.js
 
 /**
  * Check stock access

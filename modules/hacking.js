@@ -1,5 +1,7 @@
 import { createWindow } from "/angel/modules/uiManager.js";
 import { reportModuleMetrics } from "/angel/telemetry/telemetry.js";
+import { scanAll, getRootedServers, getMoneyServers, getHackableServers } from "/angel/services/network.js";
+import { getTotalAvailableRam as getAvailableRamFromService } from "/angel/services/stats.js";
 
 // State tracking to avoid duplicate logs
 let lastLoggedState = {
@@ -73,7 +75,7 @@ async function hackingLoop(ns, ui) {
     lastLoggedState.loopCount++;
     
     // Get best target based on phase
-    const targets = getHackableServersInline(ns);
+    const targets = getHackableServers(ns, false); // Don't use cache for fresh data
     if (targets.length === 0) {
         ui.log("⚠️  No hackable targets found", "warn");
         await ns.sleep(5000);
@@ -425,7 +427,7 @@ async function distributeWeaken(ns, target, ui) {
  * @param {object} ui - UI window API
  */
 async function distributeOperation(ns, target, script, ui) {
-    const servers = getRootedServersInline(ns);
+    const servers = getRootedServers(ns, false);
     
     // Determine script path
     let scriptPath;
@@ -490,7 +492,7 @@ async function distributeOperation(ns, target, script, ui) {
  * @returns {number}
  */
 export function getTotalAvailableRam(ns) {
-    const servers = getRootedServersInline(ns);
+    const servers = getRootedServers(ns, false);
     let total = 0;
     
     for (const server of servers) {
@@ -520,7 +522,7 @@ function formatMoneyInline(money) {
  * Get total RAM available across all servers (inline)
  */
 function getTotalAvailableRamInline(ns) {
-    const servers = getRootedServersInline(ns);
+    const servers = getRootedServers(ns, false);
     let total = 0;
     
     for (const server of servers) {
@@ -541,56 +543,5 @@ function getAvailableRamInline(ns, server, reserved = 0) {
     return Math.max(0, available);
 }
 
-/**
- * Recursively scan the entire network (inline, no imports)
- */
-function scanAllInline(ns, server = "home", visited = new Set()) {
-    visited.add(server);
-    
-    const neighbors = ns.scan(server);
-    for (const neighbor of neighbors) {
-        if (!visited.has(neighbor)) {
-            scanAllInline(ns, neighbor, visited);
-        }
-    }
-    
-    return Array.from(visited);
-}
-
-/**
- * Get all servers we have root access to (inline)
- */
-function getRootedServersInline(ns) {
-    const allServers = scanAllInline(ns);
-    return allServers.filter(server => ns.hasRootAccess(server));
-}
-
-/**
- * Get all servers with money (potential hack targets) (inline)
- */
-function getMoneyServersInline(ns) {
-    const allServers = scanAllInline(ns);
-    return allServers.filter(server => {
-        return ns.getServerMaxMoney(server) > 0 && 
-               ns.hasRootAccess(server);
-    });
-}
-
-/**
- * Get hackable servers (rooted, has money, within our level) (inline)
- */
-function getHackableServersInline(ns) {
-    const player = ns.getPlayer();
-    const moneyServers = getMoneyServersInline(ns);
-    
-    return moneyServers.filter(server => {
-        return ns.getServerRequiredHackingLevel(server) <= player.skills.hacking;
-    });
-}
-
-/**
- * Get best target by profitability (money gain per hack)
- */
-function getBestTargetByProfitInline(ns, servers) {
-    return selectBestTargetLateGame(ns, servers);
-}
+// Note: Inline network functions removed - now using /angel/services/network.js
+// Note: Inline stats functions removed - now using /angel/services/stats.js

@@ -2,6 +2,13 @@ import { config } from "/angel/config.js";
 import { formatMoney } from "/angel/utils.js";
 import { createWindow } from "/angel/modules/uiManager.js";
 import { PHASE_PORT, TELEMETRY_PORT, DAEMON_LOCK_PORT } from "/angel/ports.js";
+import { 
+    shouldInstallAugments, 
+    installAugmentations, 
+    getQueuedAugmentInfo,
+    getInstalledAugmentInfo,
+    detectReset 
+} from "/angel/modules/reset.js";
 
 // State tracking
 let lastState = {
@@ -641,52 +648,14 @@ export function displayAugments(ns) {
     ns.tprint("");
 }
 
-/**
- * Check if we should install augmentations
- * @param {NS} ns
- * @returns {boolean}
- */
-export function shouldInstallAugments(ns) {
-    if (!hasSingularityAccess(ns)) return false;
-    
-    const owned = ns.singularity.getOwnedAugmentations(false);
-    const installed = ns.singularity.getOwnedAugmentations(true);
-    
-    // If we have more owned than installed, we have queued augments
-    return owned.length > installed.length;
-}
+// Re-export reset functions for backward compatibility
+export { shouldInstallAugments, installAugmentations } from "/angel/modules/reset.js";
 
-/**
- * Install augmentations and reset
- * @param {NS} ns
- */
-export function installAugmentations(ns) {
-    if (!hasSingularityAccess(ns)) return;
-    
-    if (shouldInstallAugments(ns)) {
-        let unlocked = false;
-        try {
-            unlocked = ns.peek(DAEMON_LOCK_PORT) === "UNLOCK_DAEMON";
-        } catch (e) {
-            unlocked = false;
-        }
+// Note: Full reset decision logic available in /angel/modules/reset.js
 
-        if (!unlocked) {
-            return;
-        }
-
-        ns.readPort(DAEMON_LOCK_PORT);
-
-        // Always restart with angel-lite.js for seamless post-reset continuity
-        // Angel-lite will auto-transition to full Angel if RAM >= 64GB
-        ns.singularity.installAugmentations("/angel/angel-lite.js");
-    }
-}
 function reportAugmentsTelemetry(ns) {
     try {
         const now = Date.now();
-        let ownedCount = 0;
-        let installedCount = 0;
         let resetMetadata = null;
         
         // Get reset countdown data with specific target augmentation
@@ -710,31 +679,24 @@ function reportAugmentsTelemetry(ns) {
             }
         }
 
+        let ownedCount = 0;
+        let installedCount = 0;
+        
         if (hasSingularityAccess(ns)) {
-            const installedAugs = ns.singularity.getOwnedAugmentations(true);
-            installedCount = installedAugs.length;
-            ownedCount = ns.singularity.getOwnedAugmentations(false).length;
+            // Use reset module for installed info
+            const installedInfo = getInstalledAugmentInfo(ns);
+            installedCount = installedInfo.count;
             
-            // Detect reset: installed count dropped significantly (more than 2 augs)
-            if (installedCount < lastState.lastInstalledCount - 2) {
-                // Reset detected - calculate cost and rep for ALL installed augs
-                let totalCost = 0;
-                let totalRep = 0;
-                
-                for (const augName of installedAugs) {
-                    try {
-                        const stats = ns.singularity.getAugmentationStats(augName);
-                        totalCost += stats.cost || 0;
-                        totalRep += stats.repCost || 0;
-                    } catch (e) {
-                        // Skip if we can't get stats
-                    }
-                }
-                
+            // Get queued info
+            const queuedInfo = getQueuedAugmentInfo(ns);
+            ownedCount = installedCount + queuedInfo.count;
+            
+            // Detect reset using reset module
+            if (detectReset(installedCount, lastState.lastInstalledCount)) {
                 resetMetadata = {
                     detectedAtResetTime: now,
-                    totalAugmentsCost: totalCost,
-                    totalAugmentsReputation: totalRep,
+                    totalAugmentsCost: installedInfo.totalCost,
+                    totalAugmentsReputation: installedInfo.totalRep,
                     augmentsInstalledCount: installedCount
                 };
             }

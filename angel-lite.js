@@ -10,8 +10,13 @@
  * transition to full Angel. If you have less, it will bootstrap until ready, then 
  * transition. This ensures Angel never dies, regardless of post-reset RAM.
  * 
- * RAM REQUIREMENT: Dynamically calculated based on actual core module sizes.
- * Typically ranges from 25-40GB depending on which modules are present.
+ * AGGRESSIVE TIERED LAUNCH: Launches Angel as soon as minimum viable tier is ready
+ * instead of waiting for all modules. Three tiers:
+ * - Minimum (~16GB): Hacking + servers + phase orchestration - pure money maker
+ * - Standard (~32GB): Adds crime, factions, programs, training - full gameplay loop
+ * - Full (~48GB): All modules including augments, analytics, advanced features
+ * 
+ * This gets you into Angel FAST and lets Angel manage its own module expansion.
  * 
  * Usage:
  *   run angel-lite.js
@@ -22,7 +27,7 @@
  * - Automatic RAM upgrades
  * - Network scanning and rooting
  * - Worker deployment across network
- * - Angel-ready detection and handoff
+ * - Tiered Angel launch for maximum aggression
  * - Dynamic RAM requirement calculation
  * 
  * @param {NS} ns
@@ -399,37 +404,29 @@ async function manageHomeUpgrade(ns) {
 // ============================================
 
 /**
- * Calculate the minimum RAM needed to run core ANGEL modules
- * Dynamically checks actual file sizes instead of using hardcoded values
+ * Calculate RAM requirements for different Angel tiers
+ * Enables aggressive progressive launch - start with minimum viable Angel,
+ * which can manage its own expansion as more RAM becomes available
  * @param {NS} ns
- * @returns {number} - Required RAM in GB
+ * @returns {Object} - {minimum, standard, full, tier, tierName}
  */
-function calculateAngelRamRequirement(ns) {
+function calculateAngelRamTiers(ns) {
     const angelPath = "/angel/angel.js";
     
-    // If Angel files don't exist yet, return conservative estimate
+    // If Angel files don't exist yet, return conservative estimates
     if (!ns.fileExists(angelPath, "home")) {
-        return 32; // Conservative estimate for full core Angel
+        return {
+            minimum: 16,
+            standard: 32,
+            full: 48,
+            tier: 16,
+            tierName: "minimum"
+        };
     }
     
-    let totalRam = 0;
+    let orchestratorRam = ns.getScriptRam(angelPath, "home");
     
-    // Core orchestrator
-    totalRam += ns.getScriptRam(angelPath, "home");
-    
-    // Core modules (required for Angel to function)
-    const coreModules = [
-        "/angel/modules/phase.js",
-        "/angel/modules/programs.js",
-        "/angel/modules/servers.js",
-        "/angel/modules/factions.js",
-        "/angel/modules/activities.js",
-        "/angel/modules/crime.js",
-        "/angel/modules/augments.js",
-        "/angel/modules/hacking.js",
-    ];
-    
-    // Services layer (shared infrastructure)
+    // Services layer (required for all tiers)
     const services = [
         "/angel/services/network.js",
         "/angel/services/rooting.js",
@@ -439,48 +436,117 @@ function calculateAngelRamRequirement(ns) {
         "/angel/services/cache.js",
     ];
     
-    // Supporting modules (needed by core modules)
-    const supporting = [
-        "/angel/modules/training.js",
-        "/angel/modules/work.js",
-        "/angel/modules/reset.js",
-        "/angel/modules/history.js",
-        "/angel/modules/metrics.js",
+    // MINIMUM TIER: Just enough to make money aggressively
+    const minimumModules = [
+        "/angel/modules/phase.js",      // Orchestration
+        "/angel/modules/servers.js",    // Target management
+        "/angel/modules/hacking.js",    // Money making
     ];
     
-    // Calculate total for files that exist
-    const allFiles = [...coreModules, ...services, ...supporting];
-    let foundFiles = 0;
+    // STANDARD TIER: Core gameplay loop
+    const standardModules = [
+        ...minimumModules,
+        "/angel/modules/programs.js",   // Port openers
+        "/angel/modules/training.js",   // Skill growth
+        "/angel/modules/crime.js",      // Early money
+        "/angel/modules/factions.js",   // Progression
+    ];
     
-    for (const file of allFiles) {
+    // FULL TIER: Complete Angel with all features
+    const fullModules = [
+        ...standardModules,
+        "/angel/modules/activities.js", // Work assignments
+        "/angel/modules/augments.js",   // Aug management
+        "/angel/modules/work.js",       // Work utilities
+        "/angel/modules/reset.js",      // BitNode handling
+        "/angel/modules/history.js",    // Tracking
+        "/angel/modules/metrics.js",    // Analytics
+    ];
+    
+    // Calculate each tier's RAM
+    let minimumRam = orchestratorRam;
+    let standardRam = orchestratorRam;
+    let fullRam = orchestratorRam;
+    
+    // Add services to all tiers
+    for (const file of services) {
         if (ns.fileExists(file, "home")) {
-            totalRam += ns.getScriptRam(file, "home");
-            foundFiles++;
+            const ram = ns.getScriptRam(file, "home");
+            minimumRam += ram;
+            standardRam += ram;
+            fullRam += ram;
         }
     }
     
-    // Add safety buffer for worker threads and overhead
-    totalRam += CONFIG.RAM_SAFETY_BUFFER;
-    
-    // If we found fewer than half the expected files, use estimate
-    if (foundFiles < allFiles.length / 2) {
-        return 32; // Files incomplete, use conservative estimate
+    // Add minimum modules
+    for (const file of minimumModules) {
+        if (ns.fileExists(file, "home")) {
+            const ram = ns.getScriptRam(file, "home");
+            minimumRam += ram;
+            standardRam += ram;
+            fullRam += ram;
+        }
     }
     
-    return Math.ceil(totalRam);
+    // Add standard modules (not already counted)
+    for (const file of standardModules) {
+        if (minimumModules.includes(file)) continue;
+        if (ns.fileExists(file, "home")) {
+            const ram = ns.getScriptRam(file, "home");
+            standardRam += ram;
+            fullRam += ram;
+        }
+    }
+    
+    // Add full modules (not already counted)
+    for (const file of fullModules) {
+        if (standardModules.includes(file)) continue;
+        if (ns.fileExists(file, "home")) {
+            const ram = ns.getScriptRam(file, "home");
+            fullRam += ram;
+        }
+    }
+    
+    // Add safety buffer to each tier
+    minimumRam += CONFIG.RAM_SAFETY_BUFFER;
+    standardRam += CONFIG.RAM_SAFETY_BUFFER;
+    fullRam += CONFIG.RAM_SAFETY_BUFFER;
+    
+    // Determine current achievable tier
+    const homeRam = ns.getServerMaxRam("home");
+    let tier, tierName;
+    
+    if (homeRam >= Math.ceil(fullRam)) {
+        tier = Math.ceil(fullRam);
+        tierName = "full";
+    } else if (homeRam >= Math.ceil(standardRam)) {
+        tier = Math.ceil(standardRam);
+        tierName = "standard";
+    } else {
+        tier = Math.ceil(minimumRam);
+        tierName = "minimum";
+    }
+    
+    return {
+        minimum: Math.ceil(minimumRam),
+        standard: Math.ceil(standardRam),
+        full: Math.ceil(fullRam),
+        tier,
+        tierName
+    };
 }
 
 function checkAngelReady(ns) {
     const homeRam = ns.getServerMaxRam("home");
     
-    // Calculate required RAM dynamically
-    const requiredRam = calculateAngelRamRequirement(ns);
+    // Calculate RAM tiers - launch as soon as MINIMUM tier is achievable
+    const tiers = calculateAngelRamTiers(ns);
     
     // Criteria:
-    // 1. Home RAM >= required for core modules
+    // 1. Home RAM >= MINIMUM tier (aggressive early launch)
     // 2. Either Angel files exist OR we have sync.js to download them
     
-    const ramReady = homeRam >= requiredRam;
+    const ramReady = homeRam >= tiers.minimum;
     const angelExists = ns.fileExists("/angel/angel.js", "home");
     const syncExists = ns.fileExists("/angel/sync.js", "home");
     
@@ -488,13 +554,24 @@ function checkAngelReady(ns) {
 }
 
 async function transitionToAngel(ns) {
+    const tiers = calculateAngelRamTiers(ns);
+    const homeRam = ns.getServerMaxRam("home");
+    
+    // Determine which tier we're launching
+    let launchTier = "MINIMUM";
+    if (homeRam >= tiers.full) {
+        launchTier = "FULL";
+    } else if (homeRam >= tiers.standard) {
+        launchTier = "STANDARD";
+    }
+    
     ns.clearLog();
     ns.print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    ns.print("    ANGEL-LITE → ANGEL TRANSITION    ");
+    ns.print(`   ANGEL-LITE → ANGEL (${launchTier} TIER)`);
     ns.print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     
     ns.tprint("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-    ns.tprint("    ANGEL-LITE → ANGEL TRANSITION    ");
+    ns.tprint(`   ANGEL-LITE → ANGEL (${launchTier} TIER)`);
     ns.tprint("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     
     // Stop all lite workers
@@ -541,9 +618,24 @@ async function transitionToAngel(ns) {
     const pid = ns.exec("/angel/start.js", "home");
     
     if (pid > 0) {
-        ns.print("✓ ANGEL started successfully!");
+        ns.print(`✓ ANGEL started successfully in ${launchTier} tier!`);
         ns.tprint("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        ns.tprint("✓ ANGEL orchestrator started successfully!");
+        ns.tprint(`✓ ANGEL launched in ${launchTier} tier!`);
+        
+        // Show what's active in this tier
+        if (launchTier === "MINIMUM") {
+            ns.tprint("  Active: Hacking, Servers, Phase orchestration");
+            ns.tprint("  Focus: Aggressive money generation");
+            ns.tprint(`  Upgrade to ${tiers.standard}GB for Standard tier`);
+        } else if (launchTier === "STANDARD") {
+            ns.tprint("  Active: All minimum + Crime, Factions, Programs, Training");
+            ns.tprint("  Focus: Full early-game progression");
+            ns.tprint(`  Upgrade to ${tiers.full}GB for Full tier`);
+        } else {
+            ns.tprint("  Active: All modules - complete Angel experience");
+            ns.tprint("  Focus: Full automation with analytics");
+        }
+        
         ns.tprint("✓ Angel-lite shutting down...");
         ns.tprint("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
         
@@ -564,7 +656,7 @@ function updateDisplay(ns) {
     const homeRam = ns.getServerMaxRam("home");
     const money = ns.getServerMoneyAvailable("home");
     const hackLevel = ns.getHackingLevel();
-    const requiredRam = calculateAngelRamRequirement(ns);
+    const tiers = calculateAngelRamTiers(ns);
     
     // Calculate money rate
     const now = Date.now();
@@ -577,9 +669,20 @@ function updateDisplay(ns) {
     state.lastMoneyCheck = now;
     state.lastMoney = money;
     
-    // Calculate progress (RAM only)
-    const ramProgress = Math.min(100, (homeRam / requiredRam) * 100);
+    // Calculate progress based on minimum tier (aggressive launch)
+    const ramProgress = Math.min(100, (homeRam / tiers.minimum) * 100);
     const overallProgress = ramProgress;
+    
+    // Determine achievable tier
+    let achievableTier = "minimum";
+    let achievableRam = tiers.minimum;
+    if (homeRam >= tiers.full) {
+        achievableTier = "full";
+        achievableRam = tiers.full;
+    } else if (homeRam >= tiers.standard) {
+        achievableTier = "standard";
+        achievableRam = tiers.standard;
+    }
     
     // Next upgrade info
     const upgradeCost = ns.singularity.getUpgradeHomeRamCost();
@@ -589,7 +692,7 @@ function updateDisplay(ns) {
     // Build display
     ns.clearLog();
     ns.print("╔════════════════════════════════════════════════════════════╗");
-    ns.print("║              ANGEL-LITE BOOTSTRAP v1.0                     ║");
+    ns.print("║         ANGEL-LITE BOOTSTRAP v2.0 (AGGRESSIVE)             ║");
     ns.print("╚════════════════════════════════════════════════════════════╝");
     ns.print("");
     ns.print(`💰 Money:        ${formatMoney(money)}  (${state.moneyRate >= 0 ? "+" : ""}${formatMoney(state.moneyRate)}/sec)`);
@@ -599,15 +702,25 @@ function updateDisplay(ns) {
     ns.print(`⚙️  Workers:      ${state.deployedWorkers} deployed`);
     ns.print(`💻 Hack Level:   ${hackLevel}`);
     ns.print("");
-    ns.print("📈 Progress to Angel:");
+    ns.print("📈 Progress to Angel Launch:");
     ns.print(`  ${getProgressBar(overallProgress)}  ${overallProgress.toFixed(0)}%`);
     ns.print("");
     
-    if (homeRam >= requiredRam) {
-        ns.print("  ✓ Home RAM: Ready");
-        ns.print("  ⏳ Transitioning to Angel...");
+    // Show tier status
+    const minIcon = homeRam >= tiers.minimum ? "✓" : "⏳";
+    const stdIcon = homeRam >= tiers.standard ? "✓" : homeRam >= tiers.minimum ? "▶" : "⏳";
+    const fullIcon = homeRam >= tiers.full ? "✓" : homeRam >= tiers.standard ? "▶" : "⏳";
+    
+    if (homeRam >= tiers.minimum) {
+        ns.print(`  ${minIcon} Minimum Tier: ${homeRam}GB / ${tiers.minimum}GB - READY TO LAUNCH!`);
+        ns.print(`  ${stdIcon} Standard Tier: ${tiers.standard}GB (hacking + core)`);
+        ns.print(`  ${fullIcon} Full Tier: ${tiers.full}GB (all modules)`);
+        ns.print("");
+        ns.print("  ⚡ Launching Angel in " + achievableTier.toUpperCase() + " mode...");
     } else {
-        ns.print(`  ⏳ Home RAM: ${homeRam}GB / ${requiredRam}GB (core modules)`);
+        ns.print(`  ${minIcon} Minimum Tier: ${homeRam}GB / ${tiers.minimum}GB (hacking money-maker)`);
+        ns.print(`  ${stdIcon} Standard Tier: ${tiers.standard}GB (+ crime, factions, programs)`);
+        ns.print(`  ${fullIcon} Full Tier: ${tiers.full}GB (+ augments, analytics)`);
     }
     ns.print("");
     

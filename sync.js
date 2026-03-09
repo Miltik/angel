@@ -34,6 +34,7 @@ export async function main(ns) {
         "config.js",
         "utils.js",
         "scanner.js",
+        "ram-inspector.js",
         "start.js",
         
         // Modules

@@ -603,9 +603,10 @@ export const SCRIPTS = {
     weaken: "/angel/workers/weaken.js",
     share: "/angel/workers/share.js",
     
-    // Utils
+    // Utils & Analysis
     utils: "/angel/utils.js",
     scanner: "/angel/scanner.js",
+    ramInspector: "/angel/ram-inspector.js",
     
     // Services
     network: "/angel/services/network.js",

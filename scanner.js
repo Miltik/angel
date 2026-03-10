@@ -8,27 +8,56 @@
  * Existing imports will continue to work unchanged.
  */
 
-// Re-export network functions
-export {
-    scanAll,
-    getRootedServers,
-    getUnrootedServers,
-    getMoneyServers,
-    getHackableServers,
-    findPath,
+import {
+    scanAll as networkScanAll,
+    getRootedServers as networkGetRootedServers,
+    getUnrootedServers as networkGetUnrootedServers,
+    getMoneyServers as networkGetMoneyServers,
+    getHackableServers as networkGetHackableServers,
+    findPath as networkFindPath,
 } from "/angel/services/network.js";
 
-// Re-export rooting functions
-export {
-    tryGainRoot,
-    rootAll,
+import {
+    tryGainRoot as rootingTryGainRoot,
+    rootAll as rootingRootAll,
 } from "/angel/services/rooting.js";
+
+// Legacy-compatible explicit exports (avoid re-export syntax for Netscript parser compatibility)
+export function scanAll(ns, server = "home", visited = new Set()) {
+    return networkScanAll(ns, server, visited);
+}
+
+export function getRootedServers(ns, useCache = true) {
+    return networkGetRootedServers(ns, useCache);
+}
+
+export function getUnrootedServers(ns, useCache = true) {
+    return networkGetUnrootedServers(ns, useCache);
+}
+
+export function getMoneyServers(ns, useCache = true) {
+    return networkGetMoneyServers(ns, useCache);
+}
+
+export function getHackableServers(ns, useCache = true) {
+    return networkGetHackableServers(ns, useCache);
+}
+
+export function findPath(ns, target, source = "home") {
+    return networkFindPath(ns, target, source);
+}
+
+export function tryGainRoot(ns, server, verbose = true) {
+    return rootingTryGainRoot(ns, server, verbose);
+}
+
+export function rootAll(ns, verbose = true) {
+    return rootingRootAll(ns, verbose);
+}
 
 /** @param {NS} ns */
 export async function main(ns) {
-    // Import here to avoid circular dependencies in main
-    const { scanAll } = await import("/angel/services/network.js");
-    const servers = scanAll(ns);
+    const servers = networkScanAll(ns);
     
     ns.tprint(`Found ${servers.length} servers in network:`);
     for (const server of servers) {

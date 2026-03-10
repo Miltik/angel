@@ -145,7 +145,7 @@ export const config = {
         enablePrograms: true,
         enablePhase: true,         // Phase tracker (single source of truth)
         enableFactions: true,      // Faction intelligence/unlock management (no direct work execution)
-        enableActivities: true,    // Player-work coordinator (training/faction/company + mode signaling)
+        enableActivities: true,    // Player-work coordinator (lightweight mode signaling)
         enableCrime: true,         // Dedicated crime worker (executes when coordinator requests crime mode)
         enableSleeves: true,
         enableStocks: true,
@@ -165,6 +165,10 @@ export const config = {
         startupHackingDelayMs: 45000, // Delay hacking module startup after corporation initializes
         startupXPFarmDelayMs: 55000, // XP farm starts last, uses spare RAM
         startupWorkerDelayMs: 90000, // Global grace period before worker-heavy modules (hacking/xpFarm)
+        enableRemoteModuleStaging: true,        // Allow launching modules on rooted servers when home RAM is short
+        migrateModulesToHomeWhenPossible: true, // Move staged modules back to home once RAM allows
+        remoteModuleReserveRamGb: 8,            // Keep this much RAM free on remote hosts for workers/overhead
+        reclaimHomeWorkersForCore: true,        // Kill home worker scripts temporarily so large core modules can start
 
     },
 
@@ -557,6 +561,7 @@ export const PORTS = {
     ACTIVITY: 5,
     ACTIVITY_MODE: 6,
     AUGMENTS_DATA: 8,
+    AUGMENT_MODE: 9,
 };
 
 // Script paths (relative to /angel/)
@@ -567,21 +572,22 @@ export const SCRIPTS = {
     // Modules
     hacking: "/angel/modules/hacking.js",
     serverMgmt: "/angel/modules/servers.js",
-    augments: "/angel/modules/augments.js",
+    augments: "/angel/modules/augments-core.js",
+    augmentsWorker: "/angel/modules/augments-worker.js",
     reset: "/angel/modules/reset.js",
     programs: "/angel/modules/programs.js",
     phase: "/angel/modules/phase.js",
-    factions: "/angel/modules/factions.js",
-    activities: "/angel/modules/activities.js",
-    training: "/angel/modules/training.js",
-    work: "/angel/modules/work.js",
-    crime: "/angel/modules/crime.js",
+    factions: "/angel/modules/factions-core.js",
+    activities: "/angel/modules/activities-core.js",
+    training: "/angel/modules/training-core.js",
+    work: "/angel/modules/work-core.js",
+    crime: "/angel/modules/crime-core.js",
     sleeves: "/angel/modules/sleeves.js",
     stocks: "/angel/modules/stocks.js",
     gang: "/angel/modules/gang.js",
     bladeburner: "/angel/modules/bladeburner.js",
     hacknet: "/angel/modules/hacknet.js",
-    dashboard: "/angel/modules/dashboard.js",
+    dashboard: "/angel/modules/dashboard-core.js",
     metrics: "/angel/modules/metrics.js",
     history: "/angel/modules/history.js",
     uiLauncher: "/angel/modules/uiLauncher.js",
@@ -616,4 +622,9 @@ export const SCRIPTS = {
     moduleRegistry: "/angel/services/moduleRegistry.js",
     events: "/angel/services/events.js",
     cache: "/angel/services/cache.js",
+    "crime-worker": "modules/crime-worker.js",
+    "dashboard-core": "modules/dashboard-core.js",
+    "dashboard-worker": "modules/dashboard-worker.js",
+    "contracts-core": "modules/contracts-core.js",
+    "contracts-worker": "modules/contracts-worker.js",
 };

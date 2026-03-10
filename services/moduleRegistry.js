@@ -54,6 +54,7 @@ export function registerModule(name, moduleConfig) {
         startAttempts: 0,
         errors: [],
         metadata: moduleConfig.metadata || {},
+        host: moduleConfig.host || "home",
     };
     
     registry.set(name, module);
@@ -142,7 +143,7 @@ export function disableModule(name) {
  * @param {number} pid - Optional PID
  * @returns {boolean}
  */
-export function updateModuleState(name, state, pid = null) {
+export function updateModuleState(name, state, pid = null, host = null) {
     const module = registry.get(name);
     if (!module) return false;
     
@@ -152,11 +153,16 @@ export function updateModuleState(name, state, pid = null) {
         module.pid = pid;
         module.lastStartTime = Date.now();
         module.startAttempts++;
+        module.host = host || module.host || "home";
     }
     
     if (state === ModuleState.STOPPED || state === ModuleState.ERROR) {
         module.pid = null;
         module.lastStopTime = Date.now();
+    }
+
+    if (host) {
+        module.host = host;
     }
     
     return true;
@@ -193,8 +199,19 @@ export function recordModuleError(name, error) {
 export function isModuleRunning(ns, name) {
     const module = registry.get(name);
     if (!module || !module.path) return false;
-    
-    return ns.isRunning(module.path, "home");
+
+    const host = module.host || "home";
+    return ns.isRunning(module.path, host);
+}
+
+/**
+ * Get module host
+ * @param {string} name
+ * @returns {string}
+ */
+export function getModuleHost(name) {
+    const module = registry.get(name);
+    return module?.host || "home";
 }
 
 /**
@@ -357,7 +374,7 @@ export function initializeFromConfig(ns) {
     
     if (config.orchestrator.enableFactions) {
         registerModule("factions", {
-            path: "/angel/modules/factions.js",
+            path: "/angel/modules/factions-core.js",
             enabled: true,
             priority: 75,
             dependencies: ["phase"],
@@ -367,30 +384,60 @@ export function initializeFromConfig(ns) {
     
     if (config.orchestrator.enableActivities) {
         registerModule("activities", {
-            path: "/angel/modules/activities.js",
+            path: "/angel/modules/activities-core.js",
             enabled: true,
             priority: 70,
             dependencies: ["phase", "factions"],
+            metadata: { category: "progression" }
+        });
+
+        registerModule("training", {
+            path: "/angel/modules/training-core.js",
+            enabled: true,
+            priority: 69,
+            dependencies: ["activities"],
+            metadata: { category: "progression" }
+        });
+
+        registerModule("work", {
+            path: "/angel/modules/work-core.js",
+            enabled: true,
+            priority: 68,
+            dependencies: ["activities", "factions"],
             metadata: { category: "progression" }
         });
     }
     
     if (config.orchestrator.enableCrime) {
         registerModule("crime", {
-            path: "/angel/modules/crime.js",
+            path: "/angel/modules/crime-core.js",
             enabled: true,
             priority: 65,
             dependencies: ["phase", "activities"],
             metadata: { category: "progression" }
         });
+
+        registerModule("crime-worker", {
+            path: "/angel/modules/crime-worker.js",
+            type: "worker",
+            enabled: true,
+        });
     }
     
     if (config.orchestrator.enableAugments) {
         registerModule("augments", {
-            path: "/angel/modules/augments.js",
+            path: "/angel/modules/augments-core.js",
             enabled: true,
             priority: 60,
             dependencies: ["phase", "factions"],
+            metadata: { category: "progression" }
+        });
+
+        registerModule("augmentsWorker", {
+            path: "/angel/modules/augments-worker.js",
+            enabled: true,
+            priority: 59,
+            dependencies: ["augments"],
             metadata: { category: "progression" }
         });
     }
@@ -463,13 +510,15 @@ export function initializeFromConfig(ns) {
     
     // UI and monitoring modules
     if (config.orchestrator.enableDashboard) {
-        registerModule("dashboard", {
-            path: "/angel/modules/dashboard.js",
+        registerModule("dashboard-core", {
+            path: "/angel/modules/dashboard-core.js",
+            type: "core",
             enabled: true,
-            priority: 20,
-            dependencies: ["phase"],
-            optional: true,
-            metadata: { category: "ui" }
+        });
+        registerModule("dashboard-worker", {
+            path: "/angel/modules/dashboard-worker.js",
+            type: "worker",
+            enabled: true,
         });
     }
     
@@ -497,13 +546,15 @@ export function initializeFromConfig(ns) {
     
     // Utility modules
     if (config.orchestrator.enableContracts) {
-        registerModule("contracts", {
-            path: "/angel/modules/contracts.js",
+        registerModule("contracts-core", {
+            path: "/angel/modules/contracts-core.js",
+            type: "core",
             enabled: true,
-            priority: 25,
-            dependencies: [],
-            optional: true,
-            metadata: { category: "utility" }
+        });
+        registerModule("contracts-worker", {
+            path: "/angel/modules/contracts-worker.js",
+            type: "worker",
+            enabled: true,
         });
     }
     

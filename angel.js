@@ -30,6 +30,10 @@ let startupState = {
     lastModuleIssueLog: {},
 };
 
+let remoteModuleState = {
+    syncedHosts: new Set(),
+};
+
 export async function main(ns) {
     ns.disableLog("ALL");
     ns.clearLog();
@@ -327,6 +331,12 @@ async function ensureModulesRunning(ns) {
         if (!started) blockedCoreModules.push("Augmentations");
         coreReady = coreReady && started;
         await ns.sleep(1500);
+
+        // Augments worker (executes purchasing decisions from augments-core)
+        const startedAugmentsWorker = await ensureModuleRunning(ns, SCRIPTS.augmentsWorker, "Augments Worker");
+        if (!startedAugmentsWorker) blockedCoreModules.push("Augments Worker");
+        coreReady = coreReady && startedAugmentsWorker;
+        await ns.sleep(1000);
     }
     
     // Phase tracker module (single source of truth for game phase)
@@ -352,6 +362,18 @@ async function ensureModulesRunning(ns) {
         coreReady = coreReady && started;
         await ns.sleep(1500);
     }
+
+    // Training worker (executes training mode decisions from activities-core)
+    const startedTraining = await ensureModuleRunning(ns, SCRIPTS.training, "Training");
+    if (!startedTraining) blockedCoreModules.push("Training");
+    coreReady = coreReady && startedTraining;
+    await ns.sleep(1000);
+
+    // Work worker (executes faction/company mode decisions from activities-core)
+    const startedWork = await ensureModuleRunning(ns, SCRIPTS.work, "Work");
+    if (!startedWork) blockedCoreModules.push("Work");
+    coreReady = coreReady && startedWork;
+    await ns.sleep(1000);
 
     // Crime module (dedicated worker, driven by activity mode)
     if (config.orchestrator.enableCrime) {
@@ -593,18 +615,51 @@ async function ensureModuleRunning(ns, script, name, args = [], options = {}) {
     const reclaimOrder = Array.isArray(options?.reclaimOrder) ? options.reclaimOrder : [];
     const deferIfInsufficientRam = Boolean(options?.deferIfInsufficientRam);
     const lowRamLogIntervalMs = Number(options?.lowRamLogIntervalMs ?? 30000);
+    const allowRemoteStaging = Boolean(config.orchestrator?.enableRemoteModuleStaging ?? true);
+    const migrateToHomeWhenPossible = Boolean(config.orchestrator?.migrateModulesToHomeWhenPossible ?? true);
+    const remoteReserveRamGb = Number(config.orchestrator?.remoteModuleReserveRamGb ?? 8);
+    const reclaimHomeWorkersForCore = Boolean(config.orchestrator?.reclaimHomeWorkersForCore ?? true);
 
-    // Check if already running
-    if (ns.isRunning(script, "home")) {
+    const registryModule = Registry.getModule(name);
+    const trackedHost = registryModule?.host || "home";
+
+    // Check if already running on tracked host (or discover if moved)
+    if (ns.isRunning(script, trackedHost, ...args)) {
         // Update registry state if not already marked as running
         const module = Registry.getModule(name);
         if (module && module.state !== Registry.ModuleState.RUNNING) {
-            Registry.updateModuleState(name, Registry.ModuleState.RUNNING, null);
+            Registry.updateModuleState(name, Registry.ModuleState.RUNNING, module.pid, trackedHost);
             Events.publish(`module.${name}.start`, {
                 script,
                 recovered: true
             }, { source: "orchestrator" });
         }
+
+        // If running remotely, try to migrate back to home once home can host it.
+        if (trackedHost !== "home" && migrateToHomeWhenPossible) {
+            const scriptRam = ns.getScriptRam(script, "home");
+            const homeFreeRam = ns.getServerMaxRam("home") - ns.getServerUsedRam("home");
+            if (scriptRam <= homeFreeRam && ns.fileExists(script, "home")) {
+                const newPid = ns.exec(script, "home", 1, ...args);
+                if (newPid !== 0) {
+                    if (module?.pid) {
+                        ns.kill(module.pid);
+                    } else {
+                        ns.kill(script, trackedHost, ...args);
+                    }
+                    Registry.updateModuleState(name, Registry.ModuleState.RUNNING, newPid, "home");
+                    log(ns, `Migrated ${name} module from ${trackedHost} to home (PID: ${newPid})`, "INFO");
+                }
+            }
+        }
+        return true;
+    }
+
+    // Discover if script is running on another rooted host and adopt it.
+    const discoveredHost = findRunningHost(ns, script, args);
+    if (discoveredHost) {
+        const discoveredPid = findScriptPid(ns, discoveredHost, script, args);
+        Registry.updateModuleState(name, Registry.ModuleState.RUNNING, discoveredPid, discoveredHost);
         return true;
     }
     
@@ -637,46 +692,184 @@ async function ensureModuleRunning(ns, script, name, args = [], options = {}) {
             }, { source: "orchestrator" });
         }
     }
-    
-    if (scriptRam > availableRam) {
-        const impossibleOnCurrentHome = scriptRam > homeMaxRam;
-        const detail = impossibleOnCurrentHome
-            ? `${name} requires ${scriptRam.toFixed(2)}GB, but home max is ${homeMaxRam.toFixed(2)}GB`
-            : `${name} needs ${scriptRam.toFixed(2)}GB, have ${availableRam.toFixed(2)}GB free on home`;
 
-        if (deferIfInsufficientRam) {
-            logThrottled(ns, `module-lowram-${name}`, `Deferring ${name} startup: ${detail}`, "INFO", lowRamLogIntervalMs);
-        } else {
-            logThrottled(ns, `module-lowram-${name}`, `Failed to start ${name} module: ${detail}`, "WARN", lowRamLogIntervalMs);
+    // If module can fit on home in theory, reclaim worker RAM first before offloading.
+    // This preserves the strategy: keep core orchestration on home when possible,
+    // and use network RAM for workers.
+    if (
+        scriptRam > availableRam &&
+        reclaimHomeWorkersForCore &&
+        scriptRam <= homeMaxRam
+    ) {
+        const reclaimedGb = reclaimHomeWorkerRam(ns);
+        if (reclaimedGb > 0) {
+            availableRam = ns.getServerMaxRam("home") - ns.getServerUsedRam("home");
+            log(ns, `Reclaimed ${reclaimedGb.toFixed(2)}GB on home for ${name}`, "WARN");
         }
-        
-        // Update registry state
-        Registry.updateModuleState(name, Registry.ModuleState.STOPPED);
-        return false;
+    }
+    
+    let targetHost = "home";
+
+    if (scriptRam > availableRam) {
+        if (allowRemoteStaging) {
+            const remoteHost = pickRemoteModuleHost(ns, scriptRam, remoteReserveRamGb);
+            if (remoteHost) {
+                const syncOk = await ensureAngelFilesOnHost(ns, remoteHost);
+                if (syncOk) {
+                    targetHost = remoteHost;
+                }
+            }
+        }
+
+        if (targetHost === "home") {
+            const impossibleOnCurrentHome = scriptRam > homeMaxRam;
+            const detail = impossibleOnCurrentHome
+                ? `${name} requires ${scriptRam.toFixed(2)}GB, but home max is ${homeMaxRam.toFixed(2)}GB`
+                : `${name} needs ${scriptRam.toFixed(2)}GB, have ${availableRam.toFixed(2)}GB free on home`;
+
+            if (deferIfInsufficientRam) {
+                logThrottled(ns, `module-lowram-${name}`, `Deferring ${name} startup: ${detail}`, "INFO", lowRamLogIntervalMs);
+            } else {
+                logThrottled(ns, `module-lowram-${name}`, `Failed to start ${name} module: ${detail}`, "WARN", lowRamLogIntervalMs);
+            }
+            
+            // Update registry state
+            Registry.updateModuleState(name, Registry.ModuleState.STOPPED, null, "home");
+            return false;
+        }
     }
     
     // Try to start it
-    Registry.updateModuleState(name, Registry.ModuleState.STARTING);
-    const pid = ns.exec(script, "home", 1, ...args);
+    Registry.updateModuleState(name, Registry.ModuleState.STARTING, null, targetHost);
+    const pid = ns.exec(script, targetHost, 1, ...args);
     
     if (pid === 0) {
-        log(ns, `Failed to start ${name} module: exec returned 0 (check for errors in module)`, "WARN");
+        if (targetHost === "home" && allowRemoteStaging) {
+            // Fallback path: even if RAM calc looked fine (or was 0 due parser ambiguity),
+            // attempt remote staging once before declaring failure.
+            const remoteHost = pickRemoteModuleHost(ns, Math.max(1, scriptRam), remoteReserveRamGb);
+            if (remoteHost) {
+                const syncOk = await ensureAngelFilesOnHost(ns, remoteHost);
+                if (syncOk) {
+                    const remotePid = ns.exec(script, remoteHost, 1, ...args);
+                    if (remotePid !== 0) {
+                        log(ns, `Started ${name} module on ${remoteHost} via fallback (PID: ${remotePid})`, "INFO");
+                        Registry.updateModuleState(name, Registry.ModuleState.RUNNING, remotePid, remoteHost);
+                        Events.publish(`module.${name}.start`, {
+                            script,
+                            pid: remotePid,
+                            args,
+                            host: remoteHost,
+                            fallback: true,
+                        }, { source: "orchestrator" });
+                        return true;
+                    }
+                    logThrottled(ns, `module-remote-exec-${name}`, `Remote fallback failed for ${name} on ${remoteHost}: exec returned 0`, "WARN", lowRamLogIntervalMs);
+                } else {
+                    logThrottled(ns, `module-remote-sync-${name}`, `Remote fallback sync failed for ${name} to ${remoteHost}`, "WARN", lowRamLogIntervalMs);
+                }
+            } else {
+                logThrottled(ns, `module-remote-host-${name}`, `No remote host available for ${name} fallback`, "WARN", lowRamLogIntervalMs);
+            }
+        }
+
+        const missingDeps = getMissingImportDependencies(ns, script);
+        if (missingDeps.length > 0) {
+            log(ns, `Failed to start ${name}: missing dependency files: ${missingDeps.slice(0, 3).join(", ")}${missingDeps.length > 3 ? "..." : ""}`, "WARN");
+        }
+
+        log(ns, `Failed to start ${name} module on ${targetHost}: exec returned 0 (check for errors in module)`, "WARN");
         Registry.recordModuleError(name, "exec() returned 0");
         Events.publish(`module.${name}.error`, {
             error: "exec() returned 0",
-            script
+            script,
+            host: targetHost
         }, { source: "orchestrator" });
         return false;
     } else {
-        log(ns, `Started ${name} module (PID: ${pid})`, "INFO");
-        Registry.updateModuleState(name, Registry.ModuleState.RUNNING, pid);
+        log(ns, `Started ${name} module on ${targetHost} (PID: ${pid})`, "INFO");
+        Registry.updateModuleState(name, Registry.ModuleState.RUNNING, pid, targetHost);
         Events.publish(`module.${name}.start`, {
             script,
             pid,
-            args
+            args,
+            host: targetHost
         }, { source: "orchestrator" });
         return true;
     }
+}
+
+function pickRemoteModuleHost(ns, requiredRam, reserveRam = 8) {
+    const rooted = getRootedServers(ns).filter(s => s !== "home");
+    if (rooted.length === 0) return null;
+
+    // Prioritize rooted servers purely by effective free RAM.
+    // This works better early-game when purchased servers do not exist yet.
+    const ordered = rooted.sort((a, b) => {
+        const aEffective = (ns.getServerMaxRam(a) - ns.getServerUsedRam(a)) - reserveRam;
+        const bEffective = (ns.getServerMaxRam(b) - ns.getServerUsedRam(b)) - reserveRam;
+
+        if (bEffective !== aEffective) return bEffective - aEffective;
+
+        // Tie-breaker: prefer larger max RAM host.
+        const aMax = ns.getServerMaxRam(a);
+        const bMax = ns.getServerMaxRam(b);
+        return bMax - aMax;
+    });
+
+    for (const host of ordered) {
+        const maxRam = ns.getServerMaxRam(host);
+        if (maxRam <= 0) continue;
+        const freeRam = maxRam - ns.getServerUsedRam(host) - reserveRam;
+        if (freeRam >= requiredRam) {
+            return host;
+        }
+    }
+
+    return null;
+}
+
+async function ensureAngelFilesOnHost(ns, host) {
+    if (host === "home") return true;
+
+    if (remoteModuleState.syncedHosts.has(host)) {
+        return true;
+    }
+
+    try {
+        const filesAbs = ns.ls("home", "/angel/") || [];
+        const filesRel = ns.ls("home", "angel/") || [];
+        const files = Array.from(new Set([...filesAbs, ...filesRel]));
+        if (!files || files.length === 0) return false;
+
+        const ok = await deployFiles(ns, files, host);
+        if (ok) {
+            remoteModuleState.syncedHosts.add(host);
+        }
+        return ok;
+    } catch (e) {
+        return false;
+    }
+}
+
+function findRunningHost(ns, script, args = []) {
+    const candidates = ["home", ...getRootedServers(ns).filter(s => s !== "home")];
+    for (const host of candidates) {
+        if (ns.isRunning(script, host, ...args)) {
+            return host;
+        }
+    }
+    return null;
+}
+
+function findScriptPid(ns, host, script, args = []) {
+    const processes = ns.ps(host);
+    for (const process of processes) {
+        if (process.filename !== script) continue;
+        if (JSON.stringify(process.args || []) !== JSON.stringify(args || [])) continue;
+        return Number(process.pid || 0) || null;
+    }
+    return null;
 }
 
 function logThrottled(ns, key, message, level = "INFO", intervalMs = 30000) {
@@ -741,9 +934,12 @@ export function getSystemHealth(ns) {
         { name: "Hacking", script: SCRIPTS.hacking, enabled: config.orchestrator.enableHacking },
         { name: "Servers", script: SCRIPTS.serverMgmt, enabled: config.orchestrator.enableServerMgmt },
         { name: "Augments", script: SCRIPTS.augments, enabled: config.orchestrator.enableAugments },
+        { name: "Augments Worker", script: SCRIPTS.augmentsWorker, enabled: config.orchestrator.enableAugments },
         { name: "Programs", script: SCRIPTS.programs, enabled: config.orchestrator.enablePrograms },
         { name: "Factions", script: SCRIPTS.factions, enabled: config.orchestrator.enableFactions },
         { name: "Activities", script: SCRIPTS.activities, enabled: config.orchestrator.enableActivities },
+        { name: "Training", script: SCRIPTS.training, enabled: config.orchestrator.enableActivities },
+        { name: "Work", script: SCRIPTS.work, enabled: config.orchestrator.enableActivities },
         { name: "Hacknet", script: SCRIPTS.hacknet, enabled: config.orchestrator.enableHacknet },
         { name: "Stocks", script: SCRIPTS.stocks, enabled: config.orchestrator.enableStocks },
         { name: "Gang", script: SCRIPTS.gang, enabled: config.orchestrator.enableGang },
@@ -763,7 +959,19 @@ export function getSystemHealth(ns) {
     };
     
     for (const module of modules) {
-        const running = ns.isRunning(module.script, "home");
+        const registryName = module.name.toLowerCase() === "servers" ? "servers" : module.name.toLowerCase();
+        let running = false;
+        let host = "home";
+
+        const reg = Registry.getModule(registryName)
+            || Array.from(Registry.getAllModules().values()).find(m => m.path === module.script);
+        if (reg) {
+            host = reg.host || "home";
+            running = ns.isRunning(module.script, host);
+        } else {
+            running = ns.isRunning(module.script, "home");
+        }
+
         const healthy = !module.enabled || running;
         
         health.modules.push({
@@ -771,6 +979,7 @@ export function getSystemHealth(ns) {
             enabled: module.enabled,
             running,
             healthy,
+            host,
         });
         
         if (!healthy) {
@@ -977,4 +1186,107 @@ function getCurrentPhaseFromPort(ns) {
     }
     const phase = Number.parseInt(String(raw), 10);
     return Number.isFinite(phase) ? phase : 0;
+}
+
+function getMissingImportDependencies(ns, entryFile) {
+    const visited = new Set();
+    const missing = new Set();
+
+    function walk(filePath) {
+        const normalized = normalizeAngelPath(filePath);
+        if (visited.has(normalized)) return;
+        visited.add(normalized);
+
+        const resolved = resolveExistingAngelFile(ns, normalized);
+        if (!resolved) {
+            missing.add(normalized);
+            return;
+        }
+
+        const content = String(ns.read(resolved) || "");
+        if (!content) return;
+
+        const importRegex = /from\s+["']([^"']+)["']|import\(\s*["']([^"']+)["']\s*\)/g;
+        let match;
+        while ((match = importRegex.exec(content)) !== null) {
+            const raw = match[1] || match[2];
+            if (!raw) continue;
+            if (!raw.startsWith("/angel/") && !raw.startsWith("angel/") && !raw.startsWith("./") && !raw.startsWith("../")) continue;
+
+            const dep = resolveAngelImportPath(resolved, raw);
+            if (!dep.endsWith(".js")) continue;
+            walk(dep);
+        }
+    }
+
+    walk(entryFile);
+    return Array.from(missing).sort();
+}
+
+function resolveAngelImportPath(baseFile, rawImport) {
+    if (rawImport.startsWith("/angel/") || rawImport.startsWith("angel/")) {
+        return normalizeAngelPath(rawImport);
+    }
+
+    const baseParts = normalizeAngelPath(baseFile).split("/");
+    baseParts.pop();
+    const relParts = rawImport.split("/");
+
+    for (const part of relParts) {
+        if (!part || part === ".") continue;
+        if (part === "..") {
+            if (baseParts.length > 0) baseParts.pop();
+        } else {
+            baseParts.push(part);
+        }
+    }
+
+    return normalizeAngelPath(baseParts.join("/"));
+}
+
+function resolveExistingAngelFile(ns, path) {
+    const normalized = normalizeAngelPath(path);
+    const alternate = normalized.startsWith("/") ? normalized.slice(1) : null;
+
+    if (ns.fileExists(normalized, "home")) return normalized;
+    if (alternate && ns.fileExists(alternate, "home")) return alternate;
+    return null;
+}
+
+function normalizeAngelPath(path) {
+    const raw = String(path || "").replace(/\\/g, "/").trim();
+    if (raw.startsWith("angel/")) return `/${raw}`;
+    if (raw.startsWith("/")) return raw;
+    return `/${raw}`;
+}
+
+function reclaimHomeWorkerRam(ns) {
+    const workerScripts = new Set([
+        SCRIPTS.hack,
+        SCRIPTS.grow,
+        SCRIPTS.weaken,
+        SCRIPTS.share,
+        "/lite-hack.js",
+        "/lite-grow.js",
+        "/lite-weaken.js",
+    ]);
+
+    const before = ns.getServerMaxRam("home") - ns.getServerUsedRam("home");
+    const procs = ns.ps("home");
+
+    for (const proc of procs) {
+        const filename = String(proc.filename || "");
+        const isWorker = workerScripts.has(filename)
+            || filename.endsWith("/workers/hack.js")
+            || filename.endsWith("/workers/grow.js")
+            || filename.endsWith("/workers/weaken.js")
+            || filename.endsWith("/workers/share.js");
+
+        if (isWorker) {
+            ns.kill(proc.pid);
+        }
+    }
+
+    const after = ns.getServerMaxRam("home") - ns.getServerUsedRam("home");
+    return Math.max(0, after - before);
 }

@@ -1,11 +1,41 @@
 import { config, PORTS } from "/angel/config.js";
 import { createWindow } from "/angel/modules/uiManager.js";
 import { TELEMETRY_PORT } from "/angel/ports.js";
-import { syncFactionMembership, getMissingCrimeFactions, hasSingularityAccess } from "/angel/modules/factions-membership.js";
-import { getAugmentRepGoal, hasAnyViableFactionWork, getFactionOpportunitySummary } from "/angel/modules/factions-augments.js";
+import {
+    syncFactionMembership as syncFactionMembershipImpl,
+    getMissingCrimeFactions as getMissingCrimeFactionsImpl,
+    hasSingularityAccess as hasSingularityAccessImpl,
+} from "/angel/modules/factions-membership.js";
+import {
+    getAugmentRepGoal as getAugmentRepGoalImpl,
+    hasAnyViableFactionWork as hasAnyViableFactionWorkImpl,
+    getFactionOpportunitySummary as getFactionOpportunitySummaryImpl,
+} from "/angel/modules/factions-augments.js";
 
-export { syncFactionMembership, getMissingCrimeFactions, hasSingularityAccess } from "/angel/modules/factions-membership.js";
-export { getAugmentRepGoal, hasAnyViableFactionWork, getFactionOpportunitySummary } from "/angel/modules/factions-augments.js";
+// Legacy-compatible explicit exports (avoid re-export syntax for Netscript parser compatibility)
+export function syncFactionMembership(ns, ui, state) {
+    return syncFactionMembershipImpl(ns, ui, state);
+}
+
+export function getMissingCrimeFactions(player) {
+    return getMissingCrimeFactionsImpl(player);
+}
+
+export function hasSingularityAccess(ns) {
+    return hasSingularityAccessImpl(ns);
+}
+
+export function getAugmentRepGoal(ns) {
+    return getAugmentRepGoalImpl(ns);
+}
+
+export function hasAnyViableFactionWork(ns, player) {
+    return hasAnyViableFactionWorkImpl(ns, player);
+}
+
+export function getFactionOpportunitySummary(ns, faction) {
+    return getFactionOpportunitySummaryImpl(ns, faction);
+}
 
 const state = {
     loopCount: 0,

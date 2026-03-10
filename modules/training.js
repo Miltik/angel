@@ -12,6 +12,7 @@
  */
 
 import { config } from "/angel/config.js";
+import { PORTS } from "/angel/config.js";
 
 /**
  * Execute training based on current stat needs
@@ -158,16 +159,30 @@ export function getTrainingProgress(ns) {
 
 /** @param {NS} ns */
 export async function main(ns) {
-    ns.tprint("=== Training Module ===");
-    ns.tprint("");
-    
-    const progress = getTrainingProgress(ns);
-    ns.tprint("Training Progress:");
-    for (const [stat, info] of Object.entries(progress)) {
-        const status = info.complete ? "✓" : "○";
-        ns.tprint(`  ${status} ${stat}: ${info.current}/${info.target}`);
+    ns.disableLog("ALL");
+
+    while (true) {
+        try {
+            const modeRaw = ns.peek(PORTS.ACTIVITY_MODE);
+            const mode = modeRaw === "NULL PORT DATA" ? "none" : String(modeRaw).toLowerCase();
+
+            if (mode !== "training") {
+                await ns.sleep(3000);
+                continue;
+            }
+
+            // Only take action if we're not already in a training work type.
+            const current = ns.singularity.getCurrentWork();
+            const workType = String(current?.type || "").toUpperCase();
+            const alreadyTraining = workType === "UNIVERSITY" || workType === "GYM" || workType === "CLASS";
+            if (!alreadyTraining) {
+                await doTraining(ns, null);
+            }
+
+            await ns.sleep(5000);
+        } catch (e) {
+            if (String(e).includes("ScriptDeath")) return;
+            await ns.sleep(5000);
+        }
     }
-    
-    ns.tprint("");
-    ns.tprint(`Needs training: ${needsTraining(ns)}`);
 }

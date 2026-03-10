@@ -3,8 +3,8 @@ import { formatMoney } from "/angel/utils.js";
 import { createWindow } from "/angel/modules/uiManager.js";
 import { PHASE_PORT, TELEMETRY_PORT, DAEMON_LOCK_PORT } from "/angel/ports.js";
 import { 
-    shouldInstallAugments, 
-    installAugmentations, 
+    shouldInstallAugments as shouldInstallAugmentsFromReset, 
+    installAugmentations as installAugmentationsFromReset, 
     getQueuedAugmentInfo,
     getInstalledAugmentInfo,
     detectReset 
@@ -542,7 +542,14 @@ export function displayAugments(ns) {
 }
 
 // Re-export reset functions for backward compatibility
-export { shouldInstallAugments, installAugmentations } from "/angel/modules/reset.js";
+// Legacy-compatible explicit exports (avoid re-export syntax for Netscript parser compatibility)
+export function shouldInstallAugments(ns, queuedCount = 0, queuedCost = 0, minQueuedAugs = 5) {
+    return shouldInstallAugmentsFromReset(ns, queuedCount, queuedCost, minQueuedAugs);
+}
+
+export function installAugmentations(ns) {
+    return installAugmentationsFromReset(ns);
+}
 
 // Note: Full reset decision logic available in /angel/modules/reset.js
 

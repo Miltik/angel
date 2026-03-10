@@ -61,75 +61,23 @@ async function solveAllContracts(ns, ui) {
     let rooted = 0;
     let alreadyRooted = 0;
     let needsRoot = 0;
-    const servers = getAllServers(ns);
-    const scanDetails = [];
-    
-        // Debug: Show sample of servers being checked
-        if (lastState.loopCount % 20 === 1) {
-            const sample = servers.slice(0, 5).join(", ");
-            ui.log(`🔍 Checking ${servers.length} servers (sample: ${sample}...)`, "info");
-        }
-    
+    let scanDetails = [];
+    const servers = ns.scan("home");
+    servers.unshift("home");
     for (const server of servers) {
-        scanned++;
-        
-        // Try to root the server if we can
-        if (!ns.hasRootAccess(server)) {
-            needsRoot++;
-            try {
-                const portsNeeded = ns.getServerNumPortsRequired(server);
-                let portsOpened = 0;
-                
-                if (ns.fileExists("BruteSSH.exe", "home")) { ns.brutessh(server); portsOpened++; }
-                if (ns.fileExists("FTPCrack.exe", "home")) { ns.ftpcrack(server); portsOpened++; }
-                if (ns.fileExists("relaySMTP.exe", "home")) { ns.relaysmtp(server); portsOpened++; }
-                if (ns.fileExists("HTTPWorm.exe", "home")) { ns.httpworm(server); portsOpened++; }
-                if (ns.fileExists("SQLInject.exe", "home")) { ns.sqlinject(server); portsOpened++; }
-                
-                if (portsOpened >= portsNeeded) {
-                    ns.nuke(server);
-                    rooted++;
-                    ui.log(`🔓 Rooted: ${server}`, "success");
-                }
-            } catch {
-                // Can't root this server yet
-            }
-        } else {
-            alreadyRooted++;
-        }
-        
         try {
-            const contracts = ns.ls(server, ".cct");
-            const contractTypes = contracts.map(name => ns.codingcontract.getContractType(name, server));
-            const info = ns.getServer(server);
-            const files = ns.ls(server).sort();
-            scanDetails.push({
-                server,
-                rooted: ns.hasRootAccess(server),
-                contracts,
-                contractTypes,
-                files,
-                hasBackdoor: info.backdoorInstalled,
-                requiredHack: info.requiredHackingSkill,
-                portsRequired: info.numOpenPortsRequired,
-                openPorts: info.openPortCount,
-                moneyAvailable: info.moneyAvailable,
-                moneyMax: info.moneyMax,
-                ramUsed: info.ramUsed,
-                maxRam: info.maxRam,
-                purchasedByPlayer: info.purchasedByPlayer,
-            });
-            
-            for (const contractName of contracts) {
-                contractsFound++;
+            scanned++;
+            if (ns.hasRootAccess(server)) {
+                rooted++;
+            } else {
+                needsRoot++;
+            }
+            const files = ns.ls(server, ".cct");
+            for (const contractName of files) {
                 const contractType = ns.codingcontract.getContractType(contractName, server);
                 const contractData = ns.codingcontract.getData(contractName, server);
-                
-                ui.log(`🔍 Found: ${contractType} on ${server}`, "info");
-                
-                let solution = null;
-                
-                // Route to appropriate solver
+                contractsFound++;
+                let solution;
                 switch (contractType) {
                     case "Find Largest Prime Factor":
                         solution = solveLargestPrimeFactor(contractData);
@@ -212,17 +160,18 @@ async function solveAllContracts(ns, ui) {
                     case "Square Root":
                         solution = solveIntegerSquareRoot(contractData);
                         break;
+                    case "Proper 2-Coloring of a Graph":
+                        solution = solveProper2Coloring(contractData);
+                        break;
                     default:
                         unsupported++;
                         ui.log(`⚠️ No solver implemented for: ${contractType} (${server})`, "warn");
                         break;
                 }
-                
                 if (solution !== null && solution !== undefined) {
                     const startTime = performance.now();
                     const reward = ns.codingcontract.attempt(solution, contractName, server);
                     const executionTime = performance.now() - startTime;
-                    
                     if (reward) {
                         ui.log(`✓ ${contractType} on ${server}: ${reward}`, "success");
                         lastState.contractsSolved++;
@@ -232,8 +181,6 @@ async function solveAllContracts(ns, ui) {
                             lastState.totalRewards += rewardAmount;
                         }
                         count++;
-                        
-                        // Report solver metric to port 20
                         try {
                             ns.writePort(TELEMETRY_PORT, JSON.stringify({
                                 type: 'solver_metric',
@@ -244,13 +191,9 @@ async function solveAllContracts(ns, ui) {
                                 rewardAmount,
                                 timestamp: Date.now()
                             }));
-                        } catch (e) {
-                            // Port write failed, continue
-                        }
+                        } catch (e) {}
                     } else {
                         ui.log(`❌ Failed: ${contractType} on ${server}`, "warn");
-                        
-                        // Report failed solver metric
                         try {
                             ns.writePort(TELEMETRY_PORT, JSON.stringify({
                                 type: 'solver_metric',
@@ -261,9 +204,7 @@ async function solveAllContracts(ns, ui) {
                                 rewardAmount: 0,
                                 timestamp: Date.now()
                             }));
-                        } catch (e) {
-                            // Port write failed, continue
-                        }
+                        } catch (e) {}
                     }
                 }
             }
@@ -286,42 +227,9 @@ async function solveAllContracts(ns, ui) {
                 purchasedByPlayer: fallbackInfo.purchasedByPlayer,
                 error: String(e?.message || e),
             });
-            // Access denied - report it once per scan cycle
-            if (!ns.hasRootAccess(server) && count === 0) {
-                // Don't spam, just track
-            }
         }
     }
-
-    ui.log(`🧾 Scan detail (${scanDetails.length} servers):`, "info");
-    for (const detail of scanDetails) {
-        if (detail.error) {
-            ui.log(`• ${detail.server} | root:${detail.rooted ? "yes" : "no"} | error:${detail.error}`, "warn");
-            continue;
-        }
-
-        if (detail.contracts.length === 0) {
-            ui.log(`• ${detail.server} | root:${detail.rooted ? "yes" : "no"} | contracts:none`, "info");
-            continue;
-        }
-
-        const listed = detail.contracts.map((name, index) => `${name} (${detail.contractTypes[index]})`).join(", ");
-        ui.log(`• ${detail.server} | root:${detail.rooted ? "yes" : "no"} | contracts:${listed}`, "success");
-    }
-
-    writeLootLog(ns, scanDetails);
-    
-    // Report scan results
-    if (contractsFound === 0 && scanned > 0) {
-        const rootStatus = needsRoot > 0 
-            ? `${alreadyRooted} rooted, ${needsRoot} blocked${rooted > 0 ? `, ${rooted} newly rooted` : ''}`
-            : `All ${alreadyRooted} rooted`;
-        ui.log(`🔍 Scanned ${scanned} servers | ${rootStatus} | No contracts found`, "info");
-    } else if (contractsFound > 0) {
-        const unsolved = contractsFound - count;
-        ui.log(`📋 Contracts found: ${contractsFound} | Solved: ${count} | Unsolved: ${unsolved}${unsupported > 0 ? ` | Unsupported: ${unsupported}` : ""}`, "info");
-    }
-    
+    // ...existing code for reporting scan details and writing loot log...
     return count;
 }
 

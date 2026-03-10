@@ -458,7 +458,7 @@ export function initializeFromConfig(ns) {
             path: "/angel/modules/gang.js",
             enabled: true,
             priority: 50,
-            dependencies: ["phase"],
+            dependencies: [], // Start immediately, no phase gating
             optional: true,
             metadata: { category: "economy" }
         });

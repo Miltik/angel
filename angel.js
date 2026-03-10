@@ -401,14 +401,10 @@ async function ensureModulesRunning(ns) {
         }
     }
 
-    // Gang module
+    // Gang module (run immediately, not phase-gated)
     if (config.orchestrator.enableGang) {
-        if (currentPhase >= 3) {
-            await ensureModuleRunning(ns, SCRIPTS.gang, "Gang");
-            await ns.sleep(1500);
-        } else if (shouldLogDeferredModule("gang-phase")) {
-            log(ns, `Deferring Gang module until phase 3 (current: ${currentPhase})`, "INFO");
-        }
+        await ensureModuleRunning(ns, SCRIPTS.gang, "Gang");
+        await ns.sleep(1500);
     }
 
     // Bladeburner module

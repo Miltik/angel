@@ -45,16 +45,21 @@ export async function main(ns) {
     ns.ui.openTail();
     
     // Initialize
+    log(ns, "[DEBUG] Calling initialize()", "DEBUG");
     await initialize(ns);
-    
+    log(ns, "[DEBUG] Initialization complete", "DEBUG");
+
     // Main orchestration loop
+    let loopCount = 0;
     while (true) {
         try {
+            log(ns, `[DEBUG] Orchestrator loop start #${loopCount}` , "DEBUG");
             await orchestrate(ns);
+            log(ns, `[DEBUG] Orchestrator loop end #${loopCount}` , "DEBUG");
         } catch (e) {
-            log(ns, `Orchestrator error: ${e}`, "ERROR");
+            log(ns, `[DEBUG] Orchestrator error: ${e}` , "ERROR");
         }
-        
+        loopCount++;
         await ns.sleep(config.orchestrator.loopDelay);
     }
 }
@@ -308,6 +313,7 @@ async function ensureModulesRunning(ns) {
     
     // Programs module
     if (config.orchestrator.enablePrograms) {
+        log(ns, "[DEBUG] Launching Programs module", "DEBUG");
         const started = await ensureModuleRunning(ns, SCRIPTS.programs, "Programs", [], {
             reclaimOnLowRam: true,
             reclaimOrder: startupReclaimOrder,
@@ -319,6 +325,7 @@ async function ensureModulesRunning(ns) {
     
     // Server management module
     if (config.orchestrator.enableServerMgmt) {
+        log(ns, "[DEBUG] Launching Server Management module", "DEBUG");
         const started = await ensureModuleRunning(ns, SCRIPTS.serverMgmt, "Server Management");
         if (!started) blockedCoreModules.push("Server Management");
         coreReady = coreReady && started;
@@ -327,11 +334,13 @@ async function ensureModulesRunning(ns) {
     
     // Augmentation module (if SF4 available)
     if (config.orchestrator.enableAugments) {
+        log(ns, "[DEBUG] Launching Augmentations module", "DEBUG");
         const started = await ensureModuleRunning(ns, SCRIPTS.augments, "Augmentations");
         if (!started) blockedCoreModules.push("Augmentations");
         coreReady = coreReady && started;
         await ns.sleep(1500);
 
+        log(ns, "[DEBUG] Launching Augments Worker module", "DEBUG");
         // Augments worker (executes purchasing decisions from augments-core)
         const startedAugmentsWorker = await ensureModuleRunning(ns, SCRIPTS.augmentsWorker, "Augments Worker");
         if (!startedAugmentsWorker) blockedCoreModules.push("Augments Worker");
@@ -341,6 +350,7 @@ async function ensureModulesRunning(ns) {
     
     // Phase tracker module (single source of truth for game phase)
     if (config.orchestrator.enablePhase) {
+        log(ns, "[DEBUG] Launching Phase Tracker module", "DEBUG");
         const startedPhase = await ensureModuleRunning(ns, SCRIPTS.phase, "Phase Tracker");
         if (!startedPhase) blockedCoreModules.push("Phase Tracker");
         coreReady = coreReady && startedPhase;
@@ -349,6 +359,7 @@ async function ensureModulesRunning(ns) {
 
     // Factions module (unlock + faction intelligence)
     if (config.orchestrator.enableFactions) {
+        log(ns, "[DEBUG] Launching Factions module", "DEBUG");
         const started = await ensureModuleRunning(ns, SCRIPTS.factions, "Factions");
         if (!started) blockedCoreModules.push("Factions");
         coreReady = coreReady && started;
@@ -357,6 +368,7 @@ async function ensureModulesRunning(ns) {
     
     // Activities module (coordinator: training, faction, company + mode signaling)
     if (config.orchestrator.enableActivities) {
+        log(ns, "[DEBUG] Launching Activities module", "DEBUG");
         const started = await ensureModuleRunning(ns, SCRIPTS.activities, "Activities");
         if (!started) blockedCoreModules.push("Activities");
         coreReady = coreReady && started;
@@ -364,12 +376,14 @@ async function ensureModulesRunning(ns) {
     }
 
     // Training worker (executes training mode decisions from activities-core)
+    log(ns, "[DEBUG] Launching Training module", "DEBUG");
     const startedTraining = await ensureModuleRunning(ns, SCRIPTS.training, "Training");
     if (!startedTraining) blockedCoreModules.push("Training");
     coreReady = coreReady && startedTraining;
     await ns.sleep(1000);
 
     // Work worker (executes faction/company mode decisions from activities-core)
+    log(ns, "[DEBUG] Launching Work module", "DEBUG");
     const startedWork = await ensureModuleRunning(ns, SCRIPTS.work, "Work");
     if (!startedWork) blockedCoreModules.push("Work");
     coreReady = coreReady && startedWork;
@@ -377,6 +391,7 @@ async function ensureModulesRunning(ns) {
 
     // Crime module (dedicated worker, driven by activity mode)
     if (config.orchestrator.enableCrime) {
+        log(ns, "[DEBUG] Launching Crime module", "DEBUG");
         const started = await ensureModuleRunning(ns, SCRIPTS.crime, "Crime");
         if (!started) blockedCoreModules.push("Crime");
         coreReady = coreReady && started;
@@ -385,6 +400,7 @@ async function ensureModulesRunning(ns) {
 
     // Hacknet module
     if (config.orchestrator.enableHacknet) {
+        log(ns, "[DEBUG] Launching Hacknet module", "DEBUG");
         const started = await ensureModuleRunning(ns, SCRIPTS.hacknet, "Hacknet");
         if (!started) blockedCoreModules.push("Hacknet");
         coreReady = coreReady && started;
@@ -393,6 +409,7 @@ async function ensureModulesRunning(ns) {
 
     // Stocks module
     if (config.orchestrator.enableStocks) {
+        log(ns, "[DEBUG] Launching Stocks module", "DEBUG");
         if (currentPhase >= 3) {
             await ensureModuleRunning(ns, SCRIPTS.stocks, "Stocks");
             await ns.sleep(1500);
@@ -403,6 +420,7 @@ async function ensureModulesRunning(ns) {
 
     // Gang module (run immediately, not phase-gated)
     if (config.orchestrator.enableGang) {
+        log(ns, "[DEBUG] Launching Gang module", "DEBUG");
         await ensureModuleRunning(ns, SCRIPTS.gang, "Gang");
         await ns.sleep(1500);
     }

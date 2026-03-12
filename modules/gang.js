@@ -12,6 +12,10 @@ import { formatMoney, isScriptDeathError } from "/angel/utils.js";
 import { createWindow } from "/angel/modules/uiManager.js";
 import { PHASE_PORT, TELEMETRY_PORT } from "/angel/ports.js";
 
+// Deadlock detection state
+let deadlockCycles = 0;
+const DEADLOCK_THRESHOLD = 2; // Number of cycles with 0 gain before forcing escape
+
 // Telemetry tracking
 let telemetryState = {
     lastReportTime: 0,
@@ -39,16 +43,48 @@ export async function main(ns) {
             const loopStartTime = Date.now();
             recruitMembers(ns, ui);
             const summary = assignTasks(ns, ui);
-            
+
+            // Deadlock detection: if all members are on territory warfare and $/sec and respect/sec are zero, increment deadlock counter
+            let isDeadlocked = false;
+            if (summary && summary.members && summary.assigned) {
+                const totalMembers = summary.members.length;
+                const territoryCount = summary.assigned["Territory Warfare"] || 0;
+                const moneyRate = summary.info.moneyGainRate || 0;
+                const respectRate = summary.info.respectGainRate || 0;
+                if (territoryCount === totalMembers && moneyRate === 0 && respectRate === 0) {
+                    deadlockCycles++;
+                    isDeadlocked = true;
+                } else {
+                    deadlockCycles = 0;
+                }
+            }
+
+            // If deadlocked for too long, force at least one member to a productive task
+            if (isDeadlocked && deadlockCycles >= DEADLOCK_THRESHOLD) {
+                ui.log("[DEADLOCK ESCAPE] All members stuck on Territory Warfare with no gains. Forcing one member to money/respect task.", "warn");
+                try {
+                    const members = summary.members;
+                    const availableTasks = summary.tasks;
+                    // Pick a productive task (not territory warfare, not vigilante)
+                    const productiveTasks = availableTasks.filter(t => t !== "Territory Warfare" && !/Vigilante|Train|Unassigned/i.test(t));
+                    const fallbackTask = productiveTasks[0] || availableTasks.find(t => t !== "Territory Warfare");
+                    if (members.length > 0 && fallbackTask) {
+                        ns.gang.setMemberTask(members[0], fallbackTask);
+                        ui.log(`[DEADLOCK ESCAPE] Assigned ${members[0]} to ${fallbackTask}`, "success");
+                    }
+                } catch (e) { ui.log(`[DEADLOCK ESCAPE ERROR] ${e}`, "error"); }
+                deadlockCycles = 0;
+            }
+
             // NEW: Manage territory clashes  
             manageTerritoryclashes(ns, ui);
-            
+
             // Report telemetry every 5 seconds
             const timeSinceLastReport = Date.now() - telemetryState.lastReportTime;
             if (timeSinceLastReport >= 5000) {
                 reportTelemetry(ns, summary);
             }
-            
+
             printStatus(ns, summary, ui);
             await ns.sleep(30000);
         } catch (e) {
@@ -90,18 +126,27 @@ function getOptimalWantedReducers(memberCount, currentPenalty) {
     const MIN_PENALTY = 0.95;  // If penalty drops below 0.95, it's too punishing
     const OPTIMAL_MIN = 0.98;  // Sweet spot: minimal but manageable wanted
     
-    if (currentPenalty < MIN_PENALTY) {
-        // Wanted is VERY high, need aggressive reduction
-        return Math.ceil(memberCount * 0.4);  // 40% on vigilante
-    } else if (currentPenalty < OPTIMAL_MIN) {
-        // Wanted is moderately high, still too much
-        return Math.ceil(memberCount * 0.25); // 25% on vigilante
-    } else if (currentPenalty < 0.999) {
-        // In optimal range, minimal maintenance
-        return Math.ceil(memberCount * 0.15); // 15% on vigilante
+    // For small gangs, be less aggressive with wanted reduction
+    if (memberCount <= 4) {
+        if (currentPenalty < MIN_PENALTY) {
+            return 1; // Only 1 member on vigilante
+        } else if (currentPenalty < OPTIMAL_MIN) {
+            return 1;
+        } else if (currentPenalty < 0.999) {
+            return 0; // Let them do crimes
+        } else {
+            return 0;
+        }
     } else {
-        // Penalty nearly 1.0, wanted is negligible
-        return Math.max(1, Math.floor(memberCount * 0.08)); // Just 1-2 members
+        if (currentPenalty < MIN_PENALTY) {
+            return Math.ceil(memberCount * 0.4);  // 40% on vigilante
+        } else if (currentPenalty < OPTIMAL_MIN) {
+            return Math.ceil(memberCount * 0.25); // 25% on vigilante
+        } else if (currentPenalty < 0.999) {
+            return Math.ceil(memberCount * 0.15); // 15% on vigilante
+        } else {
+            return Math.max(1, Math.floor(memberCount * 0.08)); // Just 1-2 members
+        }
     }
 }
 
@@ -172,17 +217,95 @@ function assignTasks(ns, ui) {
     const wantedEmergency = isWantedEmergency(info);
     const optimalReducers = getOptimalWantedReducers(members.length, info.wantedPenalty);
 
-    // Assign members with role-based specialization
+    // --- ENHANCEMENTS FOR COMBAT GANGS ---
+    // 1. Stat-based task assignment (for combat gangs only)
+    // 2. Respect farming mode (auto-detect if close to next augment/goal)
+    // 3. Equipment auto-purchase (combat only)
+    // 4. Dynamic task rotation (avoid wanted spikes)
+    // 5. Aggressive territory push if strong
+    // 6. Member specialization (money, respect, territory)
+
+    // Equipment auto-purchase (combat only)
+    if (!info.isHacking) {
+        try {
+            const equipNames = ns.gang.getEquipmentNames();
+            for (const member of memberData) {
+                for (const equip of equipNames) {
+                    const cost = ns.gang.getEquipmentCost(equip);
+                    if (cost < ns.getServerMoneyAvailable("home") * 0.05 && !member.info.upgrades.includes(equip)) {
+                        ns.gang.purchaseEquipment(member.name, equip);
+                    }
+                }
+            }
+        } catch (e) { /* ignore errors if API not available */ }
+    }
+
+    // Respect farming mode: if close to next augment/goal, focus respect
+    let respectFarming = false;
+    if (!info.isHacking) {
+        const respectTarget = getRespectTarget(globalPhase);
+        if (info.respect < respectTarget * 1.1 && info.respect > respectTarget * 0.7) {
+            respectFarming = true;
+        }
+    }
+
+    // Assign members with specialization and stat-based logic
     const assigned = {};
     const roleAssignments = {};
     let reducersAssigned = 0;
+    let territoryPush = false;
+    if (!info.isHacking && info.power > 10) {
+        // Aggressive territory push if much stronger than all rivals
+        try {
+            const otherGangs = ns.gang.getOtherGangInformation();
+            territoryPush = Object.values(otherGangs).every(g => info.power > g.power * 2);
+        } catch (e) { territoryPush = false; }
+    }
 
-    for (const member of memberData) {
-        // Determine which role this member should have
-        const role = assignRole(ns, member, info, taskPool, globalPhase, reducersAssigned, optimalReducers, wantedEmergency);
+    // Dynamic task rotation: alternate wanted reduction if wanted is rising fast
+    let rotateWanted = false;
+    if (!info.isHacking && info.wantedLevel > 10 && info.wantedPenalty < 0.97) {
+        rotateWanted = true;
+    }
+
+
+    // --- DEADLOCK PREVENTION: Ensure at least one member is always on a productive task ---
+    let assignedTerritory = 0;
+    let lastProductiveIdx = -1;
+    for (let i = 0; i < memberData.length; i++) {
+        const member = memberData[i];
+        let role;
+        // Stat-based: only assign high-level crimes if stats are high
+        if (!info.isHacking) {
+            const stats = [member.info.str, member.info.def, member.info.dex, member.info.agi];
+            const minCrimeStat = Math.min(...stats);
+            if (minCrimeStat < 50) {
+                role = "trainCombat";
+            } else if (respectFarming) {
+                role = "secondaryRespect";
+            } else if (territoryPush) {
+                role = "territoryWarfare";
+            } else if (rotateWanted && reducersAssigned < optimalReducers) {
+                role = "wantedReduction";
+            } else {
+                // Specialize: assign some to money, some to respect, some to territory
+                if (member.info.str > 80 && member.info.def > 80) {
+                    role = "territoryWarfare";
+                } else if (member.info.dex > 70) {
+                    role = "secondaryRespect";
+                } else {
+                    role = "moneyTask";
+                }
+            }
+        } else {
+            // Hacking logic untouched
+            role = assignRole(ns, member, info, taskPool, globalPhase, reducersAssigned, optimalReducers, wantedEmergency);
+        }
         if (!roleAssignments[role]) roleAssignments[role] = [];
         roleAssignments[role].push(member.name);
         if (role === "wantedReduction") reducersAssigned++;
+        if (role === "territoryWarfare") assignedTerritory++;
+        else lastProductiveIdx = i;
 
         // Get task for this role
         const task = taskPool[role];
@@ -202,7 +325,19 @@ function assignTasks(ns, ui) {
             assigned[task] = (assigned[task] || 0) + 1;
         }
     }
-    
+    // If all members would be assigned to territory warfare, force last one to a productive task
+    if (assignedTerritory === memberData.length && lastProductiveIdx >= 0) {
+        const member = memberData[lastProductiveIdx];
+        // Pick a productive task (not territory warfare, not vigilante)
+        const productiveTasks = availableTasks.filter(t => t !== "Territory Warfare" && !/Vigilante|Train|Unassigned/i.test(t));
+        const fallbackTask = productiveTasks[0] || availableTasks.find(t => t !== "Territory Warfare");
+        if (fallbackTask) {
+            ns.gang.setMemberTask(member.name, fallbackTask);
+            assigned[fallbackTask] = (assigned[fallbackTask] || 0) + 1;
+            assigned["Territory Warfare"]--;
+        }
+    }
+
     // Verify actual assignments by reading back from game state
     const actualAssignments = {};
     for (const name of members) {
@@ -242,36 +377,38 @@ function getGangPhase(memberData, isHacking) {
 function getTaskPool(availableTasks, info, gangPhase) {
     const isHacking = info.isHacking;
 
-    // Tasks by role - money generation is now primary
+    // For combat gangs, prioritize low-level crimes early, then escalate
+    let combatMoneyTasks = ["Human Trafficking", "Trafficking", "Armed Robbery", "Strongarm Civilians"];
+    let combatRespectTasks = ["Kidnapping", "Terrorism", "Assassinate"];
+    // Early-game: use low-level crimes for stat/money growth
+    if (!isHacking && gangPhase === "training") {
+        combatMoneyTasks = ["Mugging", "Larceny", "Shoplifting", "Armed Robbery", "Strongarm Civilians"];
+        combatRespectTasks = ["Mugging", "Larceny", "Vandalism"];
+    }
+
     const tasks = {
         // Warriors/Hackers who still need training
         trainCombat: findTask(availableTasks, isHacking
             ? ["Train Hacking"]
             : ["Train Combat", "Train Hacking"]
         ),
-        
         // Money earners - PRIMARY focus, highest income
         moneyTask: findTask(availableTasks, isHacking
             ? ["Money Laundering", "Fraudulent Counterfeiting", "Cyberterrorism", "Identity Theft"]
-            : ["Human Trafficking", "Trafficking", "Armed Robbery", "Strongarm Civilians"]
+            : combatMoneyTasks
         ),
-        
         // Wanted management - CRITICAL for maintaining penalty in optimal range
         wantedReduction: findTask(availableTasks, isHacking
             ? ["Ethical Hacking", "Vigilante Justice"]
             : ["Vigilante Justice", "Assault"]
         ),
-        
         // Secondary money/respect - only if we have surplus members
         secondaryRespect: findTask(availableTasks, isHacking
             ? ["Cyberterrorism", "Plant Virus", "DDoS Attacks"]
-            : ["Kidnapping", "Terrorism", "Assassinate"]
+            : combatRespectTasks
         ),
-        
         // Territory Warfare - minimal, only if power > enemies
-        territoryWarfare: findTask(availableTasks, 
-            ["Territory Warfare"]
-        ),
+        territoryWarfare: findTask(availableTasks, ["Territory Warfare"]),
     };
 
     return tasks;

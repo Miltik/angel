@@ -15,6 +15,9 @@ let telemetryState = {
     lastReportTime: 0
 };
 
+// let stuckCount = 0;
+// let lastMoney = 0;
+
 /** @param {NS} ns */
 export async function main(ns) {
     ns.disableLog("ALL");
@@ -27,52 +30,66 @@ export async function main(ns) {
     while (true) {
         lastState.loopCount++;
         try {
-            // Ensure we're always at home
-            const homeConn = await connectToHome(ns);
-            if (!homeConn && lastState.loopCount % 10 === 0) {
-                ui.log("⚠️  Failed to connect to home", "warn");
-            }
-            
+            ui.log(`[DEBUG] Top of main loop`, "debug");
+            // Skipping connectToHome to test for UI hang
+            // const homeConn = await connectToHome(ns, ui);
+            // ui.log(`[DEBUG] connectToHome returned: ${homeConn}`, "debug");
+            // if (!homeConn && lastState.loopCount % 10 === 0) {
+            //     ui.log("⚠️  Failed to connect to home", "warn");
+            // }
             // Buy TOR and Programs
             const allDone = await phaseBuyPrograms(ns, ui);
+            ui.log(`[DEBUG] phaseBuyPrograms returned: ${allDone}`, "debug");
             if (allDone && lastState.lastLoggedStatus !== "complete") {
                 ui.log("✅ All programs acquired - entering idle mode", "success");
                 lastState.lastLoggedStatus = "complete";
             }
-            
             // Report telemetry
             reportProgramsTelemetry(ns);
-            
+
+            // Failsafe: check if stuck (money not increasing for 30 loops)
+            // const money = ns.getServerMoneyAvailable("home");
+            // if (money <= lastMoney + 1) {
+            //     stuckCount++;
+            // } else {
+            //     stuckCount = 0;
+            // }
+            // lastMoney = money;
+            // if (stuckCount > 30) {
+            //     ui.log("❌ Programs module appears stuck (no money progress for 30 cycles). Exiting for safety.", "error");
+            //     return;
+            // }
         } catch (e) {
             if (isScriptDeathError(e)) {
                 return;
             }
-            ui.log(`Error: ${e}`, "error");
-            await connectToHome(ns);
+            ui.log(`[DEBUG] Error in main loop: ${e}`, "error");
+            // await connectToHome(ns, ui);
         }
-        
         // Always return home before sleeping
-        await connectToHome(ns);
-        
-        await ns.sleep(5000);  // Aggressive: check every 5 seconds
+        // await connectToHome(ns, ui);
+        await ns.sleep(20000);  // Less aggressive: check every 20 seconds
     }
 }
 
 // Helper to safely connect to home with verification
-async function connectToHome(ns) {
-    try {
-        ns.singularity.connect("home");
-        await ns.sleep(50);
-        // Verify we actually connected to home
-        const current = ns.singularity.getCurrentServer ? ns.singularity.getCurrentServer() : "home";
-        if (current !== "home") {
-            return false;
-        }
-        return true;
-    } catch (e) {
-        return false;
-    }
-}
+// async function connectToHome(ns, ui) {
+//     try {
+//         if (ui) ui.log(`[DEBUG] connectToHome: calling ns.singularity.connect('home')`, "debug");
+//         ns.singularity.connect("home");
+//         await ns.sleep(50);
+//         // Verify we actually connected to home
+//         const current = ns.singularity.getCurrentServer ? ns.singularity.getCurrentServer() : "home";
+//         if (ui) ui.log(`[DEBUG] connectToHome: current server is ${current}`, "debug");
+//         if (current !== "home") {
+//             return false;
+//         }
+//         return true;
+//     } catch (e) {
+//         if (ui) ui.log(`[DEBUG] connectToHome error: ${e}`, "error");
+//         return false;
+//     }
+// }
 
 async function phaseBuyPrograms(ns, ui) {
     

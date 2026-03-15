@@ -12,9 +12,12 @@ import { formatMoney, isScriptDeathError } from "/angel/utils.js";
 import { createWindow } from "/angel/modules/uiManager.js";
 import { PHASE_PORT, TELEMETRY_PORT } from "/angel/ports.js";
 
+
 // Deadlock detection state
 let deadlockCycles = 0;
 const DEADLOCK_THRESHOLD = 2; // Number of cycles with 0 gain before forcing escape
+let deadlockCooldown = 0;
+const DEADLOCK_COOLDOWN_CYCLES = 4; // Number of cycles to keep a member on productive task after escape
 
 // Telemetry tracking
 let telemetryState = {
@@ -44,6 +47,7 @@ export async function main(ns) {
             recruitMembers(ns, ui);
             const summary = assignTasks(ns, ui);
 
+
             // Deadlock detection: if all members are on territory warfare and $/sec and respect/sec are zero, increment deadlock counter
             let isDeadlocked = false;
             if (summary && summary.members && summary.assigned) {
@@ -59,21 +63,41 @@ export async function main(ns) {
                 }
             }
 
-            // If deadlocked for too long, force at least one member to a productive task
+            // If deadlocked for too long, force multiple members to productive tasks and start cooldown
             if (isDeadlocked && deadlockCycles >= DEADLOCK_THRESHOLD) {
-                ui.log("[DEADLOCK ESCAPE] All members stuck on Territory Warfare with no gains. Forcing one member to money/respect task.", "warn");
+                ui.log("[DEADLOCK ESCAPE] All members stuck on Territory Warfare with no gains. Forcing multiple members to money/respect tasks.", "warn");
                 try {
                     const members = summary.members;
                     const availableTasks = summary.tasks;
-                    // Pick a productive task (not territory warfare, not vigilante)
                     const productiveTasks = availableTasks.filter(t => t !== "Territory Warfare" && !/Vigilante|Train|Unassigned/i.test(t));
-                    const fallbackTask = productiveTasks[0] || availableTasks.find(t => t !== "Territory Warfare");
-                    if (members.length > 0 && fallbackTask) {
-                        ns.gang.setMemberTask(members[0], fallbackTask);
-                        ui.log(`[DEADLOCK ESCAPE] Assigned ${members[0]} to ${fallbackTask}`, "success");
+                    // Assign at least 1/3 of members (min 2) to productive tasks
+                    const numToAssign = Math.max(2, Math.ceil(members.length / 3));
+                    for (let i = 0; i < numToAssign && i < members.length; i++) {
+                        const fallbackTask = productiveTasks[i % productiveTasks.length] || availableTasks.find(t => t !== "Territory Warfare");
+                        if (fallbackTask) {
+                            ns.gang.setMemberTask(members[i], fallbackTask);
+                            ui.log(`[DEADLOCK ESCAPE] Assigned ${members[i]} to ${fallbackTask}`, "success");
+                        }
                     }
+                    deadlockCooldown = DEADLOCK_COOLDOWN_CYCLES;
                 } catch (e) { ui.log(`[DEADLOCK ESCAPE ERROR] ${e}`, "error"); }
                 deadlockCycles = 0;
+            }
+
+            // During cooldown, keep multiple members on productive tasks
+            if (deadlockCooldown > 0 && summary && summary.members && summary.tasks) {
+                const members = summary.members;
+                const availableTasks = summary.tasks;
+                const productiveTasks = availableTasks.filter(t => t !== "Territory Warfare" && !/Vigilante|Train|Unassigned/i.test(t));
+                const numToAssign = Math.max(2, Math.ceil(members.length / 3));
+                for (let i = 0; i < numToAssign && i < members.length; i++) {
+                    const fallbackTask = productiveTasks[i % productiveTasks.length] || availableTasks.find(t => t !== "Territory Warfare");
+                    if (fallbackTask) {
+                        ns.gang.setMemberTask(members[i], fallbackTask);
+                        ui.log(`[DEADLOCK COOLDOWN] Keeping ${members[i]} on ${fallbackTask} (${deadlockCooldown} cycles left)`, "info");
+                    }
+                }
+                deadlockCooldown--;
             }
 
             // NEW: Manage territory clashes  
@@ -275,23 +299,25 @@ function assignTasks(ns, ui) {
     for (let i = 0; i < memberData.length; i++) {
         const member = memberData[i];
         let role;
-        // Stat-based: only assign high-level crimes if stats are high
+        // Stat-based: assign easier crimes or training to low stats, productive tasks to mid, warfare only to high stats or territory push
         if (!info.isHacking) {
             const stats = [member.info.str, member.info.def, member.info.dex, member.info.agi];
             const minCrimeStat = Math.min(...stats);
             if (minCrimeStat < 50) {
                 role = "trainCombat";
+            } else if (minCrimeStat < 150) {
+                role = "moneyTask";
             } else if (respectFarming) {
                 role = "secondaryRespect";
-            } else if (territoryPush) {
+            } else if (territoryPush && minCrimeStat > 200) {
                 role = "territoryWarfare";
             } else if (rotateWanted && reducersAssigned < optimalReducers) {
                 role = "wantedReduction";
             } else {
                 // Specialize: assign some to money, some to respect, some to territory
-                if (member.info.str > 80 && member.info.def > 80) {
+                if (member.info.str > 200 && member.info.def > 200) {
                     role = "territoryWarfare";
-                } else if (member.info.dex > 70) {
+                } else if (member.info.dex > 150) {
                     role = "secondaryRespect";
                 } else {
                     role = "moneyTask";
@@ -323,6 +349,21 @@ function assignTasks(ns, ui) {
             }
         } else {
             assigned[task] = (assigned[task] || 0) + 1;
+        }
+    }
+
+    // Auto-reassign unproductive members (earning $0 and 0 respect for 2+ cycles) to easier or more productive tasks
+    if (!info.isHacking && members && members.length > 0) {
+        for (const name of members) {
+            const m = ns.gang.getMemberInformation(name);
+            if ((m.moneyGain === 0 && m.respectGain === 0) && m.task !== "Train Combat" && m.task !== "Vigilante Justice") {
+                // Try to assign to an easier or productive task
+                const fallback = availableTasks.find(t => t !== "Territory Warfare" && !/Vigilante|Train|Unassigned/i.test(t));
+                if (fallback) {
+                    ns.gang.setMemberTask(name, fallback);
+                    ui.log(`[AUTO-REASSIGN] ${name} was unproductive, moved to ${fallback}`, "warn");
+                }
+            }
         }
     }
     // If all members would be assigned to territory warfare, force last one to a productive task

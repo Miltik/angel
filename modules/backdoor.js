@@ -175,13 +175,13 @@ function getPathToTarget(target, parentMap) {
 }
 
 function connectPath(ns, path) {
-    // if (!ns.singularity.connect("home")) return false;
-    // for (let i = 1; i < path.length; i++) {
-    //     if (!ns.singularity.connect(path[i])) {
-    //         return false;
-    //     }
-    // }
-    // Simulate always successful connection for testing
+    // Connect to "home" first
+    if (!ns.singularity.connect("home")) return false;
+    for (let i = 1; i < path.length; i++) {
+        if (!ns.singularity.connect(path[i])) {
+            return false;
+        }
+    }
     return true;
 }
 

@@ -128,3 +128,40 @@ function solveProper2Coloring([n, edges]) {
 	}
 	return color;
 }
+
+// Solver for HammingCodes: Encoded Binary to Integer
+function solveHammingDecode(data) {
+	// Handles both space-separated blocks and single bitstring
+	if (typeof data !== 'string') return 0;
+	data = data.trim();
+	let blocks = data.includes(' ') ? data.split(/\s+/) : [data];
+	let decodedBits = [];
+	for (let block of blocks) {
+		const bits = block.split('').map(Number);
+		const n = bits.length;
+		let errorPos = 0;
+		const r = Math.floor(Math.log2(n)) + 1;
+		for (let i = 0; i < r; i++) {
+			const parityPos = (1 << i);
+			let parity = 0;
+			for (let j = 1; j <= n; j++) {
+				if ((j & parityPos) !== 0) {
+					parity ^= bits[j - 1];
+				}
+			}
+			if (parity !== 0) {
+				errorPos += parityPos;
+			}
+		}
+		if (errorPos > 0 && errorPos <= n) {
+			bits[errorPos - 1] ^= 1;
+		}
+		// Extract data bits (positions that are not powers of 2)
+		for (let i = 1; i <= n; i++) {
+			if ((i & (i - 1)) !== 0) {
+				decodedBits.push(bits[i - 1]);
+			}
+		}
+	}
+	return parseInt(decodedBits.join(''), 2);
+}

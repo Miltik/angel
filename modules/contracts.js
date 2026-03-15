@@ -73,9 +73,13 @@ async function solveAllContracts(ns, ui) {
                 needsRoot++;
             }
             const files = ns.ls(server, ".cct");
+            if (files.length > 0) {
+                ui.log(`[${server}] Found contracts: ${files.join(", ")}`, "info");
+            }
             for (const contractName of files) {
                 const contractType = ns.codingcontract.getContractType(contractName, server);
                 const contractData = ns.codingcontract.getData(contractName, server);
+                ui.log(`[${server}] Contract: ${contractName} | Type: ${contractType}`, "info");
                 contractsFound++;
                 let solution;
                 switch (contractType) {
@@ -163,12 +167,41 @@ async function solveAllContracts(ns, ui) {
                     case "Proper 2-Coloring of a Graph":
                         solution = solveProper2Coloring(contractData);
                         break;
+                    // Solver for Proper 2-Coloring of a Graph
+                    function solveProper2Coloring([n, edges]) {
+                        // n: number of nodes, edges: array of [u, v] pairs (0-indexed)
+                        // Returns: array of 0/1 colors if possible, or [] if not possible
+                        const adj = Array.from({ length: n }, () => []);
+                        for (const [u, v] of edges) {
+                            adj[u].push(v);
+                            adj[v].push(u);
+                        }
+                        const color = Array(n).fill(-1);
+                        for (let start = 0; start < n; start++) {
+                            if (color[start] !== -1) continue;
+                            const queue = [start];
+                            color[start] = 0;
+                            while (queue.length) {
+                                const u = queue.shift();
+                                for (const v of adj[u]) {
+                                    if (color[v] === -1) {
+                                        color[v] = 1 - color[u];
+                                        queue.push(v);
+                                    } else if (color[v] === color[u]) {
+                                        return [];
+                                    }
+                                }
+                            }
+                        }
+                        return color;
+                    }
                     default:
                         unsupported++;
                         ui.log(`⚠️ No solver implemented for: ${contractType} (${server})`, "warn");
                         break;
                 }
                 if (solution !== null && solution !== undefined) {
+                    ui.log(`[${server}] Attempting solution for ${contractType}...`, "info");
                     const startTime = performance.now();
                     const reward = ns.codingcontract.attempt(solution, contractName, server);
                     const executionTime = performance.now() - startTime;
@@ -206,6 +239,8 @@ async function solveAllContracts(ns, ui) {
                             }));
                         } catch (e) {}
                     }
+                } else {
+                    ui.log(`[${server}] Skipped/unsupported or no solution for ${contractType}`, "warn");
                 }
             }
         } catch (e) {

@@ -587,7 +587,7 @@ export const SCRIPTS = {
     gang: "/angel/modules/gang.js",
     bladeburner: "/angel/modules/bladeburner.js",
     hacknet: "/angel/modules/hacknet.js",
-    dashboard: "/angel/modules/dashboard-core.js",
+        dashboard: "/angel/modules/dashboard-core.js",
     metrics: "/angel/modules/metrics.js",
     history: "/angel/modules/history.js",
     uiLauncher: "/angel/modules/uiLauncher.js",

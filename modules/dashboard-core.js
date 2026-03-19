@@ -11,9 +11,8 @@ export async function main(ns) {
     ns.disableLog("ALL");
     ns.print("📊 Dashboard core initialized");
 
-    // Find a server with enough RAM to run the worker
-    const servers = ["home", ...ns.getPurchasedServers()];
-    let target = servers.find(s => ns.getServerMaxRam(s) - ns.getServerUsedRam(s) > 128) || "home";
+    // Always run dashboard-worker.js on home to ensure UI is available
+    let target = "home";
 
     // Check if worker is already running
     const running = ns.ps(target).some(p => p.filename === DASHBOARD_WORKER);
